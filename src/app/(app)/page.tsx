@@ -5,6 +5,7 @@ import { PageContainer, PageHeader } from "@/components/layout/page-header";
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { Sparkline } from "@/components/dashboard/sparkline";
 import { TaskDigest } from "@/components/tasks/task-digest";
+import { SyncButton } from "@/components/admin/sync-button";
 import {
   getClients,
   getMetricsWithComparison,
@@ -65,6 +66,9 @@ export default async function OverviewPage() {
         description={`Consolidado dos últimos 30 dias em ${clients.length} ${
           clients.length === 1 ? "conta" : "contas"
         }.`}
+        // Só admin vê o botão. Esconder é cosmético — a Server Action
+        // valida a role de novo no servidor, que é o que de fato barra.
+        actions={user?.role === "admin" ? <SyncButton /> : undefined}
       />
 
       <div className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 lg:gap-4">

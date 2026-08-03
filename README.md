@@ -76,8 +76,7 @@ src/
     api/
       reports/generate/route.ts  ← pipeline PDF + WhatsApp
       reports/preview/route.ts   PDF sem gravar nada
-      sync/meta-ads/route.ts     ingestão Meta (protegida por CRON_SECRET)
-      sync/google-ads/route.ts   ingestão Google
+      cron/sync-ads/route.ts     ← rodada de sync (protegida por CRON_SECRET)
 
   components/
     dashboard/                   ClientDashboard, KpiCard, Sparkline,
@@ -97,6 +96,11 @@ src/
       orchestrator.ts            ← máquina de estados da geração/envio
       pdf/document.tsx           documento em @react-pdf/renderer
       pdf/render.ts              adaptadores react-pdf | puppeteer
+    ads/
+      normalize.ts               micros/decimal → centavos; guarda de moeda
+      google-ads.ts              searchStream + OAuth refresh
+      meta-ads.ts                Graph Insights + paginação
+      sync.ts                    ← orquestrador da rodada
     whatsapp/index.ts            Cloud API (oficial) | Evolution
     supabase/{client,server,admin}.ts
     mock/data.ts                 dataset determinístico do modo demo

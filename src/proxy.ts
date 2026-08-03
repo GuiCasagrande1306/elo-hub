@@ -43,12 +43,31 @@ export async function proxy(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const { pathname } = request.nextUrl;
-  const isPublicRoute =
-    pathname.startsWith("/login") ||
-    pathname.startsWith("/auth") ||
-    pathname.startsWith("/api/webhooks");
 
-  if (!user && !isPublicRoute) {
+  const isPublicRoute =
+    pathname.startsWith("/login") || pathname.startsWith("/auth");
+
+  /**
+   * Rotas de API nunca são redirecionadas.
+   *
+   * Dois motivos, e o primeiro já quebrou o cron uma vez:
+   *
+   *  1. O Vercel Cron chama `/api/cron/sync-ads` SEM cookie de sessão.
+   *     Com o redirect ligado, a resposta era 307 → /login e o job
+   *     jamais executava — falhando em silêncio, porque a Vercel
+   *     considera o 307 uma invocação bem-sucedida.
+   *
+   *  2. Devolver uma página HTML de login para um cliente que pediu
+   *     JSON está errado em qualquer caso. Uma API responde 401.
+   *
+   * Cada rota se autentica sozinha: as de relatório pelo RLS (o cliente
+   * Supabase carrega o JWT do usuário), a de cron pelo CRON_SECRET.
+   * A sessão continua sendo renovada acima, então o cookie não expira
+   * por causa desta exceção.
+   */
+  const isApiRoute = pathname.startsWith("/api/");
+
+  if (!user && !isPublicRoute && !isApiRoute) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     loginUrl.searchParams.set("next", pathname);
