@@ -3,7 +3,12 @@ import { z } from "zod";
 
 import { serverEnv } from "@/lib/env";
 import { getCurrentUser } from "@/lib/supabase/server";
-import { isGroupJid, sendReportToGroup } from "@/lib/whatsapp";
+import {
+  isGroupJid,
+  normalizePhone,
+  sendReportToGroup,
+  sendTextMessage,
+} from "@/lib/whatsapp";
 
 /**
  * POST /api/test-whatsapp   ⚠️ ROTA TEMPORÁRIA
@@ -27,7 +32,20 @@ export const dynamic = "force-dynamic";
 const PDF_DE_TESTE =
   "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf";
 
-const bodySchema = z.object({
+/* Dois modos, e a ordem de uso importa:
+
+   TEXTO    { number, message }  — valida conexão e chave. É o primeiro
+                                   teste, porque falha por um motivo só.
+   DOCUMENTO { groupId, ... }    — valida também a permissão no grupo e
+                                   o download da URL pela Evolution.
+
+   Começar pelo documento mistura três causas possíveis num erro único. */
+const textoSchema = z.object({
+  number: z.string().min(8, "Informe o número (55DDD9...) ou um JID."),
+  message: z.string().min(1).max(4096),
+});
+
+const documentoSchema = z.object({
   groupId: z.string().min(1, "Informe o groupId."),
   pdfUrl: z.string().url().optional(),
   caption: z.string().max(1024).optional(),
@@ -57,8 +75,12 @@ export async function GET() {
           serverEnv.whatsappEvolutionInstance &&
           serverEnv.whatsappToken,
       ),
-    comoUsar:
-      'POST { "groupId": "1203630000000@g.us" } para enviar um PDF de teste.',
+    comoUsar: {
+      "1_texto":
+        'POST { "number": "5548999110022", "message": "Teste" } — comece por aqui.',
+      "2_documento":
+        'POST { "groupId": "1203630000000@g.us" } — envia um PDF de teste.',
+    },
   });
 }
 
@@ -75,10 +97,33 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "JSON inválido." }, { status: 400 });
   }
 
-  const parsed = bodySchema.safeParse(raw);
+  /* --- Modo texto --------------------------------------------------- */
+  const texto = textoSchema.safeParse(raw);
+  if (texto.success) {
+    const result = await sendTextMessage(texto.data.number, texto.data.message);
+
+    return NextResponse.json(
+      {
+        modo: "texto",
+        destino: normalizePhone(texto.data.number),
+        ...result,
+      },
+      { status: result.success ? 200 : 502 },
+    );
+  }
+
+  /* --- Modo documento ------------------------------------------------ */
+  const parsed = documentoSchema.safeParse(raw);
   if (!parsed.success) {
     return NextResponse.json(
-      { error: "Payload inválido.", issues: parsed.error.issues },
+      {
+        error: "Payload inválido.",
+        aceita: [
+          '{ "number": "5548999110022", "message": "texto" }',
+          '{ "groupId": "1203630000000@g.us" }',
+        ],
+        issues: parsed.error.issues,
+      },
       { status: 400 },
     );
   }

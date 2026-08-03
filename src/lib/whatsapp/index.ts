@@ -288,79 +288,139 @@ function evolutionMediaBody(
   };
 }
 
-function createEvolutionProvider(): WhatsAppProvider {
+/** Resultado bruto de uma chamada à Evolution. */
+export interface EvolutionResult {
+  success: boolean;
+  /** Corpo da resposta, útil para depurar um envio que "passou". */
+  data?: unknown;
+  error?: string;
+  messageId?: string;
+}
+
+/**
+ * Chamada crua à Evolution. NUNCA lança: devolve o erro descrito.
+ *
+ * Todo POST da Evolution tem a mesma forma — `{base}/{rota}/{instância}`
+ * com a chave no header `apikey` — então centralizar aqui evita que
+ * cada função repita timeout, tratamento de erro e leitura do corpo.
+ */
+export async function evolutionRequest(
+  path: string,
+  body: Record<string, unknown>,
+): Promise<EvolutionResult> {
   const base = serverEnv.whatsappEvolutionUrl.replace(/\/$/, "");
   const instance = serverEnv.whatsappEvolutionInstance;
   const key = serverEnv.whatsappToken;
-  const version = serverEnv.evolutionApiVersion;
 
-  async function post(
-    path: string,
-    body: Record<string, unknown>,
-  ): Promise<SendResult> {
-    if (!base || !instance || !key) {
-      return {
-        ok: false,
-        error:
-          "Evolution API não configurada (EVOLUTION_API_URL, EVOLUTION_INSTANCE_NAME e EVOLUTION_API_KEY).",
-      };
-    }
-
-    try {
-      const response = await fetch(`${base}/${path}/${instance}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", apikey: key },
-        body: JSON.stringify(body),
-        // Upload de mídia por URL faz o servidor baixar o arquivo antes
-        // de enviar; 20s é curto para um PDF de relatório.
-        signal: AbortSignal.timeout(60_000),
-      });
-
-      const data = (await response.json().catch(() => ({}))) as {
-        key?: { id?: string };
-        message?: string | string[];
-        error?: string;
-        response?: { message?: string | string[] };
-      };
-
-      if (!response.ok) {
-        return { ok: false, error: describeEvolutionError(response.status, data) };
-      }
-
-      return { ok: true, messageId: data.key?.id };
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Falha de rede.";
-      return {
-        ok: false,
-        error: message.includes("timeout")
-          ? "Tempo esgotado. A instância pode estar baixando a mídia ou desconectada."
-          : message,
-      };
-    }
+  if (!base || !instance || !key) {
+    return {
+      success: false,
+      error:
+        "Evolution API não configurada (EVOLUTION_API_URL, EVOLUTION_INSTANCE_NAME e EVOLUTION_API_KEY).",
+    };
   }
+
+  try {
+    const response = await fetch(`${base}/${path}/${instance}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: key },
+      body: JSON.stringify(body),
+      // Envio de mídia por URL faz o servidor da Evolution BAIXAR o
+      // arquivo antes de mandar; 20s é curto para um PDF de relatório.
+      signal: AbortSignal.timeout(60_000),
+    });
+
+    const data = (await response.json().catch(() => ({}))) as {
+      key?: { id?: string };
+      message?: string | string[];
+      error?: string;
+      response?: { message?: string | string[] };
+    };
+
+    if (!response.ok) {
+      return {
+        success: false,
+        data,
+        error: describeEvolutionError(response.status, data),
+      };
+    }
+
+    return { success: true, data, messageId: data.key?.id };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Falha de rede.";
+    return {
+      success: false,
+      error: message.includes("timeout")
+        ? "Tempo esgotado. A instância pode estar baixando a mídia ou desconectada."
+        : message,
+    };
+  }
+}
+
+/**
+ * Envia texto puro. `number` aceita telefone (55DDD9...) ou JID de grupo
+ * (`...@g.us`) — `normalizePhone` distingue os dois.
+ *
+ * É o teste mais barato de conectividade: se isto chega, a instância
+ * está pareada e a chave está certa. Começar a validação por mídia
+ * mistura três causas de falha (conexão, permissão no grupo e download
+ * da URL) num erro só.
+ */
+export async function sendTextMessage(
+  number: string,
+  text: string,
+): Promise<EvolutionResult> {
+  return evolutionRequest("message/sendText", {
+    number: normalizePhone(number),
+    text,
+    delay: 1200,
+  });
+}
+
+/**
+ * Envia um documento a partir de uma URL pública.
+ *
+ * A URL precisa ser alcançável PELO SERVIDOR DA EVOLUTION, não pelo
+ * nosso: é ele quem baixa o arquivo. URL assinada de Storage funciona;
+ * `localhost` não.
+ */
+export async function sendMediaMessage(
+  number: string,
+  mediaUrl: string,
+  fileName: string,
+  caption?: string,
+): Promise<EvolutionResult> {
+  return evolutionRequest(
+    "message/sendMedia",
+    evolutionMediaBody(serverEnv.evolutionApiVersion, {
+      number: normalizePhone(number),
+      media: mediaUrl,
+      fileName,
+      caption,
+      delayMs: 2000,
+    }),
+  );
+}
+
+function createEvolutionProvider(): WhatsAppProvider {
+  // Adapta o resultado da Evolution para a interface comum aos dois
+  // provedores — é o que permite ao orquestrador não saber qual está no ar.
+  const adaptar = (r: EvolutionResult): SendResult => ({
+    ok: r.success,
+    messageId: r.messageId,
+    error: r.error,
+  });
 
   return {
     name: "evolution",
 
     async sendText(to, body) {
-      return post("message/sendText", {
-        number: normalizePhone(to),
-        text: body,
-        delay: 1200,
-      });
+      return adaptar(await sendTextMessage(to, body));
     },
 
     async sendDocument(to, doc) {
-      return post(
-        "message/sendMedia",
-        evolutionMediaBody(version, {
-          number: normalizePhone(to),
-          media: doc.url,
-          fileName: doc.filename,
-          caption: doc.caption,
-          delayMs: 2000,
-        }),
+      return adaptar(
+        await sendMediaMessage(to, doc.url, doc.filename, doc.caption),
       );
     },
   };
