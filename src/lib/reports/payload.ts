@@ -9,7 +9,7 @@ import {
   type PlatformSplit,
   type TrendPoint,
 } from "@/lib/metrics/kpi";
-import { getCreatives, getMetricsWithComparison } from "@/lib/data";
+import { sessionSource, type ReportSource } from "./source";
 import type {
   AdCreative,
   Client,
@@ -112,16 +112,19 @@ export async function buildReportPayload(options: {
   periodEnd: string;
   insights?: string;
   nextSteps?: string[];
+  /** RLS por padrão; o cron injeta a origem de sistema. */
+  source?: ReportSource;
 }): Promise<ReportPayload> {
   const { client, template, periodStart, periodEnd } = options;
+  const source = options.source ?? sessionSource();
 
   // Quantos criativos a seção `ad_gallery` pediu (padrão 6).
   const gallery = template.sections.find((s) => s.type === "ad_gallery");
   const creativeLimit = Number(gallery?.options?.limit ?? 6);
 
   const [metrics, creatives] = await Promise.all([
-    getMetricsWithComparison(client.id, periodStart, periodEnd),
-    getCreatives(client.id, creativeLimit),
+    source.metrics(client.id, periodStart, periodEnd),
+    source.creatives(client.id, creativeLimit),
   ]);
 
   // O template define QUAIS KPIs aparecem e em que ordem.

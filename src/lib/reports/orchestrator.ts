@@ -1,9 +1,8 @@
 import "server-only";
 
 import { isDemoMode, serverEnv } from "@/lib/env";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { getClientBySlug, getReportTemplates } from "@/lib/data";
+import { sessionSource, type ReportSource } from "./source";
 import {
   buildGroupCaption,
   buildReportPayload,
@@ -56,6 +55,13 @@ export interface GenerateReportInput {
   deliver: "whatsapp" | "none";
   /** Sobrescreve o telefone do cadastro. */
   recipient?: string;
+  /**
+   * Origem dos dados. Padrão: sessão do usuário, sob RLS.
+   * O cron passa `systemSource()`, que ignora RLS — ver `source.ts`.
+   */
+  source?: ReportSource;
+  /** Marca a linha em `report_history` como disparo automático. */
+  automated?: boolean;
 }
 
 export interface GenerateReportResult {
@@ -72,14 +78,18 @@ export interface GenerateReportResult {
 export async function generateAndDeliverReport(
   input: GenerateReportInput,
 ): Promise<GenerateReportResult> {
-  const supabase = await createSupabaseServerClient();
+  const source = input.source ?? sessionSource();
+  const supabase = await source.db();
 
   /* --- 1. Autorização -------------------------------------------------
-     Não há checagem manual de permissão: `getClientBySlug` usa o cliente
-     com o JWT do usuário, então o RLS já decide. Cliente inacessível
-     volta como `null` — indistinguível de inexistente, o que também
-     evita vazar a existência da conta. */
-  const client = await getClientBySlug(input.clientSlug);
+     Não há checagem manual de permissão: na origem de sessão, a busca
+     usa o cliente com o JWT do usuário e o RLS já decide. Cliente
+     inacessível volta como `null` — indistinguível de inexistente, o
+     que também evita vazar a existência da conta.
+
+     Na origem de sistema (cron) não existe RLS para decidir: a
+     autorização aconteceu antes, na validação do CRON_SECRET. */
+  const client = await source.findClient(input.clientSlug);
   if (!client) {
     return {
       ok: false,
@@ -90,7 +100,7 @@ export async function generateAndDeliverReport(
   }
 
   /* --- 2. Template ---------------------------------------------------- */
-  const templates = await getReportTemplates();
+  const templates = await source.listTemplates();
   const template =
     templates.find((t) => t.id === input.templateId) ??
     templates.find((t) => t.segment === client.segment && t.is_default) ??
@@ -114,13 +124,12 @@ export async function generateAndDeliverReport(
   if (isDemoMode) {
     reportId = `rh-demo-${Date.now()}`;
   } else {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const actorId = await source.actorId();
 
     const { data, error } = await supabase
       .from("report_history")
       .insert({
+        is_automated: input.automated ?? false,
         client_id: client.id,
         template_id: template.id,
         title,
@@ -132,13 +141,18 @@ export async function generateAndDeliverReport(
           input.deliver === "whatsapp"
             ? (input.recipient ?? client.whatsapp_phone)
             : null,
-        generated_by: user?.id,
+        generated_by: actorId,
       })
       .select("id")
       .single();
 
-    // A policy `report_history_insert` exige can_write_client(): um
-    // colaborador só-leitura falha exatamente aqui, no banco.
+    // Dois motivos distintos para falhar aqui, e os dois são desejáveis:
+    //
+    //  • A policy `report_history_insert` exige can_write_client(): um
+    //    colaborador só-leitura para no banco, não na aplicação.
+    //  • O índice parcial `report_history_automated_unique` recusa um
+    //    segundo disparo automático do mesmo período. É o que impede o
+    //    cliente de receber o relatório duas vezes se o cron repetir.
     if (error || !data) {
       return {
         ok: false,
@@ -171,6 +185,7 @@ export async function generateAndDeliverReport(
       periodEnd: input.periodEnd,
       insights: input.insights,
       nextSteps: input.nextSteps,
+      source,
     });
 
     // O snapshot é gravado ANTES do render: se a geração do PDF falhar,

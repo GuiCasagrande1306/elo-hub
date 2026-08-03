@@ -75,6 +75,11 @@ export async function createClientAction(
       persona: {},
       monthly_fee_cents: 0,
       contract_start: new Date().toISOString().slice(0, 10),
+      // Cliente novo entra sem envio automático: o dia é combinado em
+      // contrato, e ligar por padrão mandaria relatório para um grupo
+      // que talvez ainda nem exista.
+      report_day: null,
+      report_enabled: false,
       owner_id: "u-admin",
       created_at: new Date().toISOString(),
     });

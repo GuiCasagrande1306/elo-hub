@@ -76,6 +76,9 @@ export interface Client {
   monthly_fee_cents: number;
   contract_start: string | null;
   owner_id: string | null;
+  /** Dia do mês (1-28) do envio automático; null quando não agendado. */
+  report_day: number | null;
+  report_enabled: boolean;
   created_at: string;
 }
 
@@ -312,5 +315,7 @@ export interface ReportHistory {
   recipient: string | null;
   delivered_at: string | null;
   generated_by: string | null;
+  /** true quando gerado pelo cron; impede disparo duplicado do período. */
+  is_automated: boolean;
   created_at: string;
 }
