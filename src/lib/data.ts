@@ -9,6 +9,8 @@ import type {
   Client,
   ClientGoal,
   DailyMetric,
+  FinancialTransaction,
+  MonthlySummary,
   Profile,
   ReportHistory,
   ReportTemplate,
@@ -373,6 +375,52 @@ export async function getReports(clientId?: string): Promise<ReportHistory[]> {
 
   const { data } = await query;
   return (data ?? []) as ReportHistory[];
+}
+
+/* ------------------------------------------------------------------ */
+/* Financeiro — só admin passa pelo RLS                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Lançamentos e resumo mensal.
+ *
+ * Não há checagem de papel aqui: a policy `financial_admin_only` faz o
+ * banco recusar. Um colaborador recebe erro de privilégio, não uma
+ * lista vazia — a diferença importa, porque lista vazia sugeriria "não
+ * há lançamentos".
+ */
+export async function getFinancialData(months = 12): Promise<{
+  transactions: FinancialTransaction[];
+  monthly: MonthlySummary[];
+}> {
+  if (isDemoMode) {
+    const { demoTransactions, demoMonthlySummary } = await import(
+      "@/lib/mock/finance"
+    );
+    return { transactions: demoTransactions, monthly: demoMonthlySummary(months) };
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  const since = new Date();
+  since.setMonth(since.getMonth() - months);
+
+  const [tx, summary] = await Promise.all([
+    supabase
+      .from("financial_transactions")
+      .select("*")
+      .gte("due_date", since.toISOString().slice(0, 10))
+      .order("due_date", { ascending: false }),
+    supabase.rpc("financial_monthly_summary", { p_months: months }),
+  ]);
+
+  if (tx.error) throw tx.error;
+  if (summary.error) throw summary.error;
+
+  return {
+    transactions: (tx.data ?? []) as FinancialTransaction[],
+    monthly: (summary.data ?? []) as MonthlySummary[],
+  };
 }
 
 /* ------------------------------------------------------------------ */

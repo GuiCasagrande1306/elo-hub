@@ -2,6 +2,7 @@ import {
   BarChart3,
   CheckSquare,
   FileText,
+  Landmark,
   LayoutGrid,
   Settings,
   Users,
@@ -32,6 +33,10 @@ export const primaryNav: NavItem[] = [
 ];
 
 export const secondaryNav: NavItem[] = [
+  // `adminOnly` some com o item para colaborador — mas é cosmético. Quem
+  // barra de fato é o `redirect` no Server Component e, abaixo dele, a
+  // policy `financial_admin_only` no Postgres.
+  { href: "/gestao", label: "Gestão", icon: Landmark, adminOnly: true },
   { href: "/configuracoes", label: "Configurações", icon: Settings, adminOnly: true },
 ];
 

@@ -113,6 +113,48 @@ export interface ClientGoal {
   created_at: string;
 }
 
+/* ------------------------------------------------------------------ */
+/* Financeiro — visível apenas para admin (RLS)                        */
+/* ------------------------------------------------------------------ */
+
+export type TransactionType = "income" | "expense";
+export type TransactionStatus = "pending" | "paid" | "canceled";
+
+export type TransactionCategory =
+  | "client_fee"
+  | "project_fee"
+  | "ad_spend"
+  | "salary"
+  | "contractor"
+  | "software"
+  | "office"
+  | "tax"
+  | "other";
+
+export interface FinancialTransaction {
+  id: string;
+  type: TransactionType;
+  category: TransactionCategory;
+  status: TransactionStatus;
+  /** Sempre positivo — o sinal do fluxo vem de `type`. */
+  amount_cents: number;
+  description: string;
+  client_id: string | null;
+  due_date: string;
+  paid_date: string | null;
+  provider: string | null;
+  external_id: string | null;
+  created_at: string;
+}
+
+/** Uma linha do gráfico de fluxo de caixa. */
+export interface MonthlySummary {
+  month: string;
+  income_cents: number;
+  expense_cents: number;
+  net_cents: number;
+}
+
 export interface Project {
   id: string;
   client_id: string;
