@@ -27,11 +27,15 @@ para virar.
 ### Provisionando o Supabase
 
 ```bash
-psql "$DATABASE_URL" -f supabase/migrations/0001_schema.sql
-psql "$DATABASE_URL" -f supabase/migrations/0002_rls.sql
-psql "$DATABASE_URL" -f supabase/migrations/0003_realtime_storage.sql
+npx supabase login
+npx supabase link --project-ref <ref-do-projeto>
+npx supabase db push
+```
 
-# prova que o isolamento entre colaboradores funciona (sem saída = passou)
+`db push` aplica as três migrations na ordem do timestamp do nome. Depois,
+para provar que o isolamento entre colaboradores funciona (sem saída = passou):
+
+```bash
 psql "$DATABASE_URL" -f supabase/tests/rls.sql
 ```
 
@@ -45,9 +49,9 @@ entram como colaboradores.
 ```
 supabase/
   migrations/
-    0001_schema.sql              tabelas, enums, índices, triggers
-    0002_rls.sql                 policies + funções de autorização
-    0003_realtime_storage.sql    publicação Realtime, buckets, templates
+    20260803000001_schema.sql    tabelas, enums, índices, triggers
+    20260803000002_rls.sql       policies + funções de autorização
+    20260803000003_realtime_storage.sql
   tests/rls.sql                  asserções de isolamento entre usuários
 
 src/
