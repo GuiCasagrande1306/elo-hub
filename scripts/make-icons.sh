@@ -7,9 +7,9 @@
 set -e
 cd "$(dirname "$0")"
 
-INK="#1a1a18"      # --background do tema escuro
-PAPER="#fafaf9"
-SIGNAL="#7BF178"   # verde da marca
+INK="#0d1826"      # --background do tema escuro (navy da marca)
+PAPER="#fbfdff"    # texto do site
+SIGNAL="#71b0d9"   # azul do CTA do site
 
 # $1 = arquivo, $2 = escala do conteúdo (1 = cheio, 0.62 = zona segura
 # do maskable), $3 = raio do canto, $4 = cor de fundo

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "motion/react";
@@ -33,16 +34,42 @@ export function Sidebar({ user, clients, onNavigate }: SidebarProps) {
 
   return (
     <div className="flex h-full flex-col gap-1 bg-sidebar">
-      {/* Marca ------------------------------------------------------ */}
-      <div className="flex h-16 shrink-0 items-center gap-2.5 px-5">
-        <span className="relative flex size-7 items-center justify-center rounded-md bg-foreground text-background">
-          <span className="text-[13px] font-bold leading-none tracking-tight">E</span>
-          <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-signal ring-2 ring-sidebar" />
-        </span>
-        <div className="flex flex-col leading-none">
-          <span className="text-sm font-semibold tracking-tight">Elo Hub</span>
-          <span className="text-2xs text-muted-foreground">Marketing 360</span>
-        </div>
+      {/* Marca ------------------------------------------------------
+          Duas artes, uma por tema, alternadas por CSS (`dark:hidden` /
+          `hidden dark:block`) e NÃO por JavaScript. Ler o tema no
+          cliente para escolher a imagem causaria divergência de
+          hidratação e um piscar de logo errada no primeiro frame.
+
+          Ambas usam o mesmo viewBox 150×32: trocar pelo arquivo oficial
+          em alta resolução não mexe no layout.
+
+          `priority` porque a logo está acima da dobra em toda página —
+          sem isso ela entra na fila de lazy-load e aparece depois do
+          resto da sidebar. */}
+      <div className="flex h-16 shrink-0 items-center px-5">
+        <Link
+          href="/"
+          onClick={onNavigate}
+          aria-label="Elo Hub — ir para a visão geral"
+          className="flex items-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <Image
+            src="/logo-light.svg"
+            alt="Elo Marketing"
+            width={150}
+            height={32}
+            priority
+            className="h-7 w-auto dark:hidden"
+          />
+          <Image
+            src="/logo-dark.svg"
+            alt="Elo Marketing"
+            width={150}
+            height={32}
+            priority
+            className="hidden h-7 w-auto dark:block"
+          />
+        </Link>
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 pb-4">

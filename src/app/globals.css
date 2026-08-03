@@ -7,24 +7,41 @@
 /* =====================================================================
    ELO HUB — Design tokens
    ---------------------------------------------------------------------
-   Decisões que sustentam o visual (e o afastam de dashboard genérico):
+   Paleta extraída do site da agência (marketingelo.com.br), lendo os
+   estilos computados da página — não estimada de screenshot:
 
-   1. Neutros levemente QUENTES (hue ~95, croma 0.006). O cinza-azulado
-      padrão é a assinatura visual de todo template pronto. Um carvão
-      morno lê como produto, não como boilerplate.
+     #030712  fundo da página          #71b0d9  CTA / primária
+     #031627  tinta profunda           #8cc0e3  azul claro de apoio
+     #082742  superfície               #fbfdff  texto
+     #0c3357  superfície elevada       raio dos botões: 12px
+     #16466e  superfície clara         peso dos títulos: 900
 
-   2. O verde neon da marca NÃO é a cor de botão. Ele é `--signal`:
-      aparece só em dado, estado ativo e foco. Botão primário é tinta
-      (quase-preto no claro, quase-branco no escuro). Accent escasso
-      é o que dá ar caro.
+   Decisões que sustentam o visual:
 
-   3. Semântica de tendência é separada de `--signal`: `--positive` e
-      `--negative` existem porque em CPA cair é bom — a cor segue a
-      interpretação do KPI, nunca o sinal do número.
+   1. AZUL DA MARCA MUDA CONFORME O FUNDO. No escuro a primária é o
+      #71b0d9 do site, com tinta #031627 por cima — exatamente como nos
+      CTAs deles. No claro esse azul-céu sobre branco quase não separa
+      do fundo, então a primária vira o navy #16466e com texto branco.
+      Mesma família, cada uma escolhida para o seu fundo — é isso que
+      faz os dois temas parecerem o mesmo produto.
 
-   4. Escala de radius pequena e consistente; sem sombra pesada. A
-      profundidade vem de ring de 1px + micro-gradiente, como em
-      interfaces de produto maduras.
+   2. ESCURO SEM PRETO PURO. O site usa #030712, quase preto — ótimo
+      numa landing, cansativo num painel olhado oito horas por dia. O
+      fundo aqui é #0d1826, dois degraus acima, mantendo o matiz navy;
+      cards em #132436 e superfície elevada em #1b3047. Contraste
+      suficiente para hierarquia, sem o buraco preto.
+
+   3. TOKENS EM OKLCH, não HSL. Em HSL, "50% de luminosidade" tem brilho
+      percebido muito diferente entre um azul e um verde, então derivar
+      hover, muted e estados a partir da cor base vira tentativa e erro.
+      OKLCH é perceptualmente uniforme: os degraus de superfície acima
+      são espaçamentos reais de luminosidade. É também o formato que o
+      shadcn passou a usar, e o que `color-mix(in oklab, …)` — usado em
+      vários pontos deste arquivo — espera.
+
+   4. SEMÂNTICA DE DADO SEPARADA DA MARCA. `--positive` / `--negative` /
+      `--warning` não são azuis: em CPA, cair é bom, e essa leitura não
+      pode depender da cor institucional.
    ===================================================================== */
 
 @theme inline {
@@ -93,122 +110,132 @@
   --text-2xs--letter-spacing: 0.06em;
 }
 
-/* ----------------------------- LIGHT --------------------------------- */
+/* ------------------------------- CLARO -------------------------------
+   Fundo quase branco com toque de azul, tinta navy, primária no navy
+   médio para separar do papel. */
 :root {
+  /* 12px — o mesmo raio dos botões do site. */
   --radius: 0.75rem;
 
-  --background: oklch(0.988 0.003 95);
-  --foreground: oklch(0.19 0.006 95);
+  --background: oklch(0.9880 0.0040 250);
+  --foreground: oklch(0.2000 0.0420 248);
 
   --surface: oklch(1 0 0);
-  --surface-2: oklch(0.972 0.0035 95);
-  --hairline: oklch(0.918 0.0045 95);
+  --surface-2: oklch(0.9700 0.0070 250);
+  --hairline: oklch(0.9130 0.0110 250);
 
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.19 0.006 95);
+  --card-foreground: oklch(0.2000 0.0420 248);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.19 0.006 95);
+  --popover-foreground: oklch(0.2000 0.0420 248);
 
-  /* Botão primário = tinta, não marca. */
-  --primary: oklch(0.215 0.007 95);
-  --primary-foreground: oklch(0.985 0.002 95);
+  /* #16466e — o azul-céu da marca não separa do branco; o navy sim. */
+  --primary: oklch(0.3833 0.0852 247.7);
+  --primary-foreground: oklch(0.9931 0.0034 247.9);
 
-  --secondary: oklch(0.96 0.004 95);
-  --secondary-foreground: oklch(0.24 0.006 95);
-  --muted: oklch(0.96 0.004 95);
-  --muted-foreground: oklch(0.49 0.009 95);
-  --accent: oklch(0.948 0.006 95);
-  --accent-foreground: oklch(0.22 0.006 95);
+  --secondary: oklch(0.9600 0.0090 250);
+  --secondary-foreground: oklch(0.2600 0.0450 248);
+  --muted: oklch(0.9600 0.0090 250);
+  --muted-foreground: oklch(0.4900 0.0270 250);
+  --accent: oklch(0.9450 0.0180 245);
+  --accent-foreground: oklch(0.2300 0.0450 248);
 
-  --destructive: oklch(0.575 0.21 27);
-  --border: oklch(0.918 0.0045 95);
-  --input: oklch(0.9 0.005 95);
-  --ring: oklch(0.62 0.165 148);
+  --destructive: oklch(0.5750 0.2100 27);
+  --border: oklch(0.9130 0.0110 250);
+  --input: oklch(0.8950 0.0140 250);
+  --ring: oklch(0.5600 0.1050 243);
 
-  /* Verde da marca. No claro, escurecido para passar em contraste;
-     `--signal-muted` é o fundo dos chips. */
-  --signal: oklch(0.625 0.175 147);
-  --signal-foreground: oklch(0.99 0.01 145);
-  --signal-muted: oklch(0.942 0.062 145);
+  /* Azul institucional para estado ativo, foco e dado. */
+  --signal: oklch(0.5300 0.1080 242);
+  --signal-foreground: oklch(0.9931 0.0034 247.9);
+  --signal-muted: oklch(0.9360 0.0330 240);
 
-  --positive: oklch(0.57 0.155 150);
-  --positive-muted: oklch(0.945 0.052 150);
-  --negative: oklch(0.575 0.2 22);
-  --negative-muted: oklch(0.956 0.033 22);
-  --warning: oklch(0.66 0.152 68);
-  --warning-muted: oklch(0.96 0.05 78);
+  --positive: oklch(0.5300 0.1400 155);
+  --positive-muted: oklch(0.9420 0.0480 155);
+  --negative: oklch(0.5600 0.2000 25);
+  --negative-muted: oklch(0.9540 0.0330 25);
+  --warning: oklch(0.6400 0.1450 65);
+  --warning-muted: oklch(0.9580 0.0500 75);
 
-  --chart-1: oklch(0.625 0.175 147);
-  --chart-2: oklch(0.55 0.145 240);
-  --chart-3: oklch(0.68 0.155 60);
-  --chart-4: oklch(0.58 0.175 320);
-  --chart-5: oklch(0.64 0.13 195);
+  /* chart-1 é a marca; os demais se afastam em matiz para não virarem
+     variações do mesmo azul num gráfico de várias séries. */
+  --chart-1: oklch(0.5300 0.1080 242);
+  --chart-2: oklch(0.6400 0.1150 205);
+  --chart-3: oklch(0.6100 0.1450 300);
+  --chart-4: oklch(0.6600 0.1400 60);
+  --chart-5: oklch(0.5600 0.1350 160);
 
-  --sidebar: oklch(0.972 0.0035 95);
-  --sidebar-foreground: oklch(0.26 0.006 95);
-  --sidebar-primary: oklch(0.215 0.007 95);
-  --sidebar-primary-foreground: oklch(0.985 0.002 95);
-  --sidebar-accent: oklch(0.933 0.005 95);
-  --sidebar-accent-foreground: oklch(0.19 0.006 95);
-  --sidebar-border: oklch(0.918 0.0045 95);
-  --sidebar-ring: oklch(0.62 0.165 148);
+  --sidebar: oklch(0.9700 0.0070 250);
+  --sidebar-foreground: oklch(0.2600 0.0420 248);
+  --sidebar-primary: oklch(0.3833 0.0852 247.7);
+  --sidebar-primary-foreground: oklch(0.9931 0.0034 247.9);
+  --sidebar-accent: oklch(0.9320 0.0160 246);
+  --sidebar-accent-foreground: oklch(0.2000 0.0420 248);
+  --sidebar-border: oklch(0.9130 0.0110 250);
+  --sidebar-ring: oklch(0.5600 0.1050 243);
 }
 
-/* ------------------------------ DARK --------------------------------- */
+/* ------------------------------- ESCURO ------------------------------
+   Navy profundo (não preto), superfícies subindo em degraus de
+   luminosidade reais, primária no azul-céu do site. */
 .dark {
-  --background: oklch(0.148 0.006 95);
-  --foreground: oklch(0.965 0.004 95);
+  /* Degraus calibrados por hex-alvo, não por chute em L:
+       #0d1826 fundo   #132436 card   #1b3047 elevado   #24405c hairline
+     A sidebar (#0a1421) fica um degrau ABAIXO do conteúdo — é o que
+     separa navegação de área de trabalho sem precisar de borda grossa. */
+  --background: oklch(0.2063 0.0323 254.9);
+  --foreground: oklch(0.9700 0.0080 250);
 
-  --surface: oklch(0.182 0.0065 95);
-  --surface-2: oklch(0.212 0.007 95);
-  --hairline: oklch(0.268 0.0075 95);
+  --surface: oklch(0.2550 0.0412 251.0);
+  --surface-2: oklch(0.3033 0.0499 251.8);
+  --hairline: oklch(0.3630 0.0595 249.8);
 
-  --card: oklch(0.182 0.0065 95);
-  --card-foreground: oklch(0.965 0.004 95);
-  --popover: oklch(0.202 0.007 95);
-  --popover-foreground: oklch(0.965 0.004 95);
+  --card: oklch(0.2550 0.0412 251.0);
+  --card-foreground: oklch(0.9700 0.0080 250);
+  --popover: oklch(0.2780 0.0455 251.4);
+  --popover-foreground: oklch(0.9700 0.0080 250);
 
-  --primary: oklch(0.955 0.004 95);
-  --primary-foreground: oklch(0.18 0.006 95);
+  /* #71b0d9 sobre tinta #031627 — o CTA do site, na íntegra. */
+  --primary: oklch(0.7302 0.0881 238.2);
+  --primary-foreground: oklch(0.1942 0.0434 246.8);
 
-  --secondary: oklch(0.238 0.007 95);
-  --secondary-foreground: oklch(0.95 0.004 95);
-  --muted: oklch(0.228 0.007 95);
-  --muted-foreground: oklch(0.675 0.009 95);
-  --accent: oklch(0.256 0.0075 95);
-  --accent-foreground: oklch(0.965 0.004 95);
+  --secondary: oklch(0.3100 0.0510 251.5);
+  --secondary-foreground: oklch(0.9600 0.0090 250);
+  --muted: oklch(0.3000 0.0490 251.5);
+  --muted-foreground: oklch(0.7250 0.0330 250);
+  --accent: oklch(0.3400 0.0550 250.5);
+  --accent-foreground: oklch(0.9700 0.0080 250);
 
-  --destructive: oklch(0.645 0.2 25);
-  --border: oklch(0.268 0.0075 95);
-  --input: oklch(0.278 0.008 95);
-  --ring: oklch(0.83 0.19 145);
+  --destructive: oklch(0.6450 0.2000 25);
+  --border: oklch(0.3630 0.0595 249.8);
+  --input: oklch(0.3900 0.0630 250);
+  --ring: oklch(0.7302 0.0881 238.2);
 
-  /* No escuro o neon pode aparecer inteiro — é aqui que a marca respira. */
-  --signal: oklch(0.855 0.2 144);
-  --signal-foreground: oklch(0.17 0.05 145);
-  --signal-muted: oklch(0.285 0.07 145);
+  --signal: oklch(0.7839 0.0739 238.4);
+  --signal-foreground: oklch(0.1942 0.0434 246.8);
+  --signal-muted: oklch(0.3500 0.0700 243);
 
-  --positive: oklch(0.82 0.18 148);
-  --positive-muted: oklch(0.27 0.065 150);
-  --negative: oklch(0.69 0.185 20);
-  --negative-muted: oklch(0.275 0.07 22);
-  --warning: oklch(0.8 0.15 78);
-  --warning-muted: oklch(0.29 0.062 78);
+  --positive: oklch(0.8000 0.1550 155);
+  --positive-muted: oklch(0.3350 0.0650 158);
+  --negative: oklch(0.7000 0.1800 22);
+  --negative-muted: oklch(0.3400 0.0820 24);
+  --warning: oklch(0.8100 0.1450 78);
+  --warning-muted: oklch(0.3450 0.0670 70);
 
-  --chart-1: oklch(0.855 0.2 144);
-  --chart-2: oklch(0.66 0.16 250);
-  --chart-3: oklch(0.78 0.15 68);
-  --chart-4: oklch(0.69 0.175 320);
-  --chart-5: oklch(0.74 0.12 200);
+  --chart-1: oklch(0.7302 0.0881 238.2);
+  --chart-2: oklch(0.7600 0.1050 200);
+  --chart-3: oklch(0.7200 0.1350 305);
+  --chart-4: oklch(0.7900 0.1350 65);
+  --chart-5: oklch(0.7500 0.1300 160);
 
-  --sidebar: oklch(0.168 0.006 95);
-  --sidebar-foreground: oklch(0.88 0.005 95);
-  --sidebar-primary: oklch(0.855 0.2 144);
-  --sidebar-primary-foreground: oklch(0.17 0.05 145);
-  --sidebar-accent: oklch(0.238 0.007 95);
-  --sidebar-accent-foreground: oklch(0.965 0.004 95);
-  --sidebar-border: oklch(0.248 0.0075 95);
-  --sidebar-ring: oklch(0.83 0.19 145);
+  --sidebar: oklch(0.1889 0.0305 255.4);
+  --sidebar-foreground: oklch(0.8850 0.0140 250);
+  --sidebar-primary: oklch(0.7302 0.0881 238.2);
+  --sidebar-primary-foreground: oklch(0.1942 0.0434 246.8);
+  --sidebar-accent: oklch(0.3100 0.0510 251.5);
+  --sidebar-accent-foreground: oklch(0.9700 0.0080 250);
+  --sidebar-border: oklch(0.3100 0.0505 251);
+  --sidebar-ring: oklch(0.7302 0.0881 238.2);
 }
 
 @layer base {
@@ -265,8 +292,11 @@
     @apply text-2xs font-medium uppercase tracking-[0.14em] text-muted-foreground;
   }
 
-  /* Superfície padrão de card: hairline + gradiente quase imperceptível.
-     Sem box-shadow — sombra forte data o design. */
+  /* Superfície padrão de card.
+     Profundidade em duas camadas, porque cada tema precisa de uma:
+     no CLARO a sombra faz o trabalho (ring sozinho fica chapado sobre
+     papel); no ESCURO a sombra some contra o navy e quem separa é o
+     ring de 1px. Manter as duas deixa o card correto nos dois. */
   .surface-card {
     background:
       linear-gradient(
@@ -275,7 +305,18 @@
         transparent 42%
       ),
       var(--card);
-    @apply rounded-xl ring-1 ring-hairline;
+    @apply rounded-xl shadow-sm ring-1 ring-hairline transition-shadow;
+  }
+
+  .surface-card:hover {
+    @apply shadow-md;
+  }
+
+  /* Títulos de página. O site usa peso 900 nos headlines; aqui o
+     equivalente sem virar grito é bold com tracking fechado — em
+     tamanho de interface, 900 com tracking normal fica pastoso. */
+  .heading-display {
+    @apply font-bold tracking-[-0.03em];
   }
 
   /* Brilho sutil atrás do hero de performance. */

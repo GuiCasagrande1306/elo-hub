@@ -81,7 +81,7 @@ export function TrendChart({
               className="size-2 rounded-full"
               style={{
                 backgroundColor:
-                  key === "spend" ? "var(--chart-2)" : "var(--signal)",
+                  key === "spend" ? "var(--chart-1)" : "var(--chart-4)",
               }}
             />
             <span className="text-muted-foreground">{LABELS[key]}</span>
@@ -96,9 +96,15 @@ export function TrendChart({
             margin={{ top: 4, right: 4, bottom: 0, left: -8 }}
           >
             <defs>
+              {/* Duas séries em matizes bem separados. Com a paleta azul
+                  da marca, usar dois tons de azul-ciano deixava
+                  investimento e retorno praticamente indistinguíveis no
+                  mesmo gráfico. Azul (entrada) contra âmbar (retorno)
+                  se lê de relance, e o âmbar não carrega semântica de
+                  bom/ruim como o verde carregaria. */}
               <linearGradient id="trend-spend" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="var(--chart-2)" stopOpacity={0.28} />
-                <stop offset="100%" stopColor="var(--chart-2)" stopOpacity={0} />
+                <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.30} />
+                <stop offset="100%" stopColor="var(--chart-1)" stopOpacity={0} />
               </linearGradient>
             </defs>
 
@@ -144,16 +150,29 @@ export function TrendChart({
               content={<ChartTooltip secondary={secondary} />}
             />
 
+            {/* `isAnimationActive={false}` nas duas séries.
+
+                O Recharts desenha a entrada com `stroke-dasharray`
+                animado por requestAnimationFrame. Em aba em segundo
+                plano o navegador congela o rAF, a animação para no
+                início e o gráfico fica com a linha cortada em ~4% do
+                caminho — medi `stroke-dasharray: 46px, 1210px` num
+                traçado de 1210px. Parece gráfico quebrado, não
+                animação pausada.
+
+                É a mesma decisão dos cards de KPI: movimento é enfeite,
+                o dado não pode depender dele para aparecer. */}
             {!hidden.has("spend") && (
               <Area
                 yAxisId="left"
                 type="monotone"
                 dataKey="spend"
-                stroke="var(--chart-2)"
+                stroke="var(--chart-1)"
                 strokeWidth={2}
                 fill="url(#trend-spend)"
                 dot={false}
                 activeDot={{ r: 3.5, strokeWidth: 0 }}
+                isAnimationActive={false}
               />
             )}
 
@@ -162,10 +181,11 @@ export function TrendChart({
                 yAxisId="right"
                 type="monotone"
                 dataKey={secondary}
-                stroke="var(--signal)"
+                stroke="var(--chart-4)"
                 strokeWidth={2}
                 dot={false}
                 activeDot={{ r: 3.5, strokeWidth: 0 }}
+                isAnimationActive={false}
               />
             )}
           </ComposedChart>
@@ -211,14 +231,14 @@ function ChartTooltip({
       <dl className="flex flex-col gap-1">
         <div className="flex items-center justify-between gap-6">
           <dt className="flex items-center gap-1.5 text-muted-foreground">
-            <span className="size-2 rounded-full bg-chart-2" />
+            <span className="size-2 rounded-full bg-chart-1" />
             {LABELS.spend}
           </dt>
           <dd className="font-medium tabular-nums">{currency(value("spend"))}</dd>
         </div>
         <div className="flex items-center justify-between gap-6">
           <dt className="flex items-center gap-1.5 text-muted-foreground">
-            <span className="size-2 rounded-full bg-signal" />
+            <span className="size-2 rounded-full bg-chart-4" />
             {LABELS[secondary]}
           </dt>
           <dd className="font-medium tabular-nums">

@@ -74,8 +74,8 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#fbfaf8" },
-    { media: "(prefers-color-scheme: dark)", color: "#1a1a18" },
+    { media: "(prefers-color-scheme: light)", color: "#f9fbfe" },
+    { media: "(prefers-color-scheme: dark)", color: "#0d1826" },
   ],
   // `viewport-fit=cover` é pré-requisito para `env(safe-area-inset-*)`
   // funcionar. Sem ele, a Bottom Navigation fica embaixo do indicador

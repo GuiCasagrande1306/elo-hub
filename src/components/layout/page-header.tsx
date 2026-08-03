@@ -26,7 +26,7 @@ export function PageHeader({
       )}
     >
       <div className="min-w-0">
-        <h1 className="text-2xl font-semibold tracking-[-0.02em]">{title}</h1>
+        <h1 className="heading-display text-2xl">{title}</h1>
         {description && (
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
             {description}
