@@ -198,6 +198,24 @@ navegação cai em `/offline`, que diz claramente o que houve.
 Para regerar: `bash scripts/make-icons.sh` (macOS). O desenho é
 geométrico (retângulos), sem dependência de fonte instalada.
 
+## Sincronização de mídia
+
+`vercel.json` agenda **uma rodada diária** às 09:20 UTC (06:20 BRT) — depois
+da virada do dia nas contas de anúncio e antes de o time começar.
+
+⚠️ O ideal seria de hora em hora, mas **o plano Hobby da Vercel só aceita cron
+diário** — o deploy é recusado com qualquer expressão que rode mais de uma vez
+por dia. Com o plano Pro, restaurar é trocar o `schedule` por `0 * * * *` e
+adicionar de volta a rodada de janela curta:
+
+```json
+{ "path": "/api/cron/sync-ads",             "schedule": "0 * * * *" },
+{ "path": "/api/cron/sync-ads?mode=month",  "schedule": "20 9 * * *" }
+```
+
+Enquanto isso, o botão **Sincronizar agora** na Visão geral (só admin) força
+uma rodada do mês inteiro sob demanda, sem depender do cron.
+
 ## Notas de integração
 
 **WhatsApp.** Dois provedores atrás da mesma interface. A Cloud API oficial só
