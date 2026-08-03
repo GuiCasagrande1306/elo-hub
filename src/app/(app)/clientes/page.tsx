@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
-import { Plus } from "lucide-react";
 
 import { PageContainer, PageHeader } from "@/components/layout/page-header";
 import { ClientsDirectory } from "@/components/clients/clients-directory";
-import { Button } from "@/components/ui/button";
+import { NewClientSheet } from "@/components/clients/new-client-sheet";
 import { getClientsWithGoals } from "@/lib/data";
 import { formatCurrency, formatNumber } from "@/lib/format";
 
@@ -45,12 +44,10 @@ export default async function ClientsPage() {
             ? `${totals.withGoal} de ${rows.length} contas com meta definida no ciclo atual.`
             : "Defina as metas do ciclo para acompanhar planejado versus executado."
         }
-        actions={
-          <Button size="sm" className="h-9">
-            <Plus className="size-4" />
-            Novo cliente
-          </Button>
-        }
+        // O botão vive DENTRO do Sheet (é o `SheetTrigger`), então o
+        // estado de abertura não precisa subir para esta página, que é
+        // Server Component.
+        actions={<NewClientSheet />}
       />
 
       {/* Resumo da carteira ---------------------------------------- */}
