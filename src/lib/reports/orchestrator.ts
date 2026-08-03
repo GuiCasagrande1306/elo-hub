@@ -4,9 +4,17 @@ import { isDemoMode, serverEnv } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getClientBySlug, getReportTemplates } from "@/lib/data";
-import { buildReportPayload, buildWhatsAppSummary } from "./payload";
+import {
+  buildGroupCaption,
+  buildReportPayload,
+  buildWhatsAppSummary,
+} from "./payload";
 import { renderReportPdf } from "./pdf/render";
-import { getWhatsAppProvider } from "@/lib/whatsapp";
+import {
+  getWhatsAppProvider,
+  isGroupJid,
+  sendReportToGroup,
+} from "@/lib/whatsapp";
 import type { ReportStatus } from "@/types/database";
 
 /* =====================================================================
@@ -171,7 +179,7 @@ export async function generateAndDeliverReport(
     await setStatus("generating", { snapshot: payload });
 
     /* --- 5. Renderizar ---------------------------------------------- */
-    const { buffer, pageCount } = await renderReportPdf(payload, reportId);
+    const { buffer, pageCount } = await renderReportPdf(payload);
 
     /* --- 6. Demo para por aqui -------------------------------------- */
     if (isDemoMode) {
@@ -249,6 +257,50 @@ export async function generateAndDeliverReport(
     }
 
     await setStatus("sending");
+
+    /* --- 8a. Grupo x contato individual ------------------------------
+       Se o destino é um JID de grupo, usa `sendReportToGroup`: uma
+       mensagem só, com o PDF anexado e a legenda de impacto. Mandar
+       texto e documento separados num grupo gera duas notificações e
+       polui a conversa da equipe do cliente.
+
+       Para contato individual segue o fluxo antigo — resumo formal
+       primeiro, documento depois —, que é o que funciona melhor numa
+       conversa um-a-um. */
+    if (isGroupJid(recipient)) {
+      const grupo = await sendReportToGroup(
+        recipient,
+        downloadUrl,
+        buildGroupCaption(payload),
+        client.name,
+      );
+
+      if (!grupo.success) {
+        await setStatus("failed", {
+          error_message: `Envio ao grupo falhou: ${grupo.error}`,
+        });
+        return {
+          ok: false,
+          reportId,
+          status: "failed",
+          downloadUrl,
+          error: grupo.error,
+        };
+      }
+
+      await setStatus("sent", {
+        delivered_at: new Date().toISOString(),
+        provider_message_id: grupo.messageId,
+      });
+
+      return {
+        ok: true,
+        reportId,
+        status: "sent",
+        downloadUrl,
+        whatsappMessageId: grupo.messageId,
+      };
+    }
 
     const provider = getWhatsAppProvider();
     const summary = buildWhatsAppSummary(payload);

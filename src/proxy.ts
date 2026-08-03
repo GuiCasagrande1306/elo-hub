@@ -50,7 +50,18 @@ export async function proxy(request: NextRequest) {
     // O service worker busca /offline durante o install para guardá-la
     // na casca. Com redirect ligado, ele cacheria a TELA DE LOGIN sob a
     // chave /offline e a mostraria toda vez que a rede caísse.
-    pathname === "/offline";
+    pathname === "/offline" ||
+    /**
+     * Página que o Puppeteer fotografa para virar PDF. Ele chega SEM
+     * cookie de sessão — com o redirect ligado, o relatório enviado ao
+     * cliente sairia com a tela de login dentro, e o erro passaria
+     * despercebido porque o arquivo é gerado normalmente.
+     *
+     * "Público" aqui é só quanto a sessão: a própria página exige um
+     * token HMAC de vida curta na query e responde 404 sem ele — ver
+     * `lib/reports/print-token.ts`.
+     */
+    pathname.startsWith("/reports/render/");
 
   /**
    * Rotas de API nunca são redirecionadas.

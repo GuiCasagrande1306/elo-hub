@@ -20,6 +20,18 @@ import type { NextConfig } from "next";
  * que importa num painel financeiro (ver o comentário em `public/sw.js`).
  */
 const nextConfig: NextConfig = {
+  /**
+   * Chromium e Puppeteer NÃO podem ser empacotados.
+   *
+   * `@sparticuz/chromium` carrega um binário de ~50MB comprimido em
+   * brotli e o descompacta em /tmp no primeiro uso. Se o bundler tentar
+   * incluí-lo, duas coisas quebram: o binário é tratado como módulo JS
+   * e falha o build, ou passa e a função estoura o limite de tamanho da
+   * Vercel. `serverExternalPackages` faz o Next deixá-los como
+   * `require` de runtime.
+   */
+  serverExternalPackages: ["@sparticuz/chromium", "puppeteer-core"],
+
   async headers() {
     return [
       {

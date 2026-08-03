@@ -104,6 +104,12 @@ export const serverEnv = {
   // tempo de build. Em serverless, apontar para "puppeteer-core".
   puppeteerModule: process.env.PUPPETEER_MODULE ?? "puppeteer",
 
+  // Caminho de um Chrome/Chromium já instalado na máquina. Só é usado
+  // fora de serverless e só quando o pacote `puppeteer` completo não
+  // está presente — evita baixar 170MB de navegador só para pré-
+  // visualizar um relatório em desenvolvimento.
+  chromeExecutablePath: process.env.PUPPETEER_EXECUTABLE_PATH ?? "",
+
   appUrl: process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:5210",
 
   /** Protege as rotas de sincronização chamadas por cron. */

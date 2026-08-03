@@ -181,6 +181,34 @@ export async function buildReportPayload(options: {
  * só abre o anexo depois — ou nunca. Por isso os três números que
  * definem a conta vêm no corpo da mensagem.
  */
+/**
+ * Legenda que acompanha o PDF quando o destino é um GRUPO.
+ *
+ * Tom diferente do resumo formal: grupo tem a equipe do cliente junto,
+ * e a mensagem precisa fazer alguém abrir o anexo. Os três números vêm
+ * no corpo porque muita gente lê no celular e nunca abre o PDF — se o
+ * essencial só estiver no arquivo, não foi comunicado.
+ */
+export function buildGroupCaption(payload: ReportPayload): string {
+  const find = (key: MetricKey) => payload.kpis.find((k) => k.key === key);
+
+  const spend = find("spend");
+  const results = find("results");
+  const cpa = find("cpa");
+
+  const linhas = [
+    "Fala equipe! 🚀 Segue o relatório de performance fechado.",
+    "",
+    spend && results && cpa
+      ? `Investimos *${spend.formatted}* e geramos *${results.formatted} resultados* a um custo de *${cpa.formatted}* cada.`
+      : "Os números do período estão no PDF em anexo.",
+    "",
+    "Baixe o PDF para ver os anúncios que mais performaram! 📊",
+  ];
+
+  return linhas.filter((l, i) => l !== "" || i > 0).join("\n");
+}
+
 export function buildWhatsAppSummary(payload: ReportPayload): string {
   const find = (key: MetricKey) => payload.kpis.find((k) => k.key === key);
 

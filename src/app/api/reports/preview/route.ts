@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
     periodEnd: end,
   });
 
-  const { buffer } = await renderReportPdf(payload, "preview");
+  const { buffer } = await renderReportPdf(payload);
 
   return new NextResponse(new Uint8Array(buffer), {
     headers: {
