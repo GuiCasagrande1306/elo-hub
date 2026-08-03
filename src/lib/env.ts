@@ -16,9 +16,44 @@
 export const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 export const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 
+const hasSupabase = Boolean(supabaseUrl && supabaseAnonKey);
+const demoRequested = process.env.NEXT_PUBLIC_DEMO_MODE === "1";
+// `next build` roda com NODE_ENV=production, então checar só isso
+// quebraria o build de quem não tem as credenciais em mãos. A fase de
+// build se identifica por NEXT_PHASE — a trava vale para o servidor
+// EM EXECUÇÃO, que é onde o vazamento aconteceria.
+const isProduction =
+  process.env.NODE_ENV === "production" &&
+  process.env.NEXT_PHASE !== "phase-production-build";
+
+/**
+ * ⚠️ Trava de segurança para deploy.
+ *
+ * Em desenvolvimento, a ausência de credenciais cai em modo demo — é o
+ * que faz o projeto rodar com um `npm run dev` e nada mais.
+ *
+ * Em PRODUÇÃO isso seria perigoso: um deploy em que alguém esqueceu de
+ * configurar as variáveis publicaria o sistema inteiro na internet SEM
+ * AUTENTICAÇÃO, com o proxy desligado e todas as telas abertas. O modo
+ * demo deixaria de ser conveniência e viraria vazamento.
+ *
+ * Por isso, em produção o demo precisa ser pedido explicitamente. Sem
+ * credenciais e sem o pedido, a aplicação falha na inicialização com uma
+ * mensagem clara — falhar alto é melhor que servir aberto.
+ */
+if (isProduction && !hasSupabase && !demoRequested) {
+  throw new Error(
+    "[elo-hub] Configuração ausente: NEXT_PUBLIC_SUPABASE_URL e " +
+      "NEXT_PUBLIC_SUPABASE_ANON_KEY são obrigatórias em produção.\n" +
+      "Sem elas a autenticação fica desligada e o sistema serviria dados " +
+      "sem login. Configure as variáveis no painel do provedor.\n" +
+      "Para publicar uma demonstração pública de propósito, defina " +
+      "NEXT_PUBLIC_DEMO_MODE=1 — ciente de que a tela fica aberta a qualquer um.",
+  );
+}
+
 /** Visível no browser para que os hooks de Realtime saibam se devem conectar. */
-export const isDemoMode =
-  process.env.NEXT_PUBLIC_DEMO_MODE === "1" || !supabaseUrl || !supabaseAnonKey;
+export const isDemoMode = demoRequested || !hasSupabase;
 
 /** Segredos exclusivos do servidor — nunca prefixados com NEXT_PUBLIC_. */
 export const serverEnv = {
