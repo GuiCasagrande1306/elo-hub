@@ -74,10 +74,26 @@ export const serverEnv = {
   whatsappProvider: (process.env.WHATSAPP_PROVIDER ?? "cloud_api") as
     | "cloud_api"
     | "evolution",
-  whatsappToken: process.env.WHATSAPP_TOKEN ?? "",
+  whatsappToken:
+    process.env.EVOLUTION_API_KEY ?? process.env.WHATSAPP_TOKEN ?? "",
   whatsappPhoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID ?? "",
-  whatsappEvolutionUrl: process.env.WHATSAPP_EVOLUTION_URL ?? "",
-  whatsappEvolutionInstance: process.env.WHATSAPP_EVOLUTION_INSTANCE ?? "",
+  // Evolution API. Os nomes EVOLUTION_* têm precedência; os
+  // WHATSAPP_EVOLUTION_* seguem aceitos para não quebrar quem já
+  // configurou antes de o serviço de grupos existir.
+  whatsappEvolutionUrl:
+    process.env.EVOLUTION_API_URL ?? process.env.WHATSAPP_EVOLUTION_URL ?? "",
+  whatsappEvolutionInstance:
+    process.env.EVOLUTION_INSTANCE_NAME ??
+    process.env.WHATSAPP_EVOLUTION_INSTANCE ??
+    "",
+  /**
+   * Formato do corpo de `sendMedia`, que mudou entre as versões.
+   * Explícito porque enviar o corpo errado não produz erro claro —
+   * ver `evolutionMediaBody` em lib/whatsapp.
+   */
+  evolutionApiVersion: (process.env.EVOLUTION_API_VERSION ?? "v2") as
+    | "v1"
+    | "v2",
 
   // Renderizador de PDF: "react-pdf" (padrão) ou "puppeteer"
   pdfEngine: (process.env.PDF_ENGINE ?? "react-pdf") as "react-pdf" | "puppeteer",

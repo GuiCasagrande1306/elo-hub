@@ -45,12 +45,36 @@ export interface WhatsAppProvider {
 }
 
 /**
- * Normaliza para E.164 sem "+", que é o formato que ambas as APIs
- * aceitam. Número brasileiro digitado sem DDI é o erro mais comum no
- * cadastro do cliente — completamos com 55.
+ * Um JID é o identificador nativo do WhatsApp. Grupos terminam em
+ * `@g.us`, contatos individuais em `@s.whatsapp.net` ou `@c.us`.
+ */
+export function isJid(value: string): boolean {
+  return /@(g\.us|s\.whatsapp\.net|c\.us|lid)$/i.test(value.trim());
+}
+
+/** O destino é um grupo? */
+export function isGroupJid(value: string): boolean {
+  return /@g\.us$/i.test(value.trim());
+}
+
+/**
+ * Normaliza o destino.
+ *
+ * ⚠️ JID passa INTACTO. A versão anterior desta função aplicava
+ * `replace(/\D/g, "")` em tudo, o que transformava
+ * `120363000000000000@g.us` em `120363000000000000` — a API recebia o
+ * id do grupo como se fosse telefone e o relatório nunca chegava.
+ * O bug só apareceu quando grupos entraram no escopo, porque com
+ * celular a função sempre funcionou.
+ *
+ * Para telefone segue valendo E.164 sem "+", completando o DDI 55
+ * quando falta — que é o erro mais comum no cadastro do cliente.
  */
 export function normalizePhone(raw: string): string {
-  const digits = raw.replace(/\D/g, "");
+  const value = raw.trim();
+  if (isJid(value)) return value;
+
+  const digits = value.replace(/\D/g, "");
   if (digits.startsWith("55")) return digits;
   if (digits.length >= 10 && digits.length <= 11) return `55${digits}`;
   return digits;
@@ -212,17 +236,74 @@ export async function sendTemplateMessage(
 /* Evolution API (não oficial)                                         */
 /* ------------------------------------------------------------------ */
 
+/**
+ * O corpo do `sendMedia` MUDOU entre as versões da Evolution:
+ *
+ *   v1: { number, options: { delay, presence },
+ *         mediaMessage: { mediatype, fileName, caption, media } }
+ *   v2: { number, mediatype, mimetype, media, fileName, caption,
+ *         delay, presence }        ← tudo plano
+ *
+ * Mandar o corpo v1 para uma instância v2 não dá erro claro: o servidor
+ * ignora `mediaMessage`, não encontra `media` no topo e responde 400
+ * genérico — ou pior, aceita e não envia nada. Por isso a versão é
+ * explícita em `EVOLUTION_API_VERSION` em vez de adivinhada.
+ */
+export type EvolutionVersion = "v1" | "v2";
+
+function evolutionMediaBody(
+  version: EvolutionVersion,
+  input: {
+    number: string;
+    media: string;
+    fileName: string;
+    caption?: string;
+    delayMs: number;
+  },
+): Record<string, unknown> {
+  if (version === "v1") {
+    return {
+      number: input.number,
+      options: { delay: input.delayMs, presence: "composing" },
+      mediaMessage: {
+        mediatype: "document",
+        fileName: input.fileName,
+        caption: input.caption,
+        media: input.media,
+      },
+    };
+  }
+
+  return {
+    number: input.number,
+    mediatype: "document",
+    // `mimetype` é o que faz o WhatsApp mostrar o ícone de PDF em vez
+    // de "arquivo desconhecido" na conversa.
+    mimetype: "application/pdf",
+    media: input.media,
+    fileName: input.fileName,
+    caption: input.caption,
+    delay: input.delayMs,
+    presence: "composing",
+  };
+}
+
 function createEvolutionProvider(): WhatsAppProvider {
   const base = serverEnv.whatsappEvolutionUrl.replace(/\/$/, "");
   const instance = serverEnv.whatsappEvolutionInstance;
   const key = serverEnv.whatsappToken;
+  const version = serverEnv.evolutionApiVersion;
 
   async function post(
     path: string,
     body: Record<string, unknown>,
   ): Promise<SendResult> {
-    if (!base || !instance) {
-      return { ok: false, error: "Evolution API não configurada." };
+    if (!base || !instance || !key) {
+      return {
+        ok: false,
+        error:
+          "Evolution API não configurada (EVOLUTION_API_URL, EVOLUTION_INSTANCE_NAME e EVOLUTION_API_KEY).",
+      };
     }
 
     try {
@@ -230,21 +311,31 @@ function createEvolutionProvider(): WhatsAppProvider {
         method: "POST",
         headers: { "Content-Type": "application/json", apikey: key },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(20_000),
+        // Upload de mídia por URL faz o servidor baixar o arquivo antes
+        // de enviar; 20s é curto para um PDF de relatório.
+        signal: AbortSignal.timeout(60_000),
       });
 
-      const data = (await response.json()) as {
+      const data = (await response.json().catch(() => ({}))) as {
         key?: { id?: string };
-        message?: string;
+        message?: string | string[];
+        error?: string;
+        response?: { message?: string | string[] };
       };
 
-      return response.ok
-        ? { ok: true, messageId: data.key?.id }
-        : { ok: false, error: data.message ?? `HTTP ${response.status}` };
+      if (!response.ok) {
+        return { ok: false, error: describeEvolutionError(response.status, data) };
+      }
+
+      return { ok: true, messageId: data.key?.id };
     } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Falha de rede.";
       return {
         ok: false,
-        error: error instanceof Error ? error.message : "Falha de rede.",
+        error: message.includes("timeout")
+          ? "Tempo esgotado. A instância pode estar baixando a mídia ou desconectada."
+          : message,
       };
     }
   }
@@ -256,18 +347,131 @@ function createEvolutionProvider(): WhatsAppProvider {
       return post("message/sendText", {
         number: normalizePhone(to),
         text: body,
+        delay: 1200,
       });
     },
 
     async sendDocument(to, doc) {
-      return post("message/sendMedia", {
-        number: normalizePhone(to),
-        mediatype: "document",
-        mimetype: "application/pdf",
-        media: doc.url,
-        fileName: doc.filename,
-        caption: doc.caption,
-      });
+      return post(
+        "message/sendMedia",
+        evolutionMediaBody(version, {
+          number: normalizePhone(to),
+          media: doc.url,
+          fileName: doc.filename,
+          caption: doc.caption,
+          delayMs: 2000,
+        }),
+      );
     },
   };
+}
+
+/**
+ * Traduz a resposta de erro da Evolution em algo acionável.
+ *
+ * A API devolve `message` ora como string, ora como array, e os erros
+ * mais frequentes em produção têm causa operacional — não de código.
+ * Dizer "instância desconectada, leia o QR" poupa meia hora de
+ * investigação em cima de um "HTTP 400".
+ */
+function describeEvolutionError(status: number, data: unknown): string {
+  const payload = data as {
+    message?: string | string[];
+    error?: string;
+    response?: { message?: string | string[] };
+  };
+
+  const raw =
+    payload.response?.message ?? payload.message ?? payload.error ?? "";
+  const text = Array.isArray(raw) ? raw.join("; ") : String(raw);
+
+  if (status === 401 || status === 403) {
+    return `Chave da Evolution recusada (${status}). Confira EVOLUTION_API_KEY.`;
+  }
+  if (status === 404) {
+    return `Instância "${serverEnv.whatsappEvolutionInstance}" não encontrada (404). Confira EVOLUTION_INSTANCE_NAME.`;
+  }
+  if (/not.*connect|close|disconnect/i.test(text)) {
+    return `Instância desconectada — releia o QR Code no painel da Evolution. (${text})`;
+  }
+  if (/exists|not.*found|invalid.*(number|jid|group)/i.test(text)) {
+    return `Destino inválido ou a instância não participa do grupo. (${text})`;
+  }
+
+  return text || `Evolution respondeu ${status}.`;
+}
+
+/* ------------------------------------------------------------------ */
+/* Envio de relatório para grupo                                       */
+/* ------------------------------------------------------------------ */
+
+export interface SendReportResult {
+  success: boolean;
+  messageId?: string;
+  error?: string;
+}
+
+/**
+ * Envia o PDF do relatório para o grupo de WhatsApp do cliente.
+ *
+ * NUNCA LANÇA EXCEÇÃO — devolve `{ success: false, error }`. É requisito
+ * do cron de relatórios: um cliente cujo grupo foi apagado, ou cuja
+ * instância caiu, não pode derrubar a fila dos outros. Quem chama trata
+ * o resultado e segue.
+ *
+ * O `groupId` precisa ser o JID completo (`...@g.us`). Aceitar só os
+ * dígitos seria conveniente, mas ambíguo: `120363...` sem sufixo é
+ * indistinguível de um telefone internacional, e o WhatsApp entregaria
+ * a mensagem no lugar errado em silêncio.
+ */
+export async function sendReportToGroup(
+  groupId: string,
+  pdfUrl: string,
+  captionText: string,
+  clientName: string,
+): Promise<SendReportResult> {
+  if (!isGroupJid(groupId)) {
+    const error = `"${groupId}" não é um id de grupo. Use o JID completo, terminando em @g.us.`;
+    console.error(`[whatsapp] ${error}`);
+    return { success: false, error };
+  }
+
+  if (!/^https?:\/\//i.test(pdfUrl)) {
+    const error =
+      "A URL do PDF precisa ser absoluta e acessível pela Evolution — ela baixa o arquivo do servidor dela, não do nosso.";
+    console.error(`[whatsapp] ${error}`);
+    return { success: false, error };
+  }
+
+  const provider = createEvolutionProvider();
+
+  const result = await provider.sendDocument(groupId, {
+    url: pdfUrl,
+    filename: `Relatorio_${slugifyFilename(clientName)}.pdf`,
+    // O WhatsApp trunca legenda longa; o resumo cabe com folga em 1024.
+    caption: captionText.slice(0, 1024),
+  });
+
+  if (!result.ok) {
+    console.error(
+      `[whatsapp] falha ao enviar relatório de ${clientName} para ${groupId}: ${result.error}`,
+    );
+    return { success: false, error: result.error };
+  }
+
+  console.info(
+    `[whatsapp] relatório de ${clientName} entregue em ${groupId} (${result.messageId ?? "sem id"})`,
+  );
+  return { success: true, messageId: result.messageId };
+}
+
+/** Nome de arquivo seguro: sem acento, espaço ou barra. */
+function slugifyFilename(value: string): string {
+  return (
+    value
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9]+/g, "_")
+      .replace(/(^_|_$)/g, "") || "Cliente"
+  );
 }
