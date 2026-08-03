@@ -91,6 +91,28 @@ export interface ClientPersona {
   average_ticket_cents?: number;
 }
 
+/**
+ * Meta de um cliente para um período.
+ *
+ * Os campos `*_override` existem para os casos em que o número da
+ * plataforma está errado (lead que era spam, venda fechada por
+ * telefone). Nulo = usar o valor calculado de `daily_metrics`. Ver a
+ * justificativa em `supabase/migrations/20260803000005_client_goals.sql`.
+ */
+export interface ClientGoal {
+  id: string;
+  client_id: string;
+  period_start: string;
+  period_end: string;
+  planned_budget_cents: number;
+  planned_results: number;
+  executed_budget_cents_override: number | null;
+  executed_results_override: number | null;
+  override_reason: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
 export interface Project {
   id: string;
   client_id: string;

@@ -14,6 +14,7 @@ import type {
   AdCreative,
   AdPlatform,
   Client,
+  ClientGoal,
   DailyMetric,
   Profile,
   Project,
@@ -789,6 +790,102 @@ export const demoTasks: TaskWithRelations[] = taskSeeds.map((seed, index) => {
     comment_count: index % 3,
   };
 });
+
+/* ------------------------------------------------------------------ */
+/* Metas do mês corrente                                               */
+/*                                                                     */
+/* Os valores são escolhidos para exercitar TODOS os estados do card:  */
+/* no ritmo, acelerado, atrasado, estourado e sem meta. Um dataset em  */
+/* que tudo está verde esconde exatamente os casos que o design        */
+/* precisa comunicar bem.                                              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Ciclo de 30 dias iniciado há 25 — ou seja, ~83% decorrido.
+ *
+ * Não uso o mês-calendário de propósito: rodando a demonstração no dia 3
+ * o ciclo teria 8% decorrido, todas as barras ficariam quase vazias e
+ * nenhum dos estados de ritmo apareceria. Ciclo de contrato que não
+ * coincide com o mês também é o caso comum numa agência.
+ */
+const cycleStart = daysAgo(25);
+const cycleEnd = (() => {
+  const d = new Date(TODAY);
+  d.setDate(d.getDate() + 5);
+  return d.toISOString().slice(0, 10);
+})();
+
+/** Soma o que o gerador produziu para o cliente dentro do ciclo. */
+function cycleActuals(clientId: string) {
+  const rows = demoMetrics.filter(
+    (m) =>
+      m.client_id === clientId &&
+      m.metric_date >= cycleStart &&
+      m.metric_date <= cycleEnd,
+  );
+  return {
+    spend: rows.reduce((acc, r) => acc + r.spend_cents, 0),
+    results: rows.reduce((acc, r) => acc + Number(r.conversions), 0),
+  };
+}
+
+/**
+ * As metas são DERIVADAS do executado, com um multiplicador escolhido
+ * para produzir cada estado do card. É dado de demonstração construído
+ * de propósito: um conjunto em que tudo está verde esconderia justamente
+ * os casos que o design precisa comunicar bem.
+ *
+ *   Verdi → investimento no ritmo, meta de resultados superada
+ *   Atlas → resultados atrasados (com override do CRM)
+ *   Nord  → orçamento ESTOURADO
+ *   Lumen → sem meta nenhuma
+ */
+function makeGoal(
+  id: string,
+  clientId: string,
+  budgetMultiplier: number,
+  resultsMultiplier: number,
+  extra: Partial<ClientGoal> = {},
+): ClientGoal {
+  const actual = cycleActuals(clientId);
+  return {
+    id,
+    client_id: clientId,
+    period_start: cycleStart,
+    period_end: cycleEnd,
+    planned_budget_cents: Math.round(actual.spend * budgetMultiplier),
+    planned_results: Math.round(actual.results * resultsMultiplier),
+    executed_budget_cents_override: null,
+    executed_results_override: null,
+    override_reason: null,
+    notes: null,
+    created_at: cycleStart,
+    ...extra,
+  };
+}
+
+export const demoGoals: ClientGoal[] = [
+  // Gastou ~83% do planejado com ~83% do ciclo → no ritmo.
+  // Resultados acima da meta → barra verde de superação.
+  makeGoal("g-verdi", "c-verdi", 1.2, 0.86, {
+    notes: "Meta alinhada com a projeção de Black Friday.",
+  }),
+
+  // Meta de contatos alta demais para o ritmo atual → atrasado.
+  // O override simula o CRM tendo descartado leads duplicados.
+  makeGoal("g-atlas", "c-atlas", 1.18, 1.9, {
+    executed_results_override: Math.round(cycleActuals("c-atlas").results * 0.62),
+    override_reason: "CRM descartou contatos duplicados e spam.",
+  }),
+
+  // Planejado abaixo do que já foi gasto → estouro de orçamento.
+  makeGoal("g-nord", "c-nord", 0.82, 1.05, {
+    notes: "Verba extra aprovada na semana do carrinho.",
+  }),
+
+  // Lumen fica SEM meta de propósito — o card precisa ter um estado
+  // digno para a conta que ainda está em onboarding.
+];
 
 /* ------------------------------------------------------------------ */
 /* Relatórios                                                          */

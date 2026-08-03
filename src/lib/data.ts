@@ -2,10 +2,12 @@ import "server-only";
 
 import { isDemoMode } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { previousPeriod, sumMetrics } from "@/lib/metrics/kpi";
+import { buildTrend, previousPeriod, sumMetrics } from "@/lib/metrics/kpi";
+import { buildGoalProgress } from "@/lib/metrics/goals";
 import type {
   AdCreative,
   Client,
+  ClientGoal,
   DailyMetric,
   Profile,
   ReportHistory,
@@ -146,6 +148,100 @@ export async function getCreatives(
 
   if (error) throw error;
   return (data ?? []) as AdCreative[];
+}
+
+/* ------------------------------------------------------------------ */
+/* Metas                                                               */
+/* ------------------------------------------------------------------ */
+
+/** Meta vigente hoje para cada cliente acessível, indexada por client_id. */
+export async function getCurrentGoals(): Promise<Map<string, ClientGoal>> {
+  const today = new Date().toISOString().slice(0, 10);
+
+  if (isDemoMode) {
+    const { demoGoals } = await import("@/lib/mock/data");
+    return new Map(
+      demoGoals
+        .filter((g) => g.period_start <= today && g.period_end >= today)
+        .map((g) => [g.client_id, g]),
+    );
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("client_goals")
+    .select("*")
+    .lte("period_start", today)
+    .gte("period_end", today);
+
+  if (error) throw error;
+  return new Map((data ?? []).map((g) => [g.client_id, g as ClientGoal]));
+}
+
+/**
+ * Clientes + meta vigente + o que já foi executado no período da meta.
+ *
+ * O executado é AGREGADO de `daily_metrics`, não lido de uma coluna —
+ * é o que garante que o card não divirja do dashboard. A janela usada
+ * é a da meta, não os últimos 30 dias, senão "planejado vs executado"
+ * compararia períodos diferentes.
+ */
+export interface ClientWithGoal {
+  client: Client;
+  goal: ClientGoal | null;
+  computedSpendCents: number;
+  computedResults: number;
+  /** Série de gasto no período da meta, para a sparkline do card. */
+  trend: number[];
+  /**
+   * Progresso JÁ CALCULADO no servidor.
+   *
+   * Não é recalculado no cliente na primeira renderização de propósito:
+   * o cálculo depende de "hoje", e servidor (UTC) e navegador (UTC-3)
+   * discordam sobre a data durante três horas por dia — o que produzia
+   * divergência de hidratação no marcador de ritmo.
+   */
+  progress: ReturnType<typeof buildGoalProgress>;
+}
+
+export async function getClientsWithGoals(): Promise<ClientWithGoal[]> {
+  const [clients, goals] = await Promise.all([getClients(), getCurrentGoals()]);
+
+  return Promise.all(
+    clients.map(async (client) => {
+      const goal = goals.get(client.id) ?? null;
+
+      // Sem meta, mostramos o mês corrente só para a conta não ficar muda.
+      const start = goal?.period_start ?? monthStartISO();
+      const end = goal?.period_end ?? todayISO();
+
+      const rows = await getMetrics(client.id, start, end);
+      const totals = sumMetrics(rows);
+
+      return {
+        client,
+        goal,
+        computedSpendCents: totals.spendCents,
+        computedResults: totals.conversions,
+        trend: buildTrend(rows).map((p) => p.spend),
+        progress: buildGoalProgress({
+          goal,
+          computedSpendCents: totals.spendCents,
+          computedResults: totals.conversions,
+        }),
+      };
+    }),
+  );
+}
+
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function monthStartISO() {
+  const d = new Date();
+  d.setDate(1);
+  return d.toISOString().slice(0, 10);
 }
 
 /* ------------------------------------------------------------------ */
