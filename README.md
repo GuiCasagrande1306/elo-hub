@@ -175,6 +175,29 @@ conversões estão comentadas nas rotas de sync.
 
 ---
 
+## PWA
+
+Instalável em iOS e Android. Feito com o suporte nativo do Next
+(`app/manifest.ts` + `public/sw.js` + registro no cliente), **sem plugin**.
+
+`@ducanh2912/next-pwa` foi descartado por incompatibilidade real, não por
+preferência: ele depende de `workbox-webpack-plugin`, e o Next 16 usa
+Turbopack por padrão — o hook `webpack()` do next.config não roda nesse
+caminho. O plugin não daria erro, apenas não geraria service worker nenhum.
+
+**O service worker não faz cache de dados, de propósito.** Este é um painel
+financeiro: mostrar um investimento desatualizado sem aviso é pior que
+mostrar erro, porque vira decisão errada de verba. O SW guarda só a casca
+e os assets versionados do Next (`/_next/static/*`, imutáveis por hash), e
+ignora `/api/*` por completo — que também evita servir dado de uma sessão
+para outra depois de troca de usuário no mesmo aparelho. Sem rede, a
+navegação cai em `/offline`, que diz claramente o que houve.
+
+Ícones em `public/icon-*.png` (`any` + `maskable`) e `src/app/apple-icon.png`
+(convenção de metadados do Next, gera o `<link rel="apple-touch-icon">`).
+Para regerar: `bash scripts/make-icons.sh` (macOS). O desenho é
+geométrico (retângulos), sem dependência de fonte instalada.
+
 ## Notas de integração
 
 **WhatsApp.** Dois provedores atrás da mesma interface. A Cloud API oficial só

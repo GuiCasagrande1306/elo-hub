@@ -45,7 +45,12 @@ export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   const isPublicRoute =
-    pathname.startsWith("/login") || pathname.startsWith("/auth");
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/auth") ||
+    // O service worker busca /offline durante o install para guardá-la
+    // na casca. Com redirect ligado, ele cacheria a TELA DE LOGIN sob a
+    // chave /offline e a mostraria toda vez que a rede caísse.
+    pathname === "/offline";
 
   /**
    * Rotas de API nunca são redirecionadas.

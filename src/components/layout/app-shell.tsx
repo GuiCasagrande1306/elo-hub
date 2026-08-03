@@ -5,6 +5,7 @@ import { Menu, Moon, Search, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 
 import { Sidebar } from "./sidebar";
+import { MobileNavigation } from "./mobile-navigation";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
@@ -28,11 +29,15 @@ export function AppShell({ user, clients, demoMode, children }: AppShellProps) {
 
   return (
     <div className="flex min-h-dvh">
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-[248px] border-r border-sidebar-border lg:block">
+      {/* Ponto de corte único em `md` (768px) para sidebar, gaveta e
+          barra inferior. Com a sidebar em `lg` e a barra em `md`, as
+          telas entre 768 e 1024 ficavam sem nenhuma das duas — só o
+          hambúrguer, que é o pior dos dois mundos. */}
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-[248px] border-r border-sidebar-border md:block">
         <Sidebar user={user} clients={clients} />
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col lg:pl-[248px]">
+      <div className="flex min-w-0 flex-1 flex-col md:pl-[248px]">
         <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center gap-2 border-b border-hairline bg-background/85 px-4 backdrop-blur-xl sm:px-6">
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             {/* Base UI compõe com `render`, não com `asChild` (Radix).
@@ -43,7 +48,7 @@ export function AppShell({ user, clients, demoMode, children }: AppShellProps) {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="lg:hidden"
+                  className="md:hidden"
                   aria-label="Abrir menu"
                 />
               }
@@ -68,8 +73,20 @@ export function AppShell({ user, clients, demoMode, children }: AppShellProps) {
           </div>
         </header>
 
-        <main className="flex-1">{children}</main>
+        {/* A barra inferior é `fixed`, então não ocupa espaço no fluxo.
+            Sem reservar a altura dela aqui (56px + área segura), o
+            último item de toda lista fica escondido atrás da barra.
+
+            Classe do Tailwind, e não style inline: inline vence classe
+            por especificidade, e o `md:pb-0` nunca zeraria o espaço no
+            desktop. Os `_` viram espaços — o calc do CSS exige espaço
+            em volta do `+`. */}
+        <main className="flex-1 pb-[calc(56px_+_env(safe-area-inset-bottom))] md:pb-0">
+          {children}
+        </main>
       </div>
+
+      <MobileNavigation />
     </div>
   );
 }
