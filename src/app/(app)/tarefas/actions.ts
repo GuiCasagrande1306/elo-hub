@@ -1,0 +1,325 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
+
+import { isDemoMode } from "@/lib/env";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import type { TaskPriority, TaskStatus } from "@/types/database";
+
+/**
+ * Server Actions do módulo de tarefas.
+ *
+ * Nenhuma delas checa permissão à mão — e isso é intencional. Todas
+ * usam o cliente com a chave ANON e o JWT do usuário, então o UPDATE
+ * atinge zero linhas quando a policy não autoriza. É a diferença entre
+ * "a aplicação decidiu não deixar" e "o banco não deixou": a segunda
+ * continua valendo se alguém chamar a action por fora da interface.
+ *
+ * Toda entrada passa por Zod antes de tocar o banco. Server Action é
+ * endpoint HTTP público — o payload não é confiável só por ter saído
+ * de um componente nosso.
+ */
+
+const statusSchema = z.enum([
+  "backlog",
+  "todo",
+  "in_progress",
+  "review",
+  "done",
+]);
+
+const prioritySchema = z.enum(["low", "medium", "high", "urgent"]);
+
+export type ActionResult = { ok: true } | { ok: false; error: string };
+
+/* ------------------------------------------------------------------ */
+/* Mover no Kanban                                                     */
+/* ------------------------------------------------------------------ */
+
+const moveSchema = z.object({
+  taskId: z.string().min(1),
+  status: statusSchema,
+  position: z.number().finite(),
+});
+
+/**
+ * Move a tarefa de coluna e/ou reordena.
+ *
+ * `position` é fracionária: soltar um card entre dois vizinhos grava a
+ * média das duas posições. Um único UPDATE, em vez de reescrever o
+ * índice de toda a coluna — o que, com Realtime ligado, geraria uma
+ * tempestade de eventos para cada usuário conectado.
+ */
+export async function moveTask(input: {
+  taskId: string;
+  status: TaskStatus;
+  position: number;
+}): Promise<ActionResult> {
+  const parsed = moveSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Dados inválidos." };
+
+  const { taskId, status, position } = parsed.data;
+
+  if (isDemoMode) {
+    const { demoTasks } = await import("@/lib/mock/data");
+    const task = demoTasks.find((t) => t.id === taskId);
+    if (task) {
+      task.status = status;
+      task.position = position;
+      task.completed_at = status === "done" ? new Date().toISOString() : null;
+      if (status === "done") task.progress = 100;
+    }
+    revalidatePath("/tarefas");
+    return { ok: true };
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase
+    .from("tasks")
+    .update({ status, position })
+    .eq("id", taskId);
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/tarefas");
+  return { ok: true };
+}
+
+/* ------------------------------------------------------------------ */
+/* Editar campos da tarefa                                             */
+/* ------------------------------------------------------------------ */
+
+const updateSchema = z.object({
+  taskId: z.string().min(1),
+  title: z.string().trim().min(1).max(300).optional(),
+  content: z.record(z.string(), z.unknown()).optional(),
+  priority: prioritySchema.optional(),
+  status: statusSchema.optional(),
+  dueDate: z.string().nullable().optional(),
+});
+
+export async function updateTask(input: {
+  taskId: string;
+  title?: string;
+  content?: Record<string, unknown>;
+  priority?: TaskPriority;
+  status?: TaskStatus;
+  dueDate?: string | null;
+}): Promise<ActionResult> {
+  const parsed = updateSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Dados inválidos." };
+
+  const { taskId, dueDate, ...rest } = parsed.data;
+
+  if (isDemoMode) {
+    const { demoTasks } = await import("@/lib/mock/data");
+    const task = demoTasks.find((t) => t.id === taskId);
+    if (task) {
+      if (rest.title !== undefined) task.title = rest.title;
+      if (rest.priority !== undefined) task.priority = rest.priority;
+      if (rest.status !== undefined) task.status = rest.status;
+      if (rest.content !== undefined) {
+        // O Zod validou como objeto genérico; a forma de documento
+        // ProseMirror é garantida pelo editor que produziu o payload.
+        task.content = rest.content as unknown as typeof task.content;
+      }
+      if (dueDate !== undefined) task.due_date = dueDate;
+      task.updated_at = new Date().toISOString();
+    }
+    revalidatePath("/tarefas");
+    return { ok: true };
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase
+    .from("tasks")
+    .update({
+      ...rest,
+      ...(dueDate !== undefined ? { due_date: dueDate } : {}),
+    })
+    .eq("id", taskId);
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/tarefas");
+  return { ok: true };
+}
+
+/* ------------------------------------------------------------------ */
+/* Checklist                                                           */
+/* ------------------------------------------------------------------ */
+
+export async function toggleChecklistItem(
+  itemId: string,
+  isDone: boolean,
+): Promise<ActionResult> {
+  if (isDemoMode) {
+    const { demoTasks } = await import("@/lib/mock/data");
+    for (const task of demoTasks) {
+      const item = task.checklist.find((c) => c.id === itemId);
+      if (!item) continue;
+
+      item.is_done = isDone;
+      // Espelha a trigger `app.sync_task_progress()` do Postgres.
+      const total = task.checklist.length;
+      const done = task.checklist.filter((c) => c.is_done).length;
+      task.progress = total === 0 ? 0 : Math.round((done / total) * 100);
+      break;
+    }
+    revalidatePath("/tarefas");
+    return { ok: true };
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase
+    .from("task_checklist_items")
+    .update({ is_done: isDone })
+    .eq("id", itemId);
+
+  if (error) return { ok: false, error: error.message };
+
+  // O progresso da tarefa NÃO é recalculado aqui: quem faz isso é a
+  // trigger no banco. Assim o número fica correto mesmo quando a linha
+  // é alterada por um job, pela API ou direto no SQL editor.
+  revalidatePath("/tarefas");
+  return { ok: true };
+}
+
+const addItemSchema = z.object({
+  taskId: z.string().min(1),
+  content: z.string().trim().min(1).max(500),
+});
+
+export async function addChecklistItem(input: {
+  taskId: string;
+  content: string;
+}): Promise<ActionResult> {
+  const parsed = addItemSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Texto inválido." };
+
+  const { taskId, content } = parsed.data;
+
+  if (isDemoMode) {
+    const { demoTasks } = await import("@/lib/mock/data");
+    const task = demoTasks.find((t) => t.id === taskId);
+    if (task) {
+      const last = task.checklist.at(-1)?.position ?? 0;
+      task.checklist.push({
+        id: `${taskId}-c${Date.now()}`,
+        task_id: taskId,
+        content,
+        is_done: false,
+        position: last + 1000,
+      });
+      const total = task.checklist.length;
+      const done = task.checklist.filter((c) => c.is_done).length;
+      task.progress = Math.round((done / total) * 100);
+    }
+    revalidatePath("/tarefas");
+    return { ok: true };
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  const { data: last } = await supabase
+    .from("task_checklist_items")
+    .select("position")
+    .eq("task_id", taskId)
+    .order("position", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const { error } = await supabase.from("task_checklist_items").insert({
+    task_id: taskId,
+    content,
+    position: (last?.position ?? 0) + 1000,
+  });
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/tarefas");
+  return { ok: true };
+}
+
+/* ------------------------------------------------------------------ */
+/* Criar tarefa                                                        */
+/* ------------------------------------------------------------------ */
+
+const createSchema = z.object({
+  title: z.string().trim().min(1).max(300),
+  clientId: z.string().min(1).nullable(),
+  status: statusSchema.default("todo"),
+  priority: prioritySchema.default("medium"),
+});
+
+export async function createTask(input: {
+  title: string;
+  clientId: string | null;
+  status?: TaskStatus;
+  priority?: TaskPriority;
+}): Promise<ActionResult> {
+  const parsed = createSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Dados inválidos." };
+
+  const { title, clientId, status, priority } = parsed.data;
+
+  if (isDemoMode) {
+    const { demoTasks, demoClients, demoCurrentUser } = await import(
+      "@/lib/mock/data"
+    );
+    const client = demoClients.find((c) => c.id === clientId) ?? null;
+
+    demoTasks.unshift({
+      id: `t-${Date.now()}`,
+      client_id: clientId,
+      project_id: null,
+      title,
+      content: { type: "doc", content: [] },
+      status,
+      priority,
+      position: 0,
+      due_date: null,
+      completed_at: null,
+      progress: 0,
+      created_by: demoCurrentUser.id,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      // A trigger `app.autoassign_task_creator()` faz o mesmo no banco:
+      // sem isto, um colaborador criaria a tarefa e ela sumiria da tela.
+      assignees: [demoCurrentUser],
+      checklist: [],
+      client: client
+        ? { id: client.id, name: client.name, brand_primary: client.brand_primary }
+        : null,
+      project: null,
+      comment_count: 0,
+    });
+
+    revalidatePath("/tarefas");
+    return { ok: true };
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { ok: false, error: "Sessão expirada." };
+
+  const { error } = await supabase.from("tasks").insert({
+    title,
+    client_id: clientId,
+    status,
+    priority,
+    // A policy `tasks_insert` exige created_by = auth.uid(): o campo não
+    // pode ser forjado para atribuir a tarefa a outra pessoa.
+    created_by: user.id,
+    position: Date.now(),
+  });
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/tarefas");
+  return { ok: true };
+}

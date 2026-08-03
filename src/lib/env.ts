@@ -1,0 +1,73 @@
+/**
+ * Configuração de ambiente.
+ *
+ * O sistema roda em dois modos:
+ *
+ *  • REAL   — há um projeto Supabase configurado. Auth, RLS e Realtime
+ *             ativos, dados vindos do Postgres.
+ *  • DEMO   — nenhuma credencial presente. A camada de dados devolve o
+ *             dataset de `src/lib/mock`, para que a interface possa ser
+ *             avaliada e desenvolvida antes do provisionamento.
+ *
+ * O modo é derivado, nunca chutado: basta preencher o .env.local para
+ * o sistema passar a apontar para o banco real, sem tocar em código.
+ */
+
+export const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+export const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
+
+/** Visível no browser para que os hooks de Realtime saibam se devem conectar. */
+export const isDemoMode =
+  process.env.NEXT_PUBLIC_DEMO_MODE === "1" || !supabaseUrl || !supabaseAnonKey;
+
+/** Segredos exclusivos do servidor — nunca prefixados com NEXT_PUBLIC_. */
+export const serverEnv = {
+  supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
+
+  // Meta Ads (Graph API)
+  metaAppId: process.env.META_APP_ID ?? "",
+  metaAppSecret: process.env.META_APP_SECRET ?? "",
+  metaApiVersion: process.env.META_API_VERSION ?? "v21.0",
+
+  // Google Ads API
+  googleAdsDeveloperToken: process.env.GOOGLE_ADS_DEVELOPER_TOKEN ?? "",
+  googleAdsClientId: process.env.GOOGLE_ADS_CLIENT_ID ?? "",
+  googleAdsClientSecret: process.env.GOOGLE_ADS_CLIENT_SECRET ?? "",
+  googleAdsLoginCustomerId: process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID ?? "",
+
+  // WhatsApp — ver src/lib/whatsapp/index.ts
+  whatsappProvider: (process.env.WHATSAPP_PROVIDER ?? "cloud_api") as
+    | "cloud_api"
+    | "evolution",
+  whatsappToken: process.env.WHATSAPP_TOKEN ?? "",
+  whatsappPhoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID ?? "",
+  whatsappEvolutionUrl: process.env.WHATSAPP_EVOLUTION_URL ?? "",
+  whatsappEvolutionInstance: process.env.WHATSAPP_EVOLUTION_INSTANCE ?? "",
+
+  // Renderizador de PDF: "react-pdf" (padrão) ou "puppeteer"
+  pdfEngine: (process.env.PDF_ENGINE ?? "react-pdf") as "react-pdf" | "puppeteer",
+
+  // Módulo carregado quando pdfEngine = "puppeteer". Fica aqui, e não
+  // inline no require, para que o bundler não consiga dobrar o valor
+  // numa string literal e tentar resolver a dependência opcional em
+  // tempo de build. Em serverless, apontar para "puppeteer-core".
+  puppeteerModule: process.env.PUPPETEER_MODULE ?? "puppeteer",
+
+  appUrl: process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:5210",
+
+  /** Protege as rotas de sincronização chamadas por cron. */
+  cronSecret: process.env.CRON_SECRET ?? "",
+};
+
+/** Falha cedo e com mensagem útil quando um segredo obrigatório falta. */
+export function requireServerEnv<K extends keyof typeof serverEnv>(
+  key: K,
+): string {
+  const value = serverEnv[key];
+  if (!value || typeof value !== "string") {
+    throw new Error(
+      `Variável de ambiente ausente: ${key}. Defina-a em .env.local — veja .env.example.`,
+    );
+  }
+  return value;
+}
