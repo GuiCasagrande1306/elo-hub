@@ -92,9 +92,18 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Tudo, exceto assets estáticos e imagens. Manter o proxy fora
-     * desses caminhos evita uma chamada de auth por ícone carregado.
+     * Tudo, exceto assets estáticos, imagens e os arquivos do PWA.
+     * Manter o proxy fora desses caminhos evita uma chamada de auth por
+     * ícone carregado.
+     *
+     * ⚠️ `sw.js` e `manifest.webmanifest` PRECISAM estar aqui.
+     * Sem a exceção, o proxy responde 307 → /login para os dois:
+     *   • o browser não lê o manifest e o app deixa de ser instalável;
+     *   • o registro do service worker falha, porque o script vem como
+     *     um redirect em vez de JavaScript.
+     * Os ícones já escapavam pela regra de `.png`, o que mascarava o
+     * problema — tudo parecia certo até tentar instalar de verdade.
      */
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|woff2?)$).*)",
+    "/((?!_next/static|_next/image|favicon\\.ico|sw\\.js|manifest\\.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp|woff2?)$).*)",
   ],
 };
