@@ -163,6 +163,86 @@ function extrairQr(
   };
 }
 
+export interface WhatsAppGroup {
+  id: string;
+  name: string;
+}
+
+export type GroupsResult =
+  | { ok: true; groups: WhatsAppGroup[]; cached: boolean }
+  | { ok: false; error: string };
+
+/* Cache em memória por instância.
+   `fetchAllGroups` pede metadados grupo a grupo à Meta, que responde
+   `rate-overlimit` quando insiste — medido: 60s sem resposta e erro no
+   log da Baileys. Abrir o formulário duas vezes não pode custar duas
+   varreduras. O TTL é curto porque grupo novo precisa aparecer sem
+   exigir redeploy. */
+const CACHE_TTL_MS = 5 * 60_000;
+const cacheDeGrupos = new Map<string, { em: number; grupos: WhatsAppGroup[] }>();
+
+/**
+ * Grupos de que o CELULAR DO USUÁRIO participa.
+ *
+ * Tem que ser a instância dele, não a da agência: só dá para postar em
+ * grupo do qual se é membro, então listar os grupos de outra conta
+ * ofereceria destinos que o envio recusaria depois.
+ */
+export async function fetchAllGroups(userId: string): Promise<GroupsResult> {
+  const nome = instanceNameFor(userId);
+
+  const emCache = cacheDeGrupos.get(nome);
+  if (emCache && Date.now() - emCache.em < CACHE_TTL_MS) {
+    return { ok: true, groups: emCache.grupos, cached: true };
+  }
+
+  const status = await getSessionStatus(userId);
+  if (status.state !== "open") {
+    return {
+      ok: false,
+      error: "Conecte seu WhatsApp em Configurações para listar os grupos.",
+    };
+  }
+
+  // 20s: acima disso a rota da Vercel se aproxima do próprio limite, e
+  // um formulário travado é pior que uma lista indisponível.
+  const resposta = await evolutionFetch(
+    "GET",
+    `group/fetchAllGroups/${encodeURIComponent(nome)}?getParticipants=false`,
+    undefined,
+    20_000,
+  );
+
+  if (!resposta.success) {
+    // Se há cache vencido, ele vale mais que um erro: nomes de grupo
+    // mudam raramente, e o id não muda nunca.
+    if (emCache) return { ok: true, groups: emCache.grupos, cached: true };
+
+    return {
+      ok: false,
+      error: /timeout|tempo/i.test(resposta.error ?? "")
+        ? "O WhatsApp está limitando a listagem de grupos agora. Tente de novo em alguns minutos ou cole o ID manualmente."
+        : (resposta.error ?? "Não foi possível listar os grupos."),
+    };
+  }
+
+  const bruto = resposta.data;
+  const lista = Array.isArray(bruto)
+    ? bruto
+    : ((bruto as { groups?: unknown[] })?.groups ?? []);
+
+  const grupos: WhatsAppGroup[] = (lista as Record<string, unknown>[])
+    .map((g) => ({
+      id: String(g.id ?? ""),
+      name: String(g.subject ?? g.name ?? "").trim() || "(sem nome)",
+    }))
+    .filter((g) => g.id.endsWith("@g.us"))
+    .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+
+  cacheDeGrupos.set(nome, { em: Date.now(), grupos });
+  return { ok: true, groups: grupos, cached: false };
+}
+
 /** Desconecta o celular sem apagar a instância. */
 export async function logoutSession(
   userId: string,

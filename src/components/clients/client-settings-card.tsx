@@ -6,6 +6,7 @@ import { Check, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { WhatsAppDestinationPicker } from "./whatsapp-destination-picker";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -90,15 +91,11 @@ export function ClientSettingsCard({ client }: { client: Client }) {
 
         <div>
           <Label htmlFor="whatsapp">WhatsApp de destino</Label>
-          <Input
-            id="whatsapp"
-            value={whatsapp}
-            onChange={(e) => setWhatsapp(e.target.value)}
-            placeholder="55489... ou ID do grupo @g.us"
-            className="mt-1.5"
-          />
+          <div className="mt-1.5">
+            <WhatsAppDestinationPicker value={whatsapp} onChange={setWhatsapp} />
+          </div>
           <p className="mt-1.5 text-2xs text-muted-foreground">
-            Para grupo, use o JID completo terminando em @g.us.
+            Escolha o grupo pelo nome — o ID é gravado automaticamente.
           </p>
         </div>
       </div>

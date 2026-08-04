@@ -1,6 +1,7 @@
 import "server-only";
 
 import { serverEnv } from "@/lib/env";
+import { isGroupJid, normalizePhone } from "./jid";
 
 /* =====================================================================
    Distribuição por WhatsApp
@@ -44,41 +45,10 @@ export interface WhatsAppProvider {
   sendDocument(to: string, doc: WhatsAppDocument): Promise<SendResult>;
 }
 
-/**
- * Um JID é o identificador nativo do WhatsApp. Grupos terminam em
- * `@g.us`, contatos individuais em `@s.whatsapp.net` ou `@c.us`.
- */
-export function isJid(value: string): boolean {
-  return /@(g\.us|s\.whatsapp\.net|c\.us|lid)$/i.test(value.trim());
-}
-
-/** O destino é um grupo? */
-export function isGroupJid(value: string): boolean {
-  return /@g\.us$/i.test(value.trim());
-}
-
-/**
- * Normaliza o destino.
- *
- * ⚠️ JID passa INTACTO. A versão anterior desta função aplicava
- * `replace(/\D/g, "")` em tudo, o que transformava
- * `120363000000000000@g.us` em `120363000000000000` — a API recebia o
- * id do grupo como se fosse telefone e o relatório nunca chegava.
- * O bug só apareceu quando grupos entraram no escopo, porque com
- * celular a função sempre funcionou.
- *
- * Para telefone segue valendo E.164 sem "+", completando o DDI 55
- * quando falta — que é o erro mais comum no cadastro do cliente.
- */
-export function normalizePhone(raw: string): string {
-  const value = raw.trim();
-  if (isJid(value)) return value;
-
-  const digits = value.replace(/\D/g, "");
-  if (digits.startsWith("55")) return digits;
-  if (digits.length >= 10 && digits.length <= 11) return `55${digits}`;
-  return digits;
-}
+/* Helpers de JID vivem em `./jid`, sem `server-only`: o seletor de
+   destino roda no browser e precisa deles. Reexportados aqui para que
+   os chamadores de servidor não mudem de import. */
+export { isJid, isGroupJid, normalizePhone } from "./jid";
 
 export function getWhatsAppProvider(): WhatsAppProvider {
   return serverEnv.whatsappProvider === "evolution"

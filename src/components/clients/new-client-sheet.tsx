@@ -28,6 +28,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { WhatsAppDestinationPicker } from "./whatsapp-destination-picker";
 import {
   Select,
   SelectContent,
@@ -301,13 +302,14 @@ export function NewClientSheet() {
                     name="whatsappPhone"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>WhatsApp</FormLabel>
-                        <FormControl
-                          render={<Input placeholder="+55 48 99999-0000" />}
-                          {...field}
+                        <FormLabel>Grupo do WhatsApp (relatórios)</FormLabel>
+                        <WhatsAppDestinationPicker
+                          value={field.value}
+                          onChange={field.onChange}
                         />
                         <FormDescription>
-                          Destino do relatório mensal.
+                          Selecione o grupo onde o relatório em PDF será
+                          enviado. Também aceita um número comum.
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
