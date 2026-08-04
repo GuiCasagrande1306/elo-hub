@@ -1,6 +1,13 @@
 import "server-only";
 
-import { evolutionFetch, evolutionRequest, normalizePhone } from "./index";
+import {
+  evolutionFetch,
+  evolutionMediaBody,
+  evolutionRequest,
+  isGroupJid,
+  normalizePhone,
+} from "./index";
+import { serverEnv } from "@/lib/env";
 
 /* =====================================================================
    WhatsApp pessoal — uma instância por usuário
@@ -205,4 +212,77 @@ export async function sendFromUser(
     messageId: resultado.messageId,
     error: resultado.error,
   };
+}
+
+/**
+ * Manda o PDF do relatório PELO CELULAR DO USUÁRIO.
+ *
+ * ⚠️ O celular precisa PARTICIPAR do grupo de destino. Diferente do
+ * envio pela instância da agência, aqui o remetente é a pessoa — e o
+ * WhatsApp não deixa ninguém postar num grupo do qual não faz parte.
+ * A Evolution devolve isso como erro genérico, então checamos o estado
+ * antes e traduzimos a falha depois.
+ */
+export async function sendReportFromUser(
+  userId: string,
+  to: string,
+  pdfUrl: string,
+  caption: string,
+  clientName: string,
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  const status = await getSessionStatus(userId);
+
+  if (status.state !== "open") {
+    return {
+      success: false,
+      error:
+        status.state === "absent"
+          ? "Seu WhatsApp não está conectado. Leia o QR em Configurações."
+          : "Sua conexão caiu. Releia o QR em Configurações.",
+    };
+  }
+
+  if (!/^https?:\/\//i.test(pdfUrl)) {
+    return {
+      success: false,
+      error:
+        "A URL do PDF precisa ser absoluta: quem baixa o arquivo é o servidor da Evolution, não o navegador.",
+    };
+  }
+
+  const resultado = await evolutionRequest(
+    "message/sendMedia",
+    evolutionMediaBody(serverEnv.evolutionApiVersion, {
+      number: normalizePhone(to),
+      media: pdfUrl,
+      fileName: `Relatorio_${nomeDeArquivo(clientName)}.pdf`,
+      caption: caption.slice(0, 1024),
+      delayMs: 2000,
+    }),
+    instanceNameFor(userId),
+  );
+
+  if (!resultado.success) {
+    const dica =
+      isGroupJid(to) && /not.*found|exists|invalid/i.test(resultado.error ?? "")
+        ? " Verifique se o SEU número participa deste grupo."
+        : "";
+
+    return { success: false, error: `${resultado.error}${dica}` };
+  }
+
+  return { success: true, messageId: resultado.messageId };
+}
+
+/** Nome de arquivo seguro: sem acento, espaço ou barra. */
+function nomeDeArquivo(valor: string): string {
+  return (
+    valor
+      .normalize("NFD")
+      // Escape unicode, não o caractere literal: a faixa de diacríticos
+      // combinantes é invisível no editor e some em copy-paste.
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9]+/g, "_")
+      .replace(/(^_|_$)/g, "") || "Cliente"
+  );
 }

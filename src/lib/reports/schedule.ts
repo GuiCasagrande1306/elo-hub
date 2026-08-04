@@ -7,8 +7,16 @@ import { systemSource } from "./source";
 import type { Client } from "@/types/database";
 
 /* =====================================================================
-   Disparo automático de relatórios
+   Preparo dos relatórios do dia
    ---------------------------------------------------------------------
+   O cron NÃO ENVIA. Ele gera o PDF e para em `ready`; quem dispara é
+   uma pessoa, clicando, pelo próprio WhatsApp.
+
+   A troca foi deliberada e tem duas consequências boas: alguém OLHA o
+   relatório antes de ele chegar ao cliente, e o clique é instantâneo
+   porque o PDF já existe — gerar na hora custaria ~6s de espera com a
+   tela travada.
+
    Roda uma vez por dia e atende quem tem `report_day` igual ao dia de
    hoje. Três decisões que definem o comportamento:
 
@@ -47,7 +55,8 @@ export interface RelatorioDeDisparo {
   diaDoMes: number;
   periodo: { start: string; end: string };
   agendados: number;
-  enviados: ResultadoCliente[];
+  /** PDF gerado e aguardando alguém clicar em enviar. */
+  preparados: ResultadoCliente[];
   falhas: ResultadoCliente[];
   pulados: ResultadoCliente[];
   adiados: ResultadoCliente[];
@@ -99,7 +108,7 @@ export async function dispatchScheduledReports(options?: {
     diaDoMes,
     periodo,
     agendados: 0,
-    enviados: [],
+    preparados: [],
     falhas: [],
     pulados: [],
     adiados: [],
@@ -123,7 +132,7 @@ export async function dispatchScheduledReports(options?: {
       base.pulados.push({
         slug: cliente.slug,
         nome: cliente.name,
-        motivo: "Cliente sem WhatsApp cadastrado.",
+        motivo: "Cliente sem WhatsApp cadastrado — sem destino para o envio.",
       });
       continue;
     }
@@ -143,7 +152,9 @@ export async function dispatchScheduledReports(options?: {
       clientSlug: cliente.slug,
       periodStart: periodo.start,
       periodEnd: periodo.end,
-      deliver: "whatsapp",
+      // Gera e ARQUIVA. O envio é manual, por uma pessoa, pelo
+      // WhatsApp dela — ver `sendReportFromUser`.
+      deliver: "none",
       source: systemSource(),
       automated: true,
     });
@@ -160,7 +171,7 @@ export async function dispatchScheduledReports(options?: {
     };
 
     if (resultado.ok) {
-      base.enviados.push(registro);
+      base.preparados.push(registro);
       continue;
     }
 
@@ -169,7 +180,7 @@ export async function dispatchScheduledReports(options?: {
     if (/duplicate key|unique constraint/i.test(resultado.error ?? "")) {
       base.pulados.push({
         ...registro,
-        motivo: "Relatório deste período já havia sido enviado.",
+        motivo: "Relatório deste período já havia sido preparado.",
       });
       continue;
     }

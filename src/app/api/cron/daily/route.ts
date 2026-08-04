@@ -8,12 +8,13 @@ import { dispatchScheduledReports } from "@/lib/reports/schedule";
  * GET /api/cron/daily
  *
  * A rodada diária inteira, em sequência: primeiro sincroniza as
- * plataformas, depois envia os relatórios de quem tem hoje como dia
- * combinado.
+ * plataformas, depois GERA os relatórios de quem tem hoje como dia
+ * combinado — e para aí. O envio é manual: uma pessoa confere o PDF em
+ * /relatorios e dispara pelo próprio WhatsApp.
  *
  * POR QUE UMA ROTA SÓ, E NÃO DUAS
  * ---------------------------------------------------------------------
- * O desenho natural seria extrair de madrugada e enviar de manhã — dois
+ * O desenho natural seria extrair de madrugada e gerar de manhã — dois
  * agendamentos. O plano Hobby da Vercel aceita UM cron por dia, e recusa
  * o deploy quando há mais. Então a sequência acontece dentro de uma
  * invocação: sincroniza, e só então gera.
@@ -39,7 +40,7 @@ export const maxDuration = 300;
 
 export const dynamic = "force-dynamic";
 
-/** Orçamento do disparo. Conservador de propósito: ver nota acima. */
+/** Orçamento da geração. Conservador de propósito: ver nota acima. */
 const ORCAMENTO_ENVIO_MS = 45_000;
 
 export async function GET(request: NextRequest) {
@@ -71,12 +72,12 @@ export async function GET(request: NextRequest) {
     resposta.sync = await syncAllClients({ mode: "month" });
   }
 
-  /* --- 2. Disparo -------------------------------------------------- */
+  /* --- 2. Preparo dos PDFs -------------------------------------------------- */
   if (etapa !== "sync") {
-    // `?dia=N` permite conferir o disparo de um cliente sem esperar
+    // `?dia=N` permite conferir o preparo de um cliente sem esperar
     // chegar a data combinada. Protegido pelo mesmo CRON_SECRET, e a
     // trava de duplicidade continua valendo: conferir hoje não impede
-    // o envio real no dia certo, porque o período será outro.
+    // a geração real no dia certo, porque o período será outro.
     const dia = Number(searchParams.get("dia"));
 
     // `?orcamentoMs=` existe para medir capacidade: com um valor baixo

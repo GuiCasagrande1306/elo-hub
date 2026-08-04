@@ -315,6 +315,13 @@ export interface ReportHistory {
   recipient: string | null;
   delivered_at: string | null;
   generated_by: string | null;
+  provider_message_id: string | null;
+  /**
+   * Números congelados no momento da geração. É o que torna o relatório
+   * auditável: as plataformas reprocessam conversões por semanas, então
+   * reconsultar depois daria outro número.
+   */
+  snapshot: Record<string, unknown>;
   /** true quando gerado pelo cron; impede disparo duplicado do período. */
   is_automated: boolean;
   created_at: string;

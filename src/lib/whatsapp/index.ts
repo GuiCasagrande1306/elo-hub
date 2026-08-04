@@ -251,7 +251,7 @@ export async function sendTemplateMessage(
  */
 export type EvolutionVersion = "v1" | "v2";
 
-function evolutionMediaBody(
+export function evolutionMediaBody(
   version: EvolutionVersion,
   input: {
     number: string;

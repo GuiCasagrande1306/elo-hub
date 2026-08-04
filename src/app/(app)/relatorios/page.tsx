@@ -8,6 +8,8 @@ import { getClients, getReports, getReportTemplates } from "@/lib/data";
 import { formatDateFull, formatPeriod } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { ClientSegment, ReportStatus } from "@/types/database";
+import { listarPendentes } from "./actions";
+import { SendQueue } from "./send-queue";
 
 export const metadata: Metadata = { title: "Relatórios" };
 
@@ -35,10 +37,11 @@ const STATUS_META: Record<
 };
 
 export default async function ReportsPage() {
-  const [templates, reports, clients] = await Promise.all([
+  const [templates, reports, clients, pendentes] = await Promise.all([
     getReportTemplates(),
     getReports(),
     getClients(),
+    listarPendentes(),
   ]);
 
   const clientName = (id: string) =>
@@ -61,8 +64,23 @@ export default async function ReportsPage() {
         }
       />
 
-      {/* Templates ------------------------------------------------- */}
+      {/* Fila de envio ---------------------------------------------
+          Primeiro na página porque é a única seção com trabalho a
+          fazer hoje; templates e histórico são consulta. */}
       <section className="mt-8">
+        <h2 className="text-lg font-semibold tracking-[-0.015em]">
+          Aguardando envio
+        </h2>
+        <p className="mt-0.5 text-sm text-muted-foreground">
+          O robô gera o PDF na madrugada; você confere e dispara. A mensagem
+          sai do <strong>seu</strong> WhatsApp — conecte-o em Configurações.
+        </p>
+
+        <SendQueue itens={pendentes} />
+      </section>
+
+      {/* Templates ------------------------------------------------- */}
+      <section className="mt-10">
         <h2 className="text-lg font-semibold tracking-[-0.015em]">
           Templates por segmento
         </h2>
