@@ -307,24 +307,52 @@ export interface EvolutionResult {
 export async function evolutionRequest(
   path: string,
   body: Record<string, unknown>,
+  /**
+   * Instância alvo. Omitido = a da agência (`EVOLUTION_INSTANCE_NAME`),
+   * usada pelo cron. As instâncias pessoais passam a própria — ver
+   * `whatsapp/session.ts`.
+   */
+  instanceOverride?: string,
+): Promise<EvolutionResult> {
+  const instance = instanceOverride ?? serverEnv.whatsappEvolutionInstance;
+
+  if (!instance) {
+    return {
+      success: false,
+      error: "EVOLUTION_INSTANCE_NAME não configurado.",
+    };
+  }
+
+  return evolutionFetch("POST", `${path}/${instance}`, body);
+}
+
+/**
+ * Chamada sem corpo (GET/DELETE) — `instance/connect`, `fetchInstances`,
+ * `instance/logout`. O caminho vai completo, sem sufixo automático.
+ */
+export async function evolutionFetch(
+  method: "GET" | "POST" | "DELETE",
+  path: string,
+  body?: Record<string, unknown>,
 ): Promise<EvolutionResult> {
   const base = serverEnv.whatsappEvolutionUrl.replace(/\/$/, "");
-  const instance = serverEnv.whatsappEvolutionInstance;
   const key = serverEnv.whatsappToken;
 
-  if (!base || !instance || !key) {
+  if (!base || !key) {
     return {
       success: false,
       error:
-        "Evolution API não configurada (EVOLUTION_API_URL, EVOLUTION_INSTANCE_NAME e EVOLUTION_API_KEY).",
+        "Evolution API não configurada (EVOLUTION_API_URL e EVOLUTION_API_KEY).",
     };
   }
 
   try {
-    const response = await fetch(`${base}/${path}/${instance}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", apikey: key },
-      body: JSON.stringify(body),
+    const response = await fetch(`${base}/${path}`, {
+      method,
+      headers: body
+        ? { "Content-Type": "application/json", apikey: key }
+        : { apikey: key },
+      body: body ? JSON.stringify(body) : undefined,
       // Envio de mídia por URL faz o servidor da Evolution BAIXAR o
       // arquivo antes de mandar; 20s é curto para um PDF de relatório.
       signal: AbortSignal.timeout(60_000),
@@ -332,20 +360,15 @@ export async function evolutionRequest(
 
     const data = (await response.json().catch(() => ({}))) as {
       key?: { id?: string };
-      message?: string | string[];
-      error?: string;
-      response?: { message?: string | string[] };
     };
 
-    if (!response.ok) {
-      return {
-        success: false,
-        data,
-        error: describeEvolutionError(response.status, data),
-      };
-    }
-
-    return { success: true, data, messageId: data.key?.id };
+    return response.ok
+      ? { success: true, data, messageId: data.key?.id }
+      : {
+          success: false,
+          data,
+          error: describeEvolutionError(response.status, data, path),
+        };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Falha de rede.";
     return {
@@ -434,7 +457,12 @@ function createEvolutionProvider(): WhatsAppProvider {
  * Dizer "instância desconectada, leia o QR" poupa meia hora de
  * investigação em cima de um "HTTP 400".
  */
-function describeEvolutionError(status: number, data: unknown): string {
+function describeEvolutionError(
+  status: number,
+  data: unknown,
+  /** Caminho chamado — o 404 depende de qual instância estava no alvo. */
+  path?: string,
+): string {
   const payload = data as {
     message?: string | string[];
     error?: string;
@@ -449,7 +477,12 @@ function describeEvolutionError(status: number, data: unknown): string {
     return `Chave da Evolution recusada (${status}). Confira EVOLUTION_API_KEY.`;
   }
   if (status === 404) {
-    return `Instância "${serverEnv.whatsappEvolutionInstance}" não encontrada (404). Confira EVOLUTION_INSTANCE_NAME.`;
+    // Não citar a instância da agência aqui: com instâncias pessoais o
+    // alvo costuma ser outro, e nomear a errada mandou a investigação
+    // para o lado oposto do problema.
+    return path
+      ? `A Evolution não conhece a rota ou a instância de "${path}" (404).`
+      : "Rota ou instância não encontrada na Evolution (404).";
   }
   if (/not.*connect|close|disconnect/i.test(text)) {
     return `Instância desconectada — releia o QR Code no painel da Evolution. (${text})`;

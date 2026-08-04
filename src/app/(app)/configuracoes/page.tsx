@@ -8,6 +8,8 @@ import { getCurrentUser } from "@/lib/supabase/server";
 import { initials } from "@/lib/format";
 import { isDemoMode } from "@/lib/env";
 import { cn } from "@/lib/utils";
+import { getSessionStatus } from "@/lib/whatsapp/session";
+import { WhatsAppCard } from "./whatsapp-card";
 
 export const metadata: Metadata = { title: "Configurações" };
 
@@ -23,7 +25,11 @@ export default async function SettingsPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const [team, clients] = await Promise.all([getTeam(), getClients()]);
+  const [team, clients, whatsappStatus] = await Promise.all([
+    getTeam(),
+    getClients(),
+    getSessionStatus(user.id),
+  ]);
   const isAdmin = user.role === "admin";
 
   return (
@@ -42,8 +48,25 @@ export default async function SettingsPage() {
         </div>
       )}
 
-      {/* Equipe ---------------------------------------------------- */}
+      {/* WhatsApp pessoal ------------------------------------------
+          Antes da equipe de propósito: é a única seção acionável por
+          qualquer perfil, e a que a pessoa vem procurar. */}
       <section className="mt-8">
+        <h2 className="text-lg font-semibold tracking-[-0.015em]">
+          Meu WhatsApp
+        </h2>
+        <p className="mt-0.5 text-sm text-muted-foreground">
+          Cada pessoa conecta o próprio celular. As mensagens que você
+          disparar saem do seu número, não de um número da agência.
+        </p>
+
+        <div className="mt-4 max-w-2xl">
+          <WhatsAppCard initialStatus={whatsappStatus} />
+        </div>
+      </section>
+
+      {/* Equipe ---------------------------------------------------- */}
+      <section className="mt-10">
         <h2 className="text-lg font-semibold tracking-[-0.015em]">Equipe</h2>
         <p className="mt-0.5 text-sm text-muted-foreground">
           Administradores enxergam toda a operação. Colaboradores enxergam
