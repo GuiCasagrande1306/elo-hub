@@ -15,12 +15,9 @@ export const metadata: Metadata = { title: "Relatórios" };
 
 const SEGMENT_LABELS: Record<ClientSegment, string> = {
   ecommerce: "E-commerce",
+  delivery: "Delivery",
+  leads: "Leads",
   local_business: "Negócio local",
-  launch: "Lançamento",
-  saas: "SaaS",
-  infoproduct: "Infoproduto",
-  b2b_services: "Serviços B2B",
-  other: "Outro",
 };
 
 const STATUS_META: Record<

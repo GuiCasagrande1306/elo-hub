@@ -133,14 +133,6 @@ export const METRIC_DEFINITIONS: Record<MetricKey, MetricDefinition> = {
     format: formatCurrency,
     hint: "Receita dividida pelo número de compras.",
   },
-  reach: {
-    key: "reach",
-    label: "Alcance",
-    betterWhen: "up",
-    format: formatNumber,
-    formatCompactValue: formatCompact,
-    hint: "Estimativa de pessoas distintas atingidas.",
-  },
 };
 
 /** Somatórios brutos de um período. Tudo inteiro; moeda em centavos. */
@@ -206,10 +198,6 @@ export function deriveMetric(key: MetricKey, t: MetricTotals): number {
       return t.clicks;
     case "aov":
       return safeDiv(t.revenueCents, t.conversions);
-    case "reach":
-      // Alcance não é somável entre dias (deduplicação é da plataforma).
-      // Até integrarmos o endpoint próprio, estimamos por impressões.
-      return Math.round(t.impressions * 0.62);
     default:
       return 0;
   }

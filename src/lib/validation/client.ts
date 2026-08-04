@@ -23,12 +23,9 @@ import { z } from "zod";
 
 export const CLIENT_SEGMENTS = [
   "ecommerce",
+  "delivery",
+  "leads",
   "local_business",
-  "launch",
-  "saas",
-  "infoproduct",
-  "b2b_services",
-  "other",
 ] as const;
 
 /** Só os status que fazem sentido no cadastro — não se cria um churned. */
@@ -36,12 +33,9 @@ export const CREATABLE_STATUSES = ["active", "onboarding", "paused"] as const;
 
 export const SEGMENT_LABELS: Record<(typeof CLIENT_SEGMENTS)[number], string> = {
   ecommerce: "E-commerce",
+  delivery: "Delivery",
+  leads: "Leads",
   local_business: "Negócio local",
-  launch: "Lançamento",
-  saas: "SaaS",
-  infoproduct: "Infoproduto",
-  b2b_services: "Serviços B2B",
-  other: "Outro",
 };
 
 export const STATUS_LABELS: Record<(typeof CREATABLE_STATUSES)[number], string> =

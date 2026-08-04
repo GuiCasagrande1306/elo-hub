@@ -15,12 +15,9 @@ export type ClientStatus = "lead" | "onboarding" | "active" | "paused" | "churne
 
 export type ClientSegment =
   | "ecommerce"
-  | "local_business"
-  | "launch"
-  | "saas"
-  | "infoproduct"
-  | "b2b_services"
-  | "other";
+  | "delivery"
+  | "leads"
+  | "local_business";
 
 export type ProjectStatus = "planning" | "active" | "on_hold" | "done" | "archived";
 
@@ -268,8 +265,13 @@ export type MetricKey =
   | "clicks"
   | "leads"
   | "cpl"
-  | "aov"
-  | "reach";
+  | "aov";
+
+/* `reach` foi REMOVIDA de propósito. Alcance é deduplicado pela
+   plataforma e não é somável entre dias; `daily_metrics` não tem a
+   coluna, e o código estimava `impressões × 0,62` — um número inventado
+   impresso como "Alcance" no relatório do cliente. Se um dia for
+   necessário, tem que vir do endpoint da Meta, com coluna própria. */
 
 export type ReportSectionType =
   | "cover"
@@ -293,6 +295,15 @@ export interface ReportTemplate {
   description: string | null;
   segment: ClientSegment | null;
   metrics: MetricKey[];
+  /**
+   * Sobrescreve o rótulo da métrica no PDF.
+   *
+   * O mesmo número — `conversions` — é "Vendas" no e-commerce, "Pedidos"
+   * no delivery, "Leads" na captação e "Contatos" no negócio local. Sem
+   * isto o relatório diz "Resultados" para todos, e o cliente não
+   * reconhece o próprio negócio no que recebeu.
+   */
+  metric_labels: Partial<Record<MetricKey, string>>;
   sections: ReportSection[];
   theme: { accent?: string; cover?: "solid" | "gradient" };
   is_default: boolean;

@@ -184,7 +184,7 @@ export const demoClients: Client[] = [
     legal_name: "Nord Educação Digital Ltda.",
     tax_id: "11.222.333/0001-44",
     slug: "nord",
-    segment: "launch",
+    segment: "delivery",
     status: "active",
     logo_url: null,
     brand_primary: "#111827",
@@ -217,7 +217,7 @@ export const demoClients: Client[] = [
     legal_name: "Lumen Projetos e Arquitetura ME",
     tax_id: "55.666.777/0001-88",
     slug: "lumen",
-    segment: "b2b_services",
+    segment: "leads",
     status: "onboarding",
     logo_url: null,
     brand_primary: "#8A6E4B",
@@ -907,6 +907,11 @@ export const demoTemplates: ReportTemplate[] = [
       "Foco em receita, ROAS e ticket médio. Quebra por campanha e galeria dos criativos que mais venderam.",
     segment: "ecommerce",
     metrics: ["spend", "revenue", "roas", "results", "cpa", "aov"],
+    metric_labels: {
+      results: "Vendas",
+      cpa: "Custo por venda",
+      aov: "Ticket médio",
+    },
     sections: [
       { type: "cover", title: "Relatório de Performance" },
       { type: "kpi_grid", title: "Visão geral do período" },
@@ -930,7 +935,8 @@ export const demoTemplates: ReportTemplate[] = [
     description:
       "Volume de contatos, custo por contato e alcance geográfico. Ideal para clínicas, serviços e varejo físico.",
     segment: "local_business",
-    metrics: ["spend", "results", "cpa", "reach", "ctr"],
+    metrics: ["spend", "results", "cpa", "impressions", "ctr"],
+    metric_labels: { results: "Contatos", cpa: "Custo por contato" },
     sections: [
       { type: "cover", title: "Relatório de Resultados" },
       { type: "kpi_grid", title: "Resumo do mês" },
@@ -945,12 +951,13 @@ export const demoTemplates: ReportTemplate[] = [
     is_archived: false,
   },
   {
-    id: "rt-launch",
-    name: "Lançamento — Captação & Conversão",
+    id: "rt-delivery",
+    name: "Delivery — Pedidos & Custo",
     description:
       "Estrutura por fase do lançamento, com CPL e CAC por etapa.",
-    segment: "launch",
-    metrics: ["spend", "leads", "cpl", "results", "cpa", "roas"],
+    segment: "delivery",
+    metrics: ["spend", "results", "cpa", "ctr", "cpc"],
+    metric_labels: { results: "Pedidos", cpa: "Custo por pedido" },
     sections: [
       { type: "cover", title: "Relatório de Lançamento" },
       { type: "kpi_grid", title: "Números do lançamento" },
@@ -968,11 +975,12 @@ export const demoTemplates: ReportTemplate[] = [
     is_archived: false,
   },
   {
-    id: "rt-default",
-    name: "Padrão — Visão Executiva",
+    id: "rt-leads",
+    name: "Leads — Captação & Custo por Lead",
     description: "Genérico de uma página: três KPIs, tendência e criativos ativos.",
-    segment: null,
-    metrics: ["spend", "results", "cpa"],
+    segment: "leads",
+    metrics: ["spend", "leads", "cpl", "ctr", "cpc", "impressions"],
+    metric_labels: { leads: "Leads", cpl: "Custo por lead" },
     sections: [
       { type: "cover", title: "Relatório de Mídia Paga" },
       { type: "kpi_grid", title: "Indicadores" },

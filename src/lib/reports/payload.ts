@@ -127,10 +127,17 @@ export async function buildReportPayload(options: {
     source.creatives(client.id, creativeLimit),
   ]);
 
-  // O template define QUAIS KPIs aparecem e em que ordem.
-  const kpis: KpiResult[] = (template.metrics as MetricKey[]).map((key) =>
-    computeKpi(key, metrics.currentTotals, metrics.previousTotals),
-  );
+  /* O template define QUAIS KPIs aparecem, em que ordem e COMO SE
+     CHAMAM. O rótulo é do template, não da métrica: o mesmo
+     `conversions` é "Vendas", "Pedidos", "Leads" ou "Contatos"
+     dependendo do negócio do cliente. */
+  const rotulos = template.metric_labels ?? {};
+
+  const kpis: KpiResult[] = (template.metrics as MetricKey[]).map((key) => {
+    const kpi = computeKpi(key, metrics.currentTotals, metrics.previousTotals);
+    const rotulo = rotulos[key];
+    return rotulo ? { ...kpi, label: rotulo } : kpi;
+  });
 
   return {
     meta: {

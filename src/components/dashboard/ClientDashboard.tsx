@@ -261,12 +261,9 @@ function StatusPill({ status }: { status: Client["status"] }) {
 
 const SEGMENT_LABELS: Record<Client["segment"], string> = {
   ecommerce: "E-commerce",
+  delivery: "Delivery",
+  leads: "Leads",
   local_business: "Negócio local",
-  launch: "Lançamento",
-  saas: "SaaS",
-  infoproduct: "Infoproduto",
-  b2b_services: "Serviços B2B",
-  other: "Outro",
 };
 
 /**
