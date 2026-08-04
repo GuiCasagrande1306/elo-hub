@@ -349,10 +349,16 @@ export async function getTemplateForClient(
   client: Client,
 ): Promise<ReportTemplate | null> {
   const templates = await getReportTemplates();
+
+  /* Só o segmento decide. O encadeamento antigo caía num
+     `templates[0]` quando não achava — depois que os templates
+     genéricos deixaram de existir, isso significava mandar ao cliente
+     um PDF de OUTRO nicho, sem erro nenhum. Devolver null faz o
+     chamador falhar com mensagem, que é o comportamento correto:
+     todo segmento tem template, e não ter é defeito de dado. */
   return (
     templates.find((t) => t.segment === client.segment && t.is_default) ??
-    templates.find((t) => t.segment === null && t.is_default) ??
-    templates[0] ??
+    templates.find((t) => t.segment === client.segment) ??
     null
   );
 }

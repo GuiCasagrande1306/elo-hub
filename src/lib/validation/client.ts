@@ -216,3 +216,37 @@ export function toClientPayload(values: NewClientValues): ClientRpcPayload {
     p_google_customer_id: nullIfBlank(values.googleCustomerId),
   };
 }
+
+/* =====================================================================
+   Ajustes operacionais — o que dá para corrigir depois do cadastro
+   ---------------------------------------------------------------------
+   As regras espelham as constraints do banco de propósito. O Postgres
+   continua sendo a autoridade (`clients_report_day_valid` e
+   `clients_report_needs_day`); aqui é só para o usuário ver o erro no
+   formulário em vez de receber uma violação crua.
+   ===================================================================== */
+export const clientSettingsSchema = z
+  .object({
+    clientId: z.string().min(1),
+    segment: z.enum(CLIENT_SEGMENTS, { message: "Selecione o nicho." }),
+    whatsappPhone: optionalText(30, "WhatsApp"),
+    reportEnabled: z.boolean(),
+    // 1 a 28, não 1 a 31: fevereiro existe, e um cliente agendado no dia
+    // 30 nunca receberia nada — falha silenciosa.
+    reportDay: z
+      .number()
+      .int()
+      .min(1, "O dia vai de 1 a 28.")
+      .max(28, "O dia vai de 1 a 28.")
+      .nullable(),
+  })
+  .refine((v) => !v.reportEnabled || v.reportDay !== null, {
+    message: "Escolha o dia do mês para o envio automático.",
+    path: ["reportDay"],
+  })
+  .refine((v) => !v.reportEnabled || v.whatsappPhone.trim() !== "", {
+    message: "Sem WhatsApp cadastrado não há para onde enviar.",
+    path: ["whatsappPhone"],
+  });
+
+export type ClientSettingsValues = z.infer<typeof clientSettingsSchema>;

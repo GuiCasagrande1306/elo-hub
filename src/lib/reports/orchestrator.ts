@@ -96,8 +96,9 @@ export async function generateAndDeliverReport(
   const template =
     templates.find((t) => t.id === input.templateId) ??
     templates.find((t) => t.segment === client.segment && t.is_default) ??
-    templates.find((t) => t.segment === null && t.is_default) ??
-    templates[0];
+    // Sem cair em `templates[0]`: isso mandava ao cliente um PDF do
+    // nicho errado, silenciosamente. Ver nota em `getTemplateForClient`.
+    templates.find((t) => t.segment === client.segment);
 
   if (!template) {
     return {

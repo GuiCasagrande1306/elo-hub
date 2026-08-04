@@ -8,6 +8,7 @@ import { KpiCard } from "./kpi-card";
 import { TrendChart } from "./trend-chart";
 import { PlatformSplitList } from "./platform-split";
 import { AdGallery } from "./ad-gallery";
+import { ClientSettingsCard } from "@/components/clients/client-settings-card";
 import { Button } from "@/components/ui/button";
 import { useRealtimeRefresh } from "@/hooks/use-realtime";
 import { cn } from "@/lib/utils";
@@ -197,6 +198,9 @@ export function ClientDashboard({
 
           <AdGallery creatives={creatives} />
         </section>
+
+        {/* Ajustes por último: é configuração, não leitura do período. */}
+        <ClientSettingsCard client={client} />
       </div>
     </div>
   );

@@ -6,6 +6,8 @@ import type { ZodError } from "zod";
 import { isDemoMode } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
+  CLIENT_SEGMENTS,
+  clientSettingsSchema,
   newClientSchema,
   toClientPayload,
   type NewClientValues,
@@ -172,4 +174,78 @@ function slugify(name: string, taken: string[]): string {
     slug = `${base}-${suffix}`;
   }
   return slug;
+}
+
+/* =====================================================================
+   Ajustes operacionais do cliente
+   ---------------------------------------------------------------------
+   O cadastro grava o cliente e nunca mais deixava mudá-lo. Três campos
+   precisam ser corrigíveis, e os três decidem o que o cliente recebe:
+
+   • `segment` escolhe o TEMPLATE do relatório. Um delivery cadastrado
+     como negócio local recebe um PDF falando de "Contatos" em vez de
+     "Pedidos". Antes disto, o único conserto era pelo banco.
+   • `whatsapp_phone` é o destino do envio.
+   • `report_day` / `report_enabled` decidem se o robô prepara o
+     relatório e em que dia — sem tela, o cron nunca dispararia.
+
+   O resto do cadastro continua imutável de propósito: nome e slug
+   aparecem em URL e em PDF já entregue, e trocá-los quebra referência.
+   ===================================================================== */
+
+export type UpdateClientSettingsResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+export async function updateClientSettings(input: {
+  clientId: string;
+  segment: (typeof CLIENT_SEGMENTS)[number];
+  whatsappPhone: string;
+  reportEnabled: boolean;
+  reportDay: number | null;
+}): Promise<UpdateClientSettingsResult> {
+  const parsed = clientSettingsSchema.safeParse(input);
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Dados inválidos.",
+    };
+  }
+
+  const values = parsed.data;
+
+  if (isDemoMode) {
+    const { demoClients } = await import("@/lib/mock/data");
+    const alvo = demoClients.find((c) => c.id === values.clientId);
+    if (!alvo) return { ok: false, error: "Cliente não encontrado." };
+
+    alvo.segment = values.segment;
+    alvo.whatsapp_phone = values.whatsappPhone || null;
+    alvo.report_enabled = values.reportEnabled;
+    alvo.report_day = values.reportDay;
+
+    revalidatePath("/clientes");
+    return { ok: true };
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  // Sem checagem de papel aqui: a policy `clients_update` exige
+  // can_write_client(), então um colaborador só-leitura falha no banco.
+  const { error } = await supabase
+    .from("clients")
+    .update({
+      segment: values.segment,
+      whatsapp_phone: values.whatsappPhone || null,
+      report_enabled: values.reportEnabled,
+      report_day: values.reportDay,
+    })
+    .eq("id", values.clientId);
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/clientes");
+  revalidatePath("/relatorios");
+  return { ok: true };
 }
