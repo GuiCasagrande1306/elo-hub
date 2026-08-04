@@ -330,10 +330,23 @@ export async function evolutionRequest(
  * Chamada sem corpo (GET/DELETE) — `instance/connect`, `fetchInstances`,
  * `instance/logout`. O caminho vai completo, sem sufixo automático.
  */
+/**
+ * Teto de espera padrão.
+ *
+ * ⚠️ PRECISA SER BEM MENOR QUE O `maxDuration` DAS ROTAS (60s no plano
+ * Hobby). Já esteve em 60s: a função era morta pela Vercel ANTES de o
+ * timeout disparar, então em vez de um erro tratado o navegador recebia
+ * a página de erro da plataforma e quebrava ao fazer JSON.parse. O
+ * sintoma ("Unexpected token 'A'") não tinha nenhuma relação visível
+ * com a causa.
+ */
+const TIMEOUT_PADRAO_MS = 25_000;
+
 export async function evolutionFetch(
   method: "GET" | "POST" | "DELETE",
   path: string,
   body?: Record<string, unknown>,
+  timeoutMs: number = TIMEOUT_PADRAO_MS,
 ): Promise<EvolutionResult> {
   const base = serverEnv.whatsappEvolutionUrl.replace(/\/$/, "");
   const key = serverEnv.whatsappToken;
@@ -353,9 +366,7 @@ export async function evolutionFetch(
         ? { "Content-Type": "application/json", apikey: key }
         : { apikey: key },
       body: body ? JSON.stringify(body) : undefined,
-      // Envio de mídia por URL faz o servidor da Evolution BAIXAR o
-      // arquivo antes de mandar; 20s é curto para um PDF de relatório.
-      signal: AbortSignal.timeout(60_000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
 
     const data = (await response.json().catch(() => ({}))) as {

@@ -3,17 +3,9 @@ import "server-only";
 import { isDemoMode, serverEnv } from "@/lib/env";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { sessionSource, type ReportSource } from "./source";
-import {
-  buildGroupCaption,
-  buildReportPayload,
-  buildWhatsAppSummary,
-} from "./payload";
+import { buildGroupCaption, buildReportPayload } from "./payload";
 import { renderReportPdf } from "./pdf/render";
-import {
-  getWhatsAppProvider,
-  isGroupJid,
-  sendReportToGroup,
-} from "@/lib/whatsapp";
+import { sendReportFromUser } from "@/lib/whatsapp/session";
 import type { ReportStatus } from "@/types/database";
 
 /* =====================================================================
@@ -273,17 +265,29 @@ export async function generateAndDeliverReport(
 
     await setStatus("sending");
 
-    /* --- 8a. Grupo x contato individual ------------------------------
-       Se o destino é um JID de grupo, usa `sendReportToGroup`: uma
-       mensagem só, com o PDF anexado e a legenda de impacto. Mandar
-       texto e documento separados num grupo gera duas notificações e
-       polui a conversa da equipe do cliente.
+    /* --- 8a. Quem é o remetente ---------------------------------------
+       O WhatsApp usado é o DE QUEM CLICOU, não um número da agência.
 
-       Para contato individual segue o fluxo antigo — resumo formal
-       primeiro, documento depois —, que é o que funciona melhor numa
-       conversa um-a-um. */
-    if (isGroupJid(recipient)) {
-      const grupo = await sendReportToGroup(
+       A instância da agência existe mas nunca é pareada — o fluxo
+       inteiro passou a ser manual, por pessoa. Enquanto isto apontava
+       para ela, o envio ficava pendurado até a Vercel matar a função:
+       o usuário via um erro de JSON sem relação com a causa. */
+    const remetente = await source.actorId();
+
+    if (!remetente) {
+      const erro =
+        "Envio exige um usuário logado — é o WhatsApp dele que despacha.";
+      await setStatus("failed", { error_message: erro });
+      return { ok: false, reportId, status: "failed", downloadUrl, error: erro };
+    }
+
+    /* Grupo e contato individual recebem o MESMO tratamento: uma
+       mensagem só, com o PDF anexado e a legenda. Antes o contato
+       recebia texto e documento separados; vindo do número de uma
+       pessoa conhecida, duas mensagens seguidas parecem spam. */
+    {
+      const grupo = await sendReportFromUser(
+        remetente,
         recipient,
         downloadUrl,
         buildGroupCaption(payload),
@@ -317,47 +321,6 @@ export async function generateAndDeliverReport(
       };
     }
 
-    const provider = getWhatsAppProvider();
-    const summary = buildWhatsAppSummary(payload);
-
-    // Ordem importa: primeiro o resumo em texto, depois o anexo. Quem lê
-    // no celular vê os números sem precisar abrir o PDF — e o documento
-    // chega logo abaixo, já com contexto.
-    const textResult = await provider.sendText(recipient, summary);
-
-    const docResult = await provider.sendDocument(recipient, {
-      url: downloadUrl,
-      filename: `${slugify(client.name)}-${input.periodEnd}.pdf`,
-      caption: `Relatório ${payload.meta.templateName}`,
-    });
-
-    if (!docResult.ok) {
-      // O PDF continua íntegro no Storage: `storage_path` não é limpo,
-      // então reenviar não exige gerar de novo.
-      await setStatus("failed", {
-        error_message: `Envio falhou: ${docResult.error ?? textResult.error ?? "erro desconhecido"}`,
-      });
-      return {
-        ok: false,
-        reportId,
-        status: "failed",
-        downloadUrl,
-        error: docResult.error ?? textResult.error,
-      };
-    }
-
-    await setStatus("sent", {
-      delivered_at: new Date().toISOString(),
-      provider_message_id: docResult.messageId ?? textResult.messageId,
-    });
-
-    return {
-      ok: true,
-      reportId,
-      status: "sent",
-      downloadUrl,
-      whatsappMessageId: docResult.messageId,
-    };
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Erro inesperado na geração.";
@@ -368,16 +331,5 @@ export async function generateAndDeliverReport(
   }
 }
 
-/** Nome de arquivo seguro: sem acento, sem espaço, sem barra. */
-function slugify(value: string): string {
-  return value
-    .normalize("NFD")
-    // Escape unicode em vez do caractere literal: a faixa de diacríticos
-    // combinantes é invisível no editor e some em copy-paste.
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
-}
 
 export { serverEnv };

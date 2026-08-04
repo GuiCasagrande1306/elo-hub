@@ -122,7 +122,24 @@ export function ReportComposer({
         return;
       }
 
-      const data = await response.json();
+      /* Ler como TEXTO e só então tentar JSON.
+         Quando a função estoura o limite da Vercel, a resposta é uma
+         página de erro da plataforma, não JSON. Com `response.json()`
+         direto, o usuário via "Unexpected token 'A'" — uma mensagem que
+         não dizia nada sobre o que aconteceu nem o que fazer. */
+      const corpo = await response.text();
+
+      let data: { error?: string } = {};
+      try {
+        data = corpo ? JSON.parse(corpo) : {};
+      } catch {
+        toast.error(
+          response.status === 504 || response.status === 502
+            ? "A geração demorou demais e foi interrompida pelo servidor. O relatório pode ter sido arquivado — confira em Relatórios."
+            : `O servidor respondeu de forma inesperada (HTTP ${response.status}).`,
+        );
+        return;
+      }
 
       if (!response.ok) {
         toast.error(data.error ?? "Falha ao gerar o relatório.");
