@@ -597,40 +597,7 @@ export async function getMyDashboard(userId: string): Promise<MyDashboard> {
 
   const myClientIds = await getMyClientIds(userId);
 
-  const health: Record<GoalHealth, number> = {
-    batendo: 0,
-    atencao: 0,
-    critico: 0,
-  };
-
-  /* O realizado sai de `daily_metrics`, não de
-     `executed_results_override`. O override é a EXCEÇÃO — existe para
-     corrigir a plataforma quando ela erra (lead que era spam, venda
-     fechada por telefone) e é nulo na esmagadora maioria dos casos.
-     Lê-lo como se fosse o valor corrente pintaria toda a carteira de
-     vermelho: foi exatamente o que aconteceu na primeira versão desta
-     função, e o gráfico parecia plausível. */
-  await Promise.all(
-    myClientIds.map(async (clientId) => {
-      const goal = goals.get(clientId);
-      if (!goal || goal.planned_results <= 0) return;
-
-      const rows = await getMetrics(
-        clientId,
-        goal.period_start,
-        goal.period_end,
-      );
-
-      const feito =
-        goal.executed_results_override ?? sumMetrics(rows).conversions;
-
-      const pct = (feito / goal.planned_results) * 100;
-
-      if (pct >= 80) health.batendo += 1;
-      else if (pct >= 50) health.atencao += 1;
-      else health.critico += 1;
-    }),
-  );
+  const { health } = await computeGoalHealth(myClientIds, goals);
 
   return { myClientIds, tasksToday, tasksWeek, health, urgent };
 }
@@ -661,4 +628,121 @@ async function getMyClientIds(userId: string): Promise<string[]> {
       ...(vinculos ?? []).map((m) => m.client_id as string),
     ]),
   ];
+}
+
+/**
+ * Classifica contas por atingimento da meta do período.
+ *
+ * O realizado sai de `daily_metrics`, NÃO de
+ * `executed_results_override`. O override é a EXCEÇÃO — existe para
+ * corrigir a plataforma quando ela erra (lead que era spam, venda
+ * fechada por telefone) e é nulo na esmagadora maioria dos casos. Lê-lo
+ * como se fosse o valor corrente pinta toda a carteira de vermelho, com
+ * um gráfico que parece plausível.
+ *
+ * Conta sem meta, ou com meta zero, fica FORA da contagem: ela não está
+ * batendo nem falhando, e somá-la a qualquer fatia distorceria a leitura.
+ */
+async function computeGoalHealth(
+  clientIds: string[],
+  goals: Map<string, ClientGoal>,
+): Promise<{ health: Record<GoalHealth, number>; criticos: string[] }> {
+  const health: Record<GoalHealth, number> = {
+    batendo: 0,
+    atencao: 0,
+    critico: 0,
+  };
+  const criticos: string[] = [];
+
+  await Promise.all(
+    clientIds.map(async (clientId) => {
+      const goal = goals.get(clientId);
+      if (!goal || goal.planned_results <= 0) return;
+
+      const rows = await getMetrics(clientId, goal.period_start, goal.period_end);
+      const feito =
+        goal.executed_results_override ?? sumMetrics(rows).conversions;
+
+      const pct = (feito / goal.planned_results) * 100;
+
+      if (pct >= 80) health.batendo += 1;
+      else if (pct >= 50) health.atencao += 1;
+      else {
+        health.critico += 1;
+        criticos.push(clientId);
+      }
+    }),
+  );
+
+  return { health, criticos };
+}
+
+export interface AgencyDashboard {
+  activeClients: number;
+  tasksToday: number;
+  tasksWeek: number;
+  health: Record<GoalHealth, number>;
+  /** Tarefas próximas do vencimento, com quem responde por elas. */
+  urgent: TaskWithRelations[];
+  /** Contas abaixo de 50% da meta — o que a diretoria precisa ver. */
+  atRisk: Client[];
+}
+
+/**
+ * Visão da agência inteira. Só faz sentido para admin.
+ *
+ * Não há filtro por usuário aqui: para um admin, `getTasks()` e
+ * `getClients()` já devolvem tudo pelo RLS. A separação de perfis
+ * acontece em `page.tsx`, que escolhe o painel — este módulo apenas
+ * assume que quem chamou tem direito de ver.
+ */
+export async function getAgencyDashboard(): Promise<AgencyDashboard> {
+  const [tasks, clients, goals] = await Promise.all([
+    getTasks(),
+    getClients(),
+    getCurrentGoals(),
+  ]);
+
+  const ativos = clients.filter((c) => c.status === "active");
+
+  const hoje = new Date();
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  const hojeISO = iso(hoje);
+
+  const emSete = new Date(hoje);
+  emSete.setDate(emSete.getDate() + 7);
+  const semanaISO = iso(emSete);
+
+  const abertas = tasks.filter((t) => t.status !== "done");
+  const vence = (t: TaskWithRelations) => t.due_date?.slice(0, 10) ?? null;
+
+  // Atrasada conta como "de hoje" — mesma regra do painel individual.
+  const tasksToday = abertas.filter((t) => {
+    const d = vence(t);
+    return d !== null && d <= hojeISO;
+  }).length;
+
+  const tasksWeek = abertas.filter((t) => {
+    const d = vence(t);
+    return d !== null && d <= semanaISO;
+  }).length;
+
+  const urgent = abertas
+    .filter((t) => vence(t) !== null)
+    .sort((a, b) => (vence(a) ?? "").localeCompare(vence(b) ?? ""))
+    .slice(0, 6);
+
+  const { health, criticos } = await computeGoalHealth(
+    ativos.map((c) => c.id),
+    goals,
+  );
+
+  return {
+    activeClients: ativos.length,
+    tasksToday,
+    tasksWeek,
+    health,
+    urgent,
+    atRisk: ativos.filter((c) => criticos.includes(c.id)),
+  };
 }
