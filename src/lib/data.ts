@@ -467,13 +467,18 @@ export async function getFinancialData(months = 12): Promise<{
 
 /** Últimos N dias terminando ontem (hoje ainda não fechou nas plataformas). */
 export function lastNDays(n: number) {
-  const end = new Date();
-  end.setDate(end.getDate() - 1);
-  const start = new Date(end);
-  start.setDate(start.getDate() - (n - 1));
+  /* Termina ONTEM: o dia corrente ainda está sendo veiculado e entraria
+     no gráfico como uma queda que não existe.
 
-  const iso = (d: Date) => d.toISOString().slice(0, 10);
-  return { start: iso(start), end: iso(end) };
+     Ancorado no fuso de São Paulo — `new Date()` no servidor da Vercel é
+     UTC, e das 21h à meia-noite "ontem" lá já é hoje aqui. */
+  const fim = new Date(`${dataNoBrasil()}T12:00:00-03:00`);
+  fim.setUTCDate(fim.getUTCDate() - 1);
+
+  const inicio = new Date(fim);
+  inicio.setUTCDate(inicio.getUTCDate() - (n - 1));
+
+  return { start: dataNoBrasil(inicio), end: dataNoBrasil(fim) };
 }
 
 /* ------------------------------------------------------------------ */

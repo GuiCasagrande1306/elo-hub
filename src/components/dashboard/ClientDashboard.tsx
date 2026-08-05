@@ -13,6 +13,7 @@ import { IntegrationsCard } from "@/components/clients/integrations-card";
 import { Button } from "@/components/ui/button";
 import { useRealtimeRefresh } from "@/hooks/use-realtime";
 import { cn } from "@/lib/utils";
+import { DateRangePicker } from "./date-range-picker";
 import { formatPeriod } from "@/lib/format";
 import type { KpiResult, PlatformSplit, TrendPoint } from "@/lib/metrics/kpi";
 import type {
@@ -53,7 +54,13 @@ export interface ClientDashboardProps {
   trend: TrendPoint[];
   platforms: PlatformSplit[];
   creatives: AdCreative[];
-  period: { start: string; end: string; days: number };
+  period: {
+    start: string;
+    end: string;
+    days: number;
+    /** Intervalo escolhido no calendário, não um preset. */
+    custom?: boolean;
+  };
   /** Dias disponíveis no seletor. */
   presets?: number[];
   integrations: IntegrationStatus[];
@@ -136,6 +143,9 @@ export function ClientDashboard({
               <PeriodSelector
                 slug={client.slug}
                 presets={presets}
+                start={period.start}
+                end={period.end}
+                custom={Boolean(period.custom)}
                 current={period.days}
               />
               {/* `nativeButton={false}` é obrigatório ao renderizar como
@@ -331,19 +341,29 @@ function PeriodSelector({
   slug,
   presets,
   current,
+  start,
+  end,
+  custom,
 }: {
   slug: string;
   presets: number[];
   current: number;
+  start: string;
+  end: string;
+  custom: boolean;
 }) {
   return (
+    <div className="flex items-center gap-1.5">
     <div
       className="flex items-center gap-0.5 rounded-lg bg-surface-2/70 p-0.5 ring-1 ring-hairline"
       role="group"
       aria-label="Período"
     >
       {presets.map((days) => {
-        const active = days === current;
+        /* Com intervalo do calendário, NENHUM preset acende: manter
+           "30d" iluminado enquanto a tela mostra outra janela é a
+           versão visual de mentir sobre o período. */
+        const active = !custom && days === current;
         return (
           <Link
             key={days}
@@ -368,6 +388,9 @@ function PeriodSelector({
           </Link>
         );
       })}
+    </div>
+
+    <DateRangePicker slug={slug} start={start} end={end} active={custom} />
     </div>
   );
 }

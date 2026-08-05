@@ -50,17 +50,31 @@ export default async function ClientPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ periodo?: string }>;
+  searchParams: Promise<{ periodo?: string; de?: string; ate?: string }>;
 }) {
-  const [{ slug }, { periodo }] = await Promise.all([params, searchParams]);
+  const [{ slug }, { periodo, de, ate }] = await Promise.all([
+    params,
+    searchParams,
+  ]);
 
   const client = await getClientBySlug(slug);
   if (!client) notFound();
 
-  // Valor da URL é entrada do usuário: só aceitamos presets conhecidos.
+  /* Tudo que vem da URL é entrada do usuário.
+
+     Intervalo explícito (`?de=&ate=`) ganha do preset. Validado por
+     formato E por ordem: um `de` maior que `ate` produziria um
+     `time_range` vazio e um painel zerado que pareceria falta de dado.
+     Fora do formato, cai no preset — nunca em erro. */
+  const ISO = /^\d{4}-\d{2}-\d{2}$/;
+  const intervalo =
+    de && ate && ISO.test(de) && ISO.test(ate) && de <= ate
+      ? { start: de, end: ate }
+      : null;
+
   const parsed = Number(periodo);
   const days = PRESETS.includes(parsed) ? parsed : 30;
-  const { start, end } = lastNDays(days);
+  const { start, end } = intervalo ?? lastNDays(days);
 
   const [metrics, creatives, integrations, goals, goalStatus, goalHistory] =
     await Promise.all([
@@ -95,7 +109,14 @@ export default async function ClientPage({
       trend={trend}
       platforms={splitByPlatform(metrics.current)}
       creatives={creatives}
-      period={{ start, end, days }}
+      period={{
+        start,
+        end,
+        /* Dias REAIS do intervalo, não o preset: com datas escolhidas à
+           mão o rótulo "30d" mentiria. */
+        days: intervalo ? diasEntre(start, end) : days,
+        custom: Boolean(intervalo),
+      }}
       presets={PRESETS}
       integrations={integrations}
       goalStatus={goalStatus}
@@ -110,4 +131,12 @@ export default async function ClientPage({
       }
     />
   );
+}
+
+/** Dias inclusivos entre duas datas YYYY-MM-DD. */
+function diasEntre(inicio: string, fim: string): number {
+  const ms =
+    new Date(`${fim}T12:00:00Z`).getTime() -
+    new Date(`${inicio}T12:00:00Z`).getTime();
+  return Math.round(ms / 86_400_000) + 1;
 }
