@@ -53,9 +53,22 @@ export function TasksWorkspace({ tasks, clients }: TasksWorkspaceProps) {
   const [creating, setCreating] = useState(false);
   const [newTitle, setNewTitle] = useState("");
 
-  // Um colega mexeu numa tarefa → a página revalida sozinha.
+  /* Um colega mexeu numa tarefa → a página revalida sozinha.
+
+     `task_assignees` NÃO é opcional aqui, e o motivo não é óbvio: o
+     Supabase respeita RLS no broadcast, e a atribuição acontece DEPOIS
+     do insert da tarefa. No instante em que a linha de `tasks` nasce, o
+     colaborador ainda não é responsável — `can_access_task` devolve
+     falso e o evento nunca chega nele. Quem carrega a novidade é o
+     insert em `task_assignees`, um instante depois.
+
+     Sem esta linha, o admin cria e atribui, e o card só aparece na tela
+     do colaborador quando ele recarrega a página à mão. */
   useRealtimeRefresh("tasks");
+  useRealtimeRefresh("task_assignees");
   useRealtimeRefresh("task_checklist_items");
+  // Contador de comentários no card fica vivo junto.
+  useRealtimeRefresh("task_comments");
 
   const openTaskId = searchParams.get("tarefa");
 
