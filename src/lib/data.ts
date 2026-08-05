@@ -467,3 +467,60 @@ export function lastNDays(n: number) {
   const iso = (d: Date) => d.toISOString().slice(0, 10);
   return { start: iso(start), end: iso(end) };
 }
+
+/* ------------------------------------------------------------------ */
+/* Integrações de mídia                                                */
+/* ------------------------------------------------------------------ */
+
+export interface IntegrationStatus {
+  platform: "meta_ads" | "google_ads";
+  connected: boolean;
+  /** `pending:*` = OAuth feito, conta de anúncios ainda não escolhida. */
+  externalAccountId: string | null;
+  displayName: string | null;
+  lastSyncedAt: string | null;
+  syncError: string | null;
+}
+
+/**
+ * Estado das conexões de um cliente.
+ *
+ * Lê SÓ `client_integrations`, nunca `integration_secrets`: a tabela de
+ * tokens não tem policy alguma e é inacessível fora do service_role. O
+ * que a tela precisa saber é se existe conexão e para qual conta — não
+ * o segredo.
+ */
+export async function getClientIntegrations(
+  clientId: string,
+): Promise<IntegrationStatus[]> {
+  const plataformas = ["meta_ads", "google_ads"] as const;
+
+  if (isDemoMode) {
+    return plataformas.map((platform) => ({
+      platform,
+      connected: false,
+      externalAccountId: null,
+      displayName: null,
+      lastSyncedAt: null,
+      syncError: null,
+    }));
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data } = await supabase
+    .from("client_integrations")
+    .select("platform, external_account_id, display_name, last_synced_at, sync_error")
+    .eq("client_id", clientId);
+
+  return plataformas.map((platform) => {
+    const linha = (data ?? []).find((i) => i.platform === platform);
+    return {
+      platform,
+      connected: Boolean(linha),
+      externalAccountId: (linha?.external_account_id as string) ?? null,
+      displayName: (linha?.display_name as string) ?? null,
+      lastSyncedAt: (linha?.last_synced_at as string) ?? null,
+      syncError: (linha?.sync_error as string) ?? null,
+    };
+  });
+}

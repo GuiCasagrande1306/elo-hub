@@ -247,3 +247,59 @@ export async function updateClientSettings(input: {
   revalidatePath("/relatorios");
   return { ok: true };
 }
+
+/**
+ * Define a conta de anúncios de uma integração já autorizada.
+ *
+ * O OAuth grava o token antes de saber QUAL conta usar — a pessoa
+ * autoriza o Facebook dela, que pode ter várias contas de anúncio.
+ * Este passo fecha o vínculo.
+ */
+export async function setAdAccountId(input: {
+  clientId: string;
+  platform: "meta_ads" | "google_ads";
+  externalAccountId: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const valor = input.externalAccountId.trim();
+
+  if (!valor) {
+    return { ok: false, error: "Informe o ID da conta." };
+  }
+
+  /* Meta usa `act_<numero>`; Google usa 10 dígitos com ou sem hífen.
+     Validar aqui evita uma sincronização que falha só no dia seguinte,
+     quando o cron rodar e ninguém estiver olhando. */
+  const formatoOk =
+    input.platform === "meta_ads"
+      ? /^act_\d{6,}$/.test(valor)
+      : /^\d{3}-?\d{3}-?\d{4}$/.test(valor);
+
+  if (!formatoOk) {
+    return {
+      ok: false,
+      error:
+        input.platform === "meta_ads"
+          ? 'A conta do Meta tem o formato "act_123456789".'
+          : 'O Customer ID do Google tem 10 dígitos, como "123-456-7890".',
+    };
+  }
+
+  if (isDemoMode) return { ok: true };
+
+  const supabase = await createSupabaseServerClient();
+
+  const { error } = await supabase
+    .from("client_integrations")
+    .update({
+      external_account_id:
+        input.platform === "google_ads" ? valor.replace(/-/g, "") : valor,
+      sync_error: null,
+    })
+    .eq("client_id", input.clientId)
+    .eq("platform", input.platform);
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/clientes");
+  return { ok: true };
+}

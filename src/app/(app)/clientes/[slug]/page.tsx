@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { ClientDashboard } from "@/components/dashboard/ClientDashboard";
 import {
   getClientBySlug,
+  getClientIntegrations,
   getCreatives,
   getMetricsWithComparison,
   lastNDays,
@@ -58,9 +59,10 @@ export default async function ClientPage({
   const days = PRESETS.includes(parsed) ? parsed : 30;
   const { start, end } = lastNDays(days);
 
-  const [metrics, creatives] = await Promise.all([
+  const [metrics, creatives, integrations] = await Promise.all([
     getMetricsWithComparison(client.id, start, end),
     getCreatives(client.id, 6),
+    getClientIntegrations(client.id),
   ]);
 
   const kpis = HERO_METRICS.map((key) =>
@@ -86,6 +88,7 @@ export default async function ClientPage({
       creatives={creatives}
       period={{ start, end, days }}
       presets={PRESETS}
+      integrations={integrations}
     />
   );
 }

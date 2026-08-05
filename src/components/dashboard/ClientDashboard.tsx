@@ -9,11 +9,13 @@ import { TrendChart } from "./trend-chart";
 import { PlatformSplitList } from "./platform-split";
 import { AdGallery } from "./ad-gallery";
 import { ClientSettingsCard } from "@/components/clients/client-settings-card";
+import { IntegrationsCard } from "@/components/clients/integrations-card";
 import { Button } from "@/components/ui/button";
 import { useRealtimeRefresh } from "@/hooks/use-realtime";
 import { cn } from "@/lib/utils";
 import { formatPeriod } from "@/lib/format";
 import type { KpiResult, PlatformSplit, TrendPoint } from "@/lib/metrics/kpi";
+import type { IntegrationStatus } from "@/lib/data";
 import type { AdCreative, Client } from "@/types/database";
 
 /* =====================================================================
@@ -48,6 +50,7 @@ export interface ClientDashboardProps {
   period: { start: string; end: string; days: number };
   /** Dias disponíveis no seletor. */
   presets?: number[];
+  integrations: IntegrationStatus[];
 }
 
 export function ClientDashboard({
@@ -59,6 +62,7 @@ export function ClientDashboard({
   creatives,
   period,
   presets = [7, 30, 90],
+  integrations,
 }: ClientDashboardProps) {
   // Qualquer sync de métricas ou anúncio revalida esta página para todos
   // os usuários conectados que têm acesso a esta conta.
@@ -199,7 +203,14 @@ export function ClientDashboard({
           <AdGallery creatives={creatives} />
         </section>
 
-        {/* Ajustes por último: é configuração, não leitura do período. */}
+        {/* Configuração por último: é ajuste, não leitura do período.
+            Integrações antes dos ajustes porque sem conta de mídia
+            vinculada não há número nenhum para relatar. */}
+        <IntegrationsCard
+          clientId={client.id}
+          clientSlug={client.slug}
+          integrations={integrations}
+        />
         <ClientSettingsCard client={client} />
       </div>
     </div>
