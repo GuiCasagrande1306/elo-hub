@@ -6,6 +6,7 @@ import { Check, ExternalLink, Loader2, TriangleAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { MetaAccountPicker } from "./meta-account-picker";
 import {
   Select,
   SelectContent,
@@ -220,14 +221,31 @@ function LinhaIntegracao({
           <div className="flex flex-wrap items-end gap-2">
             <div className="min-w-[180px] flex-1">
               <label className="text-2xs text-muted-foreground">
-                ID da conta ({meta.exemplo})
+                {status.platform === "meta_ads"
+                  ? "Conta de anúncios"
+                  : `ID da conta (${meta.exemplo})`}
               </label>
-              <Input
-                value={conta}
-                onChange={(e) => setConta(e.target.value)}
-                placeholder={meta.exemplo}
-                className="mt-1 font-mono text-xs"
-              />
+
+              {/* Só o Meta tem listagem: a Graph API devolve as contas
+                  do token. No Google o Customer ID vem da conta de
+                  gerência e não há rota equivalente — segue digitado. */}
+              {status.platform === "meta_ads" ? (
+                <div className="mt-1">
+                  <MetaAccountPicker
+                    clientId={clientId}
+                    value={conta}
+                    onChange={setConta}
+                    disabled={salvando}
+                  />
+                </div>
+              ) : (
+                <Input
+                  value={conta}
+                  onChange={(e) => setConta(e.target.value)}
+                  placeholder={meta.exemplo}
+                  className="mt-1 font-mono text-xs"
+                />
+              )}
             </div>
             <Button size="sm" onClick={salvarConta} disabled={salvando}>
               {salvando ? (
@@ -238,9 +256,11 @@ function LinhaIntegracao({
               Vincular
             </Button>
           </div>
-          <p className="mt-1.5 text-2xs text-muted-foreground">
-            Encontre em: {meta.onde}
-          </p>
+          {status.platform !== "meta_ads" && (
+            <p className="mt-1.5 text-2xs text-muted-foreground">
+              Encontre em: {meta.onde}
+            </p>
+          )}
 
           {/* O alerta de saldo só se aplica a conta pré-paga: em
               pós-paga não há crédito a esgotar, e o `balance` da Meta
