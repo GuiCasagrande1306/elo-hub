@@ -45,17 +45,23 @@ import type {
 /* Clientes                                                            */
 /* ------------------------------------------------------------------ */
 
-export async function getClients(): Promise<Client[]> {
+export async function getClients(agency?: string): Promise<Client[]> {
   if (isDemoMode) {
     const { demoClients } = await import("@/lib/mock/data");
-    return demoClients;
+    return agency
+      ? demoClients.filter((c) => c.agency_partner === agency)
+      : demoClients;
   }
 
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from("clients")
-    .select("*")
-    .order("name");
+  let query = supabase.from("clients").select("*").order("name");
+
+  /* Filtro no BANCO, não em memória: os totais do topo somam sobre esta
+     mesma lista, então filtrar depois faria os cards mostrarem uma
+     carteira e o resumo somar outra. */
+  if (agency) query = query.eq("agency_partner", agency);
+
+  const { data, error } = await query;
 
   if (error) throw error;
   return (data ?? []) as Client[];
@@ -250,11 +256,12 @@ export interface ClientWithGoal {
  */
 export async function getClientsWithGoals(
   month?: string,
+  agency?: string,
 ): Promise<ClientWithGoal[]> {
   const periodo = month ? intervaloDoMes(month) : null;
 
   const [clients, goals] = await Promise.all([
-    getClients(),
+    getClients(agency),
     periodo ? getGoalsForMonth(periodo.start) : getCurrentGoals(),
   ]);
 

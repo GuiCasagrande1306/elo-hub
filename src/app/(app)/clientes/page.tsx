@@ -5,6 +5,7 @@ import { ClientsDirectory } from "@/components/clients/clients-directory";
 import { NewClientSheet } from "@/components/clients/new-client-sheet";
 import { getClientsWithGoals } from "@/lib/data";
 import { mesCorrenteBR, nomeDoMes } from "@/lib/date-br";
+import { AGENCY_PARTNERS } from "@/lib/validation/client";
 import { formatCurrency, formatNumber } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Clientes" };
@@ -25,9 +26,9 @@ export const metadata: Metadata = { title: "Clientes" };
 export default async function ClientsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string }>;
+  searchParams: Promise<{ month?: string; agency?: string }>;
 }) {
-  const { month } = await searchParams;
+  const { month, agency } = await searchParams;
 
   /* Entrada do usuário: só aceitamos "YYYY-MM" plausível. Um mês
      inválido cai no corrente em vez de virar erro — filtro quebrado não
@@ -36,7 +37,19 @@ export default async function ClientsPage({
   const mesAtual = mesCorrenteBR().referencia;
   const mes = mesValido ?? mesAtual;
 
-  const rows = await getClientsWithGoals(mes === mesAtual ? undefined : mes);
+  /* Só valores conhecidos chegam à query. Um `agency` arbitrário da
+     URL não causaria dano — a RLS já limita o que é visível —, mas
+     devolveria lista vazia com cara de carteira sem clientes. */
+  const agenciaValida = AGENCY_PARTNERS.includes(
+    agency as (typeof AGENCY_PARTNERS)[number],
+  )
+    ? agency
+    : undefined;
+
+  const rows = await getClientsWithGoals(
+    mes === mesAtual ? undefined : mes,
+    agenciaValida,
+  );
 
   // Totais da carteira: o número que o dono da agência olha primeiro.
   const totals = rows.reduce(
@@ -94,7 +107,7 @@ export default async function ClientsPage({
       )}
 
       <div className="mt-7">
-        <ClientsDirectory rows={rows} month={mes} />
+        <ClientsDirectory rows={rows} month={mes} agency={agenciaValida ?? ""} />
       </div>
     </PageContainer>
   );

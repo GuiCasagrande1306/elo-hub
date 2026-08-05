@@ -70,6 +70,7 @@ export async function createClientAction(
       status: values.status,
       logo_url: null,
       brand_primary: brandColorFromName(values.name),
+      agency_partner: values.agencyPartner,
       brand_secondary: null,
       brand_font: null,
       website: values.website ?? null,
@@ -137,6 +138,21 @@ export async function createClientAction(
   }
 
   const client = data as Client;
+
+  /* A RPC não conhece `agency_partner` — a coluna nasceu depois, com
+     default 'Elo Marketing'. Ajustar aqui em vez de recriar a função
+     evita mexer numa transação que já grava cliente, meta e integração
+     juntos. Só escreve quando difere do default: terceirização é a
+     minoria da carteira.
+
+     Falhar aqui não desfaz o cadastro — o cliente existe e cai na
+     agência padrão, que é corrigível na tela de ajustes. */
+  if (values.agencyPartner !== "Elo Marketing") {
+    await supabase
+      .from("clients")
+      .update({ agency_partner: values.agencyPartner })
+      .eq("id", client.id);
+  }
 
   // A listagem também recebe o evento de Realtime (`clients` está na
   // publicação), mas revalidar garante o dado novo mesmo se o socket

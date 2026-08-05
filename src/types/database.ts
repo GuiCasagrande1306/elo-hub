@@ -62,6 +62,8 @@ export interface Client {
   status: ClientStatus;
   logo_url: string | null;
   brand_primary: string | null;
+  /** Agência que detém o contrato. "Elo Marketing" = conta própria. */
+  agency_partner: string;
   brand_secondary: string | null;
   brand_font: string | null;
   website: string | null;

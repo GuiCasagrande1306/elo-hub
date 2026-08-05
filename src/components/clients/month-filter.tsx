@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ultimosMeses } from "@/lib/date-br";
+import { buildClientsUrl } from "./filter-url";
 
 /* =====================================================================
    Mês da carteira
@@ -24,7 +25,14 @@ import { ultimosMeses } from "@/lib/date-br";
    fechamento de julho" vira um link, não uma instrução.
    ===================================================================== */
 
-export function MonthFilter({ value }: { value: string }) {
+export function MonthFilter({
+  value,
+  agency,
+}: {
+  value: string;
+  /** Preservada na troca de mês — ver `filter-url.ts`. */
+  agency: string;
+}) {
   const router = useRouter();
   const [carregando, startTransition] = useTransition();
 
@@ -37,9 +45,14 @@ export function MonthFilter({ value }: { value: string }) {
     startTransition(() => {
       // `scroll: false`: trocar de mês não é navegar para outra tela, e
       // ser jogado para o topo perde a linha que a pessoa estava lendo.
-      router.push(novo === meses[0].value ? "/clientes" : `/clientes?month=${novo}`, {
-        scroll: false,
-      });
+      router.push(
+        buildClientsUrl({
+          month: novo,
+          agency,
+          currentMonth: meses[0].value,
+        }),
+        { scroll: false },
+      );
     });
   }
 

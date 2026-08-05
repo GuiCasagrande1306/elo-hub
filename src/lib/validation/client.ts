@@ -23,6 +23,17 @@ import { brandColorFromName } from "@/lib/brand-color";
    para centavos acontece em `toClientPayload`, explícita e testável.
    ===================================================================== */
 
+/* Lista fixa aqui e não no banco: parceria nova é decisão comercial, e
+   um enum no Postgres pediria migração a cada acordo. */
+export const AGENCY_PARTNERS = [
+  "Elo Marketing",
+  "Brava Hills",
+  "Bagano",
+  "Ampla Marketing",
+] as const;
+
+export type AgencyPartner = (typeof AGENCY_PARTNERS)[number];
+
 export const CLIENT_SEGMENTS = [
   "ecommerce",
   "delivery",
@@ -103,6 +114,9 @@ export const newClientSchema = z.object({
     .max(120, "Máximo de 120 caracteres."),
 
   segment: z.enum(CLIENT_SEGMENTS, { message: "Selecione o nicho." }),
+  agencyPartner: z.enum(AGENCY_PARTNERS, {
+    message: "Selecione a agência.",
+  }),
   status: z.enum(CREATABLE_STATUSES, { message: "Selecione o status." }),
 
   /* Dia da rotina de otimização. Vazio é legítimo — conta em onboarding
@@ -161,6 +175,7 @@ export type NewClientValues = z.infer<typeof newClientSchema>;
 export const newClientDefaults: NewClientValues = {
   name: "",
   segment: "ecommerce",
+  agencyPartner: "Elo Marketing",
   status: "onboarding",
   optimizationDay: "",
   contactName: "",

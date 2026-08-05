@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { createClientAction, setClientLogo } from "@/app/(app)/clientes/actions";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
+  AGENCY_PARTNERS,
   CLIENT_SEGMENTS,
   CREATABLE_STATUSES,
   SEGMENT_LABELS,
@@ -320,6 +321,44 @@ export function NewClientSheet() {
                         </Select>
                         <FormDescription>
                           Define o template de relatório padrão.
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="agencyPartner"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Agência parceira *</FormLabel>
+                        <Select
+                          value={field.value}
+                          onValueChange={(value) =>
+                            field.onChange(value ?? "Elo Marketing")
+                          }
+                        >
+                          <FormControl
+                            render={
+                              <SelectTrigger className="w-full">
+                                <SelectValue>
+                                  {(value: string) => value || "Selecione"}
+                                </SelectValue>
+                              </SelectTrigger>
+                            }
+                          />
+                          <SelectContent>
+                            {AGENCY_PARTNERS.map((a) => (
+                              <SelectItem key={a} value={a}>
+                                {a}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormDescription>
+                          Quem detém o contrato. Terceirização entra com o
+                          nome da parceira.
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
