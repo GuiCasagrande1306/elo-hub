@@ -74,6 +74,8 @@ export interface Client {
   /** Dia do mês (1-28) do envio automático; null quando não agendado. */
   report_day: number | null;
   report_enabled: boolean;
+  /** Dia útil da rotina: 1=segunda … 5=sexta. NULL = sem rotina. */
+  optimization_day: number | null;
   created_at: string;
 }
 
@@ -89,6 +91,19 @@ export interface ClientFinancials {
   client_id: string;
   monthly_fee_cents: number;
   tax_id: string | null;
+}
+
+/** Uma rodada da esteira de otimização. */
+export interface OptimizationEntry {
+  id: string;
+  client_id: string;
+  collaborator_id: string | null;
+  notes: string;
+  report_sent: boolean;
+  goal_projection: number | null;
+  created_at: string;
+  /** Resolvido na leitura, para a lista mostrar quem fez. */
+  collaborator?: Pick<Profile, "id" | "full_name"> | null;
 }
 
 /** Briefing estratégico. Alimenta o contexto dos insights do relatório. */

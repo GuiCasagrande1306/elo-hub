@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { WhatsAppDestinationPicker } from "./whatsapp-destination-picker";
+import { OPTIMIZATION_DAYS } from "@/lib/validation/client";
 import {
   Select,
   SelectContent,
@@ -236,6 +237,41 @@ export function NewClientSheet() {
                         </Select>
                         <FormDescription>
                           Define o template de relatório padrão.
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="optimizationDay"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Dia de otimização</FormLabel>
+                        <Select
+                          value={field.value}
+                          onValueChange={field.onChange}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue>
+                              {(v: string) =>
+                                OPTIMIZATION_DAYS.find((d) => d.value === v)
+                                  ?.label ?? "Sem rotina"
+                              }
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="">Sem rotina</SelectItem>
+                            {OPTIMIZATION_DAYS.map((d) => (
+                              <SelectItem key={d.value} value={d.value}>
+                                {d.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormDescription>
+                          Dia da semana em que esta conta entra na esteira.
                         </FormDescription>
                         <FormMessage />
                       </FormItem>

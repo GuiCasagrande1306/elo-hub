@@ -103,6 +103,15 @@ export const newClientSchema = z.object({
   segment: z.enum(CLIENT_SEGMENTS, { message: "Selecione o nicho." }),
   status: z.enum(CREATABLE_STATUSES, { message: "Selecione o status." }),
 
+  /* Dia da rotina de otimização. Vazio é legítimo — conta em onboarding
+     ou projeto pontual não entra na esteira semanal.
+
+     Fica como STRING, sem `.transform`: este schema mantém entrada e
+     saída idênticas (ver nota em `NewClientValues`), e transformar aqui
+     faria o formulário passar string enquanto o tipo prometeria número.
+     A conversão acontece em `toClientPayload`. */
+  optimizationDay: z.union([z.literal(""), z.enum(["1", "2", "3", "4", "5"])]),
+
   contactName: optionalText(120, "Contato"),
 
   // União com string vazia em vez de `.optional()`: mantém o tipo como
@@ -159,6 +168,7 @@ export const newClientDefaults: NewClientValues = {
   name: "",
   segment: "ecommerce",
   status: "onboarding",
+  optimizationDay: "",
   contactName: "",
   contactEmail: "",
   whatsappPhone: "",
@@ -250,3 +260,21 @@ export const clientSettingsSchema = z
   });
 
 export type ClientSettingsValues = z.infer<typeof clientSettingsSchema>;
+
+/** Dias úteis da esteira. Fim de semana fica fora: otimização é
+    trabalho de dia útil, e uma coluna que ninguém atende é ruído. */
+export const OPTIMIZATION_DAYS = [
+  { value: "1", label: "Segunda-feira" },
+  { value: "2", label: "Terça-feira" },
+  { value: "3", label: "Quarta-feira" },
+  { value: "4", label: "Quinta-feira" },
+  { value: "5", label: "Sexta-feira" },
+] as const;
+
+export const WEEKDAY_LABELS: Record<number, string> = {
+  1: "Segunda-feira",
+  2: "Terça-feira",
+  3: "Quarta-feira",
+  4: "Quinta-feira",
+  5: "Sexta-feira",
+};

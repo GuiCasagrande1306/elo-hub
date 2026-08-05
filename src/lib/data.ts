@@ -11,6 +11,7 @@ import type {
   DailyMetric,
   FinancialTransaction,
   MonthlySummary,
+  OptimizationEntry,
   Profile,
   ReportHistory,
   ReportTemplate,
@@ -745,4 +746,135 @@ export async function getAgencyDashboard(): Promise<AgencyDashboard> {
     urgent,
     atRisk: ativos.filter((c) => criticos.includes(c.id)),
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* Esteira de otimizações                                              */
+/* ------------------------------------------------------------------ */
+
+export interface PipelineClient {
+  client: Client;
+  /** Última rodada registrada, se houver. */
+  last: OptimizationEntry | null;
+  /** Já foi otimizado nesta semana? */
+  doneThisWeek: boolean;
+  doneToday: boolean;
+}
+
+export interface OptimizationPipeline {
+  clients: PipelineClient[];
+  /** Dia útil de hoje (1-5), ou null no fim de semana. */
+  todayWeekday: number | null;
+  counts: {
+    comRotina: number;
+    hoje: number;
+    feitosHoje: number;
+    atrasados: number;
+  };
+}
+
+/** Segunda desta semana, em ISO. A semana da esteira começa na segunda. */
+function segundaDaSemanaISO(hoje = new Date()): string {
+  const d = new Date(hoje);
+  // getDay(): 0=domingo. Domingo recua 6 dias, não 1.
+  const diff = d.getDay() === 0 ? 6 : d.getDay() - 1;
+  d.setDate(d.getDate() - diff);
+  return d.toISOString().slice(0, 10);
+}
+
+export async function getOptimizationPipeline(): Promise<OptimizationPipeline> {
+  const hoje = new Date();
+  const hojeISO = hoje.toISOString().slice(0, 10);
+  const inicioSemana = segundaDaSemanaISO(hoje);
+
+  // 0=domingo e 6=sábado não são dia de esteira.
+  const diaSemana = hoje.getDay();
+  const todayWeekday = diaSemana >= 1 && diaSemana <= 5 ? diaSemana : null;
+
+  const clients = (await getClients()).filter(
+    (c) => c.optimization_day !== null && c.status === "active",
+  );
+
+  const historico = await getOptimizationHistorySince(inicioSemana);
+
+  const pipeline: PipelineClient[] = clients.map((client) => {
+    const doCliente = historico.filter((h) => h.client_id === client.id);
+    const last = doCliente[0] ?? null;
+
+    return {
+      client,
+      last,
+      doneThisWeek: doCliente.length > 0,
+      doneToday: doCliente.some(
+        (h) => h.created_at.slice(0, 10) === hojeISO,
+      ),
+    };
+  });
+
+  /* "Atrasado" é conta cujo dia JÁ PASSOU nesta semana e que ninguém
+     tocou. Contas de dias futuros não são atraso — são agenda —, e
+     contá-las transformaria o número num alarme permanente. */
+  const atrasados = todayWeekday
+    ? pipeline.filter(
+        (p) =>
+          (p.client.optimization_day ?? 0) < todayWeekday && !p.doneThisWeek,
+      ).length
+    : 0;
+
+  return {
+    clients: pipeline,
+    todayWeekday,
+    counts: {
+      comRotina: pipeline.length,
+      hoje: pipeline.filter((p) => p.client.optimization_day === todayWeekday)
+        .length,
+      feitosHoje: pipeline.filter((p) => p.doneToday).length,
+      atrasados,
+    },
+  };
+}
+
+/** Rodadas registradas a partir de uma data, mais recentes primeiro. */
+async function getOptimizationHistorySince(
+  desdeISO: string,
+): Promise<OptimizationEntry[]> {
+  if (isDemoMode) {
+    const { demoOptimizations } = await import("@/lib/mock/data");
+    return demoOptimizations
+      .filter((h) => h.created_at.slice(0, 10) >= desdeISO)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data } = await supabase
+    .from("optimization_history")
+    .select("*, collaborator:profiles(id, full_name)")
+    .gte("created_at", `${desdeISO}T00:00:00Z`)
+    .order("created_at", { ascending: false });
+
+  return (data ?? []) as unknown as OptimizationEntry[];
+}
+
+/** Histórico completo de uma conta, para a gaveta. */
+export async function getClientOptimizations(
+  clientId: string,
+  limit = 20,
+): Promise<OptimizationEntry[]> {
+  if (isDemoMode) {
+    const { demoOptimizations } = await import("@/lib/mock/data");
+    return demoOptimizations
+      .filter((h) => h.client_id === clientId)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))
+      .slice(0, limit);
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data } = await supabase
+    .from("optimization_history")
+    .select("*, collaborator:profiles(id, full_name)")
+    .eq("client_id", clientId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  return (data ?? []) as unknown as OptimizationEntry[];
 }

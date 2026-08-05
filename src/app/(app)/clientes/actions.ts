@@ -80,6 +80,9 @@ export async function createClientAction(
       // que talvez ainda nem exista.
       report_day: null,
       report_enabled: false,
+      optimization_day: values.optimizationDay
+        ? Number(values.optimizationDay)
+        : null,
       owner_id: "u-admin",
       created_at: new Date().toISOString(),
     });

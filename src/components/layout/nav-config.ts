@@ -4,6 +4,7 @@ import {
   FileText,
   Landmark,
   LayoutGrid,
+  Repeat,
   Settings,
   TriangleAlert,
   Users,
@@ -33,6 +34,7 @@ export const primaryNav: NavItem[] = [
   { href: "/performance", label: "Performance", icon: BarChart3 },
   // Não é adminOnly: quem gerencia a conta precisa ver antes de o
   // anúncio cair, e saldo de mídia não é dado financeiro da agência.
+  { href: "/esteira", label: "Esteira", icon: Repeat, matchPrefix: true },
   { href: "/alertas-saldo", label: "Alertas de saldo", icon: TriangleAlert },
 ];
 

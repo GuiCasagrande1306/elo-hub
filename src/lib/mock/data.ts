@@ -20,6 +20,7 @@ import type {
   Profile,
   Project,
   ReportHistory,
+  OptimizationEntry,
   ReportTemplate,
   TaskWithRelations,
 } from "@/types/database";
@@ -141,6 +142,7 @@ export const demoClients: Client[] = [
     contract_start: daysAgo(300),
     report_day: 5,
     report_enabled: true,
+    optimization_day: 1,
     owner_id: "u-admin",
     created_at: daysAgo(300),
   },
@@ -172,6 +174,7 @@ export const demoClients: Client[] = [
     contract_start: daysAgo(210),
     report_day: 12,
     report_enabled: true,
+    optimization_day: 3,
     owner_id: "u-marina",
     created_at: daysAgo(210),
   },
@@ -203,6 +206,7 @@ export const demoClients: Client[] = [
     contract_start: daysAgo(120),
     report_day: null,
     report_enabled: false,
+    optimization_day: 3,
     owner_id: "u-admin",
     created_at: daysAgo(120),
   },
@@ -230,6 +234,7 @@ export const demoClients: Client[] = [
     contract_start: daysAgo(25),
     report_day: null,
     report_enabled: false,
+    optimization_day: 5,
     owner_id: "u-marina",
     created_at: daysAgo(25),
   },
@@ -1058,5 +1063,52 @@ export const demoReports: ReportHistory[] = [
     delivered_at: null,
     generated_by: "u-marina",
     created_at: daysAhead(-1),
+  },
+];
+
+/* ------------------------------------------------------------------ */
+/* Esteira de otimizações                                              */
+/* ------------------------------------------------------------------ */
+
+/** Horário fixo do dia, para a data não depender da hora do render. */
+function naData(diasAtras: number, hora = "09:52"): string {
+  const d = new Date(TODAY);
+  d.setDate(d.getDate() - diasAtras);
+  return `${d.toISOString().slice(0, 10)}T${hora}:00.000Z`;
+}
+
+export const demoOptimizations: OptimizationEntry[] = [
+  {
+    id: "op-1",
+    client_id: "c-verdi",
+    collaborator_id: "u-marina",
+    notes:
+      "Pausei os 2 criativos com CPA acima de R$ 120 e subi verba do Kit Rotina em 15%. Ajustei o lance do PMax para maximizar conversões com CPA alvo.",
+    report_sent: true,
+    goal_projection: 104.5,
+    created_at: naData(1),
+    collaborator: { id: "u-marina", full_name: "Marina Duarte" },
+  },
+  {
+    id: "op-2",
+    client_id: "c-verdi",
+    collaborator_id: "u-marina",
+    notes:
+      "Semana anterior: troquei o público de lookalike de 3% para 1% e refiz o remarketing por tempo de sessão.",
+    report_sent: true,
+    goal_projection: 92,
+    created_at: naData(8),
+    collaborator: { id: "u-marina", full_name: "Marina Duarte" },
+  },
+  {
+    id: "op-3",
+    client_id: "c-nord",
+    collaborator_id: "u-admin",
+    notes:
+      "Revisão de orçamento das campanhas de Search antes da abertura de carrinho. Subi o teto diário em 30%.",
+    report_sent: false,
+    goal_projection: 78,
+    created_at: naData(0, "08:15"),
+    collaborator: { id: "u-admin", full_name: "Guilherme Casagrande" },
   },
 ];
