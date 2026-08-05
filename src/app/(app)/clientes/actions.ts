@@ -545,3 +545,61 @@ export async function setConversionAction(input: {
   revalidatePath("/clientes");
   return { ok: true };
 }
+
+/**
+ * Registra o saldo disponível lido no painel da plataforma.
+ *
+ * A Graph API não entrega a carteira — `balance` é o acumulado a pagar,
+ * que sobe conforme veicula. Medido no Nuur: API devolveu R$ 23,34
+ * enquanto o painel mostrava R$ 341,77.
+ *
+ * Guarda o valor E o dia da leitura. O gasto posterior é descontado de
+ * `daily_metrics`, então o saldo continua correto sem ninguém reanotar:
+ * só a âncora é manual.
+ */
+export async function setAccountFunds(input: {
+  clientId: string;
+  platform: "meta_ads" | "google_ads";
+  /** Texto do formulário: "341,77". Vazio limpa o registro. */
+  funds: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const bruto = input.funds.trim();
+
+  if (bruto === "") {
+    if (isDemoMode) return { ok: true };
+    const supabase = await createSupabaseServerClient();
+    const { error } = await supabase
+      .from("client_integrations")
+      .update({ funds_cents: null, funds_recorded_at: null })
+      .eq("client_id", input.clientId)
+      .eq("platform", input.platform);
+    if (error) return { ok: false, error: error.message };
+    revalidatePath("/alertas-saldo");
+    return { ok: true };
+  }
+
+  const cents = parseCurrencyToCents(bruto);
+  if (cents === null || cents < 0) {
+    return { ok: false, error: "Valor inválido. Use algo como 341,77." };
+  }
+
+  if (isDemoMode) return { ok: true };
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase
+    .from("client_integrations")
+    .update({
+      funds_cents: cents,
+      // Data de HOJE em São Paulo: o gasto do próprio dia já estava
+      // refletido no número que a pessoa acabou de ler no painel.
+      funds_recorded_at: dataNoBrasil(),
+    })
+    .eq("client_id", input.clientId)
+    .eq("platform", input.platform);
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/alertas-saldo");
+  revalidatePath("/clientes");
+  return { ok: true };
+}

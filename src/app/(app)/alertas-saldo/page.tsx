@@ -45,25 +45,24 @@ export default async function BalanceAlertsPage() {
     <PageContainer>
       <PageHeader
         title="⚠️ Alertas de saldo"
-        description="Contas pré-pagas, gasto diário real e o valor acumulado a pagar. O saldo disponível ainda precisa ser conferido no painel da Meta."
+        description={`Saldo disponível e quanto ele dura no ritmo da última semana. Alerta abaixo de ${DIAS_DE_ALERTA} dias.`}
       />
 
       {/* O aviso vem ANTES dos cards porque muda como o número deve ser
           lido — depois deles já é tarde. */}
       <div className="mt-6 rounded-xl border border-hairline bg-surface-2/60 p-4">
-        <p className="text-sm font-medium">
-          A Meta não entrega o saldo disponível
-        </p>
+        <p className="text-sm font-medium">Como o saldo é calculado</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          O gasto médio é <strong>real</strong>. O valor ao lado é o{" "}
-          <strong>acumulado a pagar</strong> — sobe conforme veicula e zera
-          quando a Meta cobra. Não é quanto resta de verba.
+          Saldo informado na recarga <strong>menos</strong> o gasto desde
+          então. O desconto vem da sincronização diária, então o número se
+          mantém sozinho — só a recarga precisa ser anotada.
         </p>
         <p className="mt-2 text-2xs text-muted-foreground">
-          Medido na conta do Nuur: a API devolveu R$ 23,34 enquanto o painel
-          mostrava R$ 341,77 de fundos. A carteira não existe em nenhum campo
-          da Graph API. Por isso <strong>não há projeção de dias</strong> —
-          calculá-la a partir do acumulado inverteria o alerta.
+          A Graph API não expõe a carteira: seu campo <code>balance</code> é o
+          acumulado a pagar, que SOBE conforme veicula. Medido no Nuur, ele
+          devolvia R$ 23,34 enquanto o painel mostrava R$ 341,77 — usá-lo
+          inverteria o alerta. Por isso a recarga é informada à mão, em
+          Contas de mídia na página do cliente.
         </p>
         <p className="mt-2 text-2xs text-muted-foreground">
           Só entram aqui as contas marcadas como pré-pagas na página do
@@ -138,7 +137,9 @@ function AlertCard({ alert }: { alert: BalanceAlert }) {
           </div>
 
           <Badge variant={urgente ? "destructive" : "outline"}>
-            {saudavel
+            {!alert.fundsKnown
+              ? "Sem saldo"
+              : saudavel
               ? (alert.daysLeft === null ? "Sem ritmo" : `${alert.daysLeft}d`)
               : zerado
                 ? "Zerado"
@@ -161,7 +162,9 @@ function AlertCard({ alert }: { alert: BalanceAlert }) {
           ) : (
             <TriangleAlert className="size-4 shrink-0" />
           )}
-          {saudavel
+          {!alert.fundsKnown
+            ? "Informe o saldo em Contas de mídia para acompanhar"
+            : saudavel
             ? alert.daysLeft === null
               ? "Sem gasto recente — não dá para projetar"
               : estimativa
@@ -172,9 +175,9 @@ function AlertCard({ alert }: { alert: BalanceAlert }) {
 
         <dl className="mt-4 flex flex-col gap-2 border-t border-hairline pt-3 text-xs">
           <div className="flex items-center justify-between">
-            <dt className="text-muted-foreground">Acumulado a pagar</dt>
+            <dt className="text-muted-foreground">Saldo disponível</dt>
             <dd className="font-medium tabular-nums">
-              {formatCurrency(alert.balanceCents)}
+              {alert.fundsKnown ? formatCurrency(alert.balanceCents) : "—"}
             </dd>
           </div>
           {/* A fonte fica ao lado do saldo de propósito: em conta paga

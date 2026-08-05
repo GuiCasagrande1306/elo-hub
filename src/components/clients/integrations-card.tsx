@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import {
   setAdAccountId,
+  setAccountFunds,
   setBillingType,
   setConversionAction,
 } from "@/app/(app)/clientes/actions";
@@ -112,6 +113,28 @@ function LinhaIntegracao({
   const [conta, setConta] = useState(pendente ? "" : (status.externalAccountId ?? ""));
   const [prePaga, setPrePaga] = useState(status.billingType === "prepaid");
   const [conversao, setConversao] = useState(status.conversionActionType ?? PADRAO);
+  const [fundos, setFundos] = useState(
+    status.fundsCents !== null
+      ? (status.fundsCents / 100).toFixed(2).replace(".", ",")
+      : "",
+  );
+
+  function salvarFundos() {
+    startTransition(async () => {
+      const r = await setAccountFunds({
+        clientId,
+        platform: status.platform,
+        funds: fundos,
+      });
+      if (r.ok) {
+        toast.success(
+          fundos.trim() ? "Saldo registrado." : "Registro de saldo limpo.",
+        );
+      } else {
+        toast.error(r.error);
+      }
+    });
+  }
   const [salvando, startTransition] = useTransition();
 
   /* O que o sync usará HOJE — com a escolha explícita ou sem ela. Mostrar
@@ -295,6 +318,41 @@ function LinhaIntegracao({
             </span>
           </label>
 
+          {/* Só aparece em conta pré-paga: em pós-paga não há carteira
+              a esgotar, e o campo só confundiria. */}
+          {prePaga && (
+            <div className="mt-3 border-t border-hairline pt-3">
+              <label className="text-2xs text-muted-foreground">
+                Saldo disponível hoje (do painel da plataforma)
+              </label>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <Input
+                  value={fundos}
+                  onChange={(e) => setFundos(e.target.value)}
+                  placeholder="341,77"
+                  inputMode="decimal"
+                  className="max-w-[140px] tabular-nums"
+                />
+                <Button size="sm" variant="outline" onClick={salvarFundos} disabled={salvando}>
+                  {salvando ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <Check className="size-3.5" />
+                  )}
+                  Registrar
+                </Button>
+              </div>
+              <p className="mt-1.5 text-2xs text-muted-foreground">
+                A Meta não expõe a carteira pela API. Informe o valor ao
+                recarregar — o gasto diário é descontado sozinho a partir
+                daí, então não precisa reanotar todo dia.
+                {status.fundsRecordedAt && (
+                  <> Última leitura: {formatarData(status.fundsRecordedAt)}.</>
+                )}
+              </p>
+            </div>
+          )}
+
           {/* Só Meta: no Google a conversão é definida na própria conta,
               e o provider lê o que vier de lá. */}
           {status.platform === "meta_ads" && (
@@ -348,4 +406,10 @@ function LinhaIntegracao({
       )}
     </div>
   );
+}
+
+/** "05/08/2026" a partir de uma data YYYY-MM-DD. */
+function formatarData(iso: string): string {
+  const [a, m, d] = iso.split("-");
+  return `${d}/${m}/${a}`;
 }

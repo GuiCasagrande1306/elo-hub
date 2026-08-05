@@ -50,10 +50,17 @@ export interface BalanceAlert {
   balanceSource: BalanceSource;
   /** "VISA *1346" — deixa julgar se `balance` é crédito ou dívida. */
   fundingLabel: string | null;
+  /** Alguém já informou o saldo? Distingue "R$ 0" de "não sei". */
+  fundsKnown: boolean;
+  /** Data da última leitura informada. */
+  fundsRecordedAt: string | null;
+  /** `balance` da Meta: acumulado a pagar. Informativo, não é saldo. */
+  accruedCents: number | null;
 }
 
 export async function getBalanceAlerts(): Promise<BalanceAlert[]> {
-  const { clients, gastoPorConta, prePagas, saldos } = await carregar();
+  const { clients, gastoPorConta, prePagas, saldos, fundos, gastoDesdeRecarga } =
+    await carregar();
 
   const alertas: BalanceAlert[] = [];
 
@@ -68,25 +75,38 @@ export async function getBalanceAlerts(): Promise<BalanceAlert[]> {
          lista — aparece sem projeção, que é honesto. Sumir faria
          parecer que ninguém está monitorando. */
       const saldo = platform === "meta_ads" ? saldos.get(client.id) : undefined;
-      /* `balance` é o acumulado A PAGAR, não o disponível — ver
-         `meta-balance.ts`. Não serve para projetar quanto tempo a
-         verba dura, então a projeção fica desligada até haver origem
-         confiável para a carteira. */
-      const balanceCents = saldo?.balanceCents ?? 0;
+      /* Disponível = o que foi informado na recarga MENOS o gasto
+         desde então. Só a âncora é manual; o desconto vem de
+         `daily_metrics`, que sincroniza todo dia.
+
+         `balance` da Graph API não entra nesta conta: ele é o acumulado
+         A PAGAR e sobe conforme veicula — usá-lo inverteria o alerta.
+         Fica exposto à parte, como informação. */
+      const informado = fundos.get(`${client.id}:${platform}`);
+      const gastoPos = gastoDesdeRecarga.get(`${client.id}:${platform}`) ?? 0;
+      // Não deixa negativo: saldo estourado é zero, não dívida.
+      const balanceCents = informado
+        ? Math.max(0, informado.cents - gastoPos)
+        : 0;
 
       /* Sem gasto não há ritmo, e sem ritmo não há projeção. Dividir por
          zero daria Infinity e a conta apareceria como "0 dias" — alarme
          falso justamente para quem está pausado. */
-      // Sempre null: não temos o saldo disponível, só o acumulado.
-      const daysLeft: number | null = null;
+      /* Sem saldo informado não há projeção — e a conta aparece
+         pedindo o número, em vez de sumir ou fingir um alerta. */
+      const daysLeft =
+        informado && dailySpendCents > 0
+          ? Math.floor(balanceCents / dailySpendCents)
+          : null;
 
       /* TODA conta pré-paga entra na lista, em risco ou não.
          Antes só as em risco apareciam, e uma conta recém-marcada como
          pré-paga com saldo folgado simplesmente não existia na tela —
          indistinguível de "esqueci de configurar". A severidade
          diferencia; a ausência, não. */
-      const zerado = false;
-      const emRisco = false;
+      const zerado = Boolean(informado) && balanceCents === 0;
+      const emRisco =
+        zerado || (daysLeft !== null && daysLeft <= DIAS_DE_ALERTA);
 
       alertas.push({
         clientId: client.id,
@@ -104,6 +124,10 @@ export async function getBalanceAlerts(): Promise<BalanceAlert[]> {
               ? "critico"
               : "atencao",
         fundingLabel: saldo?.fundingLabel ?? null,
+        /** Sem isto a tela não sabe distinguir "R$ 0" de "não informado". */
+        fundsKnown: Boolean(informado),
+        fundsRecordedAt: informado?.desde ?? null,
+        accruedCents: saldo?.balanceCents ?? null,
         balanceSource: "mock",
       });
     }
@@ -122,6 +146,10 @@ async function carregar(): Promise<{
   prePagas: Set<string>;
   /** Saldo real do Meta, por `client_id`. Ausente = não obtido. */
   saldos: Map<string, ContaSaldo>;
+  /** Saldo informado à mão, por `clientId:platform`. */
+  fundos: Map<string, { cents: number; desde: string }>;
+  /** Gasto acumulado desde a data da recarga. */
+  gastoDesdeRecarga: Map<string, number>;
 }> {
   const desde = new Date();
   desde.setDate(desde.getDate() - JANELA_DIAS);
@@ -166,7 +194,14 @@ async function carregar(): Promise<{
       }),
     );
 
-    return { clients: demoClients, gastoPorConta: mapa, prePagas, saldos };
+    return {
+      clients: demoClients,
+      gastoPorConta: mapa,
+      prePagas,
+      saldos,
+      fundos: new Map(),
+      gastoDesdeRecarga: new Map(),
+    };
   }
 
   /* Leitura sob RLS. Desde que a carteira virou legível por toda a
@@ -184,7 +219,7 @@ async function carregar(): Promise<{
         .gte("metric_date", desdeISO),
       supabase
         .from("client_integrations")
-        .select("client_id, platform")
+        .select("client_id, platform, funds_cents, funds_recorded_at")
         .eq("billing_type", "prepaid")
         .eq("is_active", true),
     ]);
@@ -192,6 +227,45 @@ async function carregar(): Promise<{
   const prePagas = new Set(
     (integracoes ?? []).map((i) => `${i.client_id}:${i.platform}`),
   );
+
+  /* Saldo informado + a data de leitura, por conta. O desconto do gasto
+     posterior é feito adiante, com `daily_metrics` — só a âncora é
+     manual, o resto se atualiza sozinho. */
+  const fundos = new Map<string, { cents: number; desde: string }>();
+  for (const i of integracoes ?? []) {
+    if (i.funds_cents === null || !i.funds_recorded_at) continue;
+    fundos.set(`${i.client_id}:${i.platform}`, {
+      cents: Number(i.funds_cents),
+      desde: i.funds_recorded_at as string,
+    });
+  }
+
+  /* Gasto por conta DESDE cada recarga. Consulta separada da janela de
+     7 dias porque a recarga pode ser bem mais antiga — reaproveitar
+     aquela subtrairia só a última semana e inflaria o saldo. */
+  const gastoDesdeRecarga = new Map<string, number>();
+  if (fundos.size > 0) {
+    const maisAntiga = [...fundos.values()]
+      .map((f) => f.desde)
+      .sort()[0];
+
+    const { data: desdeRecarga } = await supabase
+      .from("daily_metrics")
+      .select("client_id, platform, spend_cents, metric_date")
+      .gt("metric_date", maisAntiga);
+
+    for (const m of desdeRecarga ?? []) {
+      const chave = `${m.client_id}:${m.platform}`;
+      const f = fundos.get(chave);
+      // `>` e não `>=`: o gasto do dia da recarga já estava refletido no
+      // número que a pessoa leu no painel.
+      if (!f || (m.metric_date as string) <= f.desde) continue;
+      gastoDesdeRecarga.set(
+        chave,
+        (gastoDesdeRecarga.get(chave) ?? 0) + (m.spend_cents as number),
+      );
+    }
+  }
 
   const mapa = new Map<string, number>();
   for (const m of metrics ?? []) {
@@ -204,5 +278,7 @@ async function carregar(): Promise<{
     gastoPorConta: mapa,
     prePagas,
     saldos: await fetchPrepaidBalances(),
+    fundos,
+    gastoDesdeRecarga,
   };
 }

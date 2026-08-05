@@ -547,6 +547,9 @@ export interface IntegrationStatus {
   billingType: "prepaid" | "postpaid";
   /** Evento do pixel que conta como conversão. null = padrão do segmento. */
   conversionActionType: string | null;
+  /** Saldo informado no painel, em centavos. null = nunca informado. */
+  fundsCents: number | null;
+  fundsRecordedAt: string | null;
 }
 
 /**
@@ -572,6 +575,8 @@ export async function getClientIntegrations(
       syncError: null,
       billingType: "postpaid" as const,
       conversionActionType: null,
+      fundsCents: null,
+      fundsRecordedAt: null,
     }));
   }
 
@@ -579,7 +584,7 @@ export async function getClientIntegrations(
   const { data } = await supabase
     .from("client_integrations")
     .select(
-      "platform, external_account_id, display_name, last_synced_at, sync_error, billing_type, conversion_action_type",
+      "platform, external_account_id, display_name, last_synced_at, sync_error, billing_type, conversion_action_type, funds_cents, funds_recorded_at",
     )
     .eq("client_id", clientId);
 
@@ -596,6 +601,8 @@ export async function getClientIntegrations(
         (linha?.billing_type as "prepaid" | "postpaid") ?? "postpaid",
       conversionActionType:
         (linha?.conversion_action_type as string) ?? null,
+      fundsCents: (linha?.funds_cents as number) ?? null,
+      fundsRecordedAt: (linha?.funds_recorded_at as string) ?? null,
     };
   });
 }
