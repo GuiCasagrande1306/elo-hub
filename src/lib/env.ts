@@ -63,6 +63,10 @@ export const serverEnv = {
   metaAppId: process.env.META_APP_ID ?? "",
   metaAppSecret: process.env.META_APP_SECRET ?? "",
   metaApiVersion: process.env.META_API_VERSION ?? "v21.0",
+  /* Preenchido só quando o app usa "Login do Facebook para empresas",
+     onde as permissões vêm de uma configuração salva no painel em vez
+     da lista de `scope`. Vazio = fluxo clássico. */
+  metaLoginConfigId: process.env.META_LOGIN_CONFIG_ID ?? "",
 
   // Google Ads API
   googleAdsDeveloperToken: process.env.GOOGLE_ADS_DEVELOPER_TOKEN ?? "",

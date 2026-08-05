@@ -56,9 +56,23 @@ export async function GET(request: NextRequest) {
   );
   url.searchParams.set("client_id", serverEnv.metaAppId);
   url.searchParams.set("redirect_uri", redirectUri("meta"));
-  url.searchParams.set("scope", SCOPES.join(","));
   url.searchParams.set("response_type", "code");
   url.searchParams.set("state", state);
+
+  /* Dois produtos de login, dois formatos de pedido:
+     • "Login do Facebook" clássico  → lista de `scope`
+     • "Login do Facebook para empresas" → `config_id` de uma
+       configuração salva, onde as permissões já estão declaradas
+
+     Mandar `scope` para o segundo faz a Meta abrir o diálogo sem
+     permissão nenhuma, e o erro só aparece depois — na primeira chamada
+     de insights, como "permissão ausente". Por isso a escolha é
+     explícita: se houver config_id no ambiente, ele manda. */
+  if (serverEnv.metaLoginConfigId) {
+    url.searchParams.set("config_id", serverEnv.metaLoginConfigId);
+  } else {
+    url.searchParams.set("scope", SCOPES.join(","));
+  }
 
   return NextResponse.redirect(url.toString());
 }
