@@ -8,10 +8,15 @@ import type { MetadataRoute } from "next";
  * `<link rel="manifest">` entra no <head> sozinho e não há um segundo
  * lugar para o nome do app divergir.
  *
- * `theme_color` é o mesmo `--background` do tema escuro (#1a1a18). Ele
+ * `theme_color` é o mesmo `--background` do tema escuro (#0d1826). Ele
  * pinta a barra de status no Android e a barra de título quando o app
  * roda instalado — usar a cor de destaque aqui criaria uma faixa verde
  * que não existe em lugar nenhum da interface.
+ *
+ * Os ícones vêm da marca oficial (traçada do site, mesmas cores). O
+ * `maskable` é um arquivo À PARTE, com a marca a 72%: o Android recorta
+ * um círculo de ~80% do quadrado, e reaproveitar o ícone normal cortaria
+ * as pontas das formas.
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
