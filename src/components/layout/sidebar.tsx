@@ -2,10 +2,20 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
+import { useState } from "react";
 import { motion } from "motion/react";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, ChevronsUpDown, LogOut, Settings } from "lucide-react";
 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { UserProfileDialog } from "./user-profile-dialog";
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { initials } from "@/lib/format";
 import { isNavActive, primaryNav, secondaryNav } from "./nav-config";
@@ -28,6 +38,17 @@ interface SidebarProps {
  */
 export function Sidebar({ user, clients, onNavigate }: SidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [perfilAberto, setPerfilAberto] = useState(false);
+
+  async function sair() {
+    const supabase = getSupabaseBrowserClient();
+    // `signOut` limpa o cookie de sessão; `refresh` é o que faz o
+    // proxy reavaliar e mandar para /login sem depender do cache.
+    if (supabase) await supabase.auth.signOut();
+    router.replace("/login");
+    router.refresh();
+  }
   const visibleSecondary = secondaryNav.filter(
     (item) => !item.adminOnly || user.role === "admin",
   );
@@ -183,25 +204,60 @@ export function Sidebar({ user, clients, onNavigate }: SidebarProps) {
 
       {/* Usuário ---------------------------------------------------- */}
       <div className="shrink-0 border-t border-sidebar-border p-3">
-        <div className="flex items-center gap-2.5 rounded-lg px-2 py-1.5">
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-surface-2 text-[11px] font-semibold ring-1 ring-hairline">
-            {initials(user.full_name)}
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-[13px] font-medium leading-tight">
-              {user.full_name}
-            </p>
-            <p className="truncate text-2xs leading-tight text-muted-foreground">
-              {user.role === "admin" ? "Administrador" : user.job_title || "Colaborador"}
-            </p>
-          </div>
-          {user.role === "admin" && (
-            <span className="rounded-full bg-signal-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-signal">
-              Admin
-            </span>
-          )}
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <button
+                type="button"
+                className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-surface-2"
+              >
+                <span className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-surface-2 text-[11px] font-semibold ring-1 ring-hairline">
+                  {user.avatar_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- URL do Storage é externa e variável; next/image exigiria allowlist.
+                    <img src={user.avatar_url} alt="" className="size-full object-cover" />
+                  ) : (
+                    initials(user.full_name)
+                  )}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px] font-medium leading-tight">
+                    {user.full_name}
+                  </p>
+                  <p className="truncate text-2xs leading-tight text-muted-foreground">
+                    {user.role === "admin"
+                      ? "Administrador"
+                      : user.job_title || "Colaborador"}
+                  </p>
+                </div>
+                <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />
+              </button>
+            }
+          />
+
+          <DropdownMenuContent align="start" className="w-[220px]">
+            <DropdownMenuItem onClick={() => setPerfilAberto(true)}>
+              <Settings className="size-3.5" />
+              Configurações de conta
+            </DropdownMenuItem>
+
+            <DropdownMenuSeparator />
+
+            <DropdownMenuItem
+              onClick={sair}
+              className="text-destructive data-[highlighted]:text-destructive"
+            >
+              <LogOut className="size-3.5" />
+              Sair da conta
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
+
+      <UserProfileDialog
+        user={user}
+        open={perfilAberto}
+        onOpenChange={setPerfilAberto}
+      />
     </div>
   );
 }
