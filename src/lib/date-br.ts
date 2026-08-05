@@ -86,3 +86,51 @@ export function segundaDestaSemana(quando: Date = new Date()): string {
 export function inicioDoDiaBR(dataISO: string): string {
   return `${dataISO}T00:00:00-03:00`;
 }
+
+/**
+ * Primeiro e último dia do mês corrente, no fuso de São Paulo.
+ *
+ * `new Date(y, m, 1)` seguido de `toISOString()` — o que o código fazia
+ * — mistura duas coisas: constrói no fuso do servidor e formata em UTC.
+ * Na Vercel, às 22h de 31 de agosto isso devolve setembro, e a meta do
+ * mês seria gravada no mês errado por três horas todo fim de mês.
+ */
+export function mesCorrenteBR(quando: Date = new Date()): {
+  /** "2026-08" — a chave do mês de referência. */
+  referencia: string;
+  start: string;
+  end: string;
+} {
+  const hoje = dataNoBrasil(quando);
+  const [ano, mes] = hoje.split("-").map(Number);
+
+  const start = `${hoje.slice(0, 7)}-01`;
+  /* Dia 0 do mês SEGUINTE é o último dia deste. Construído em UTC ao
+     meio-dia para nenhum deslocamento de fuso empurrar a data. */
+  const ultimo = new Date(Date.UTC(ano, mes, 0, 12));
+  const end = ultimo.toISOString().slice(0, 10);
+
+  return { referencia: hoje.slice(0, 7), start, end };
+}
+
+/** "agosto de 2026" — para texto de interface. */
+export function nomeDoMes(referencia: string): string {
+  const [ano, mes] = referencia.split("-").map(Number);
+  return new Intl.DateTimeFormat("pt-BR", {
+    month: "long",
+    year: "numeric",
+    timeZone: FUSO,
+  }).format(new Date(Date.UTC(ano, mes - 1, 15, 12)));
+}
+
+/** "ago/26" — rótulo curto, para eixo de gráfico. */
+export function mesCurto(referencia: string): string {
+  const [ano, mes] = referencia.split("-").map(Number);
+  const nome = new Intl.DateTimeFormat("pt-BR", {
+    month: "short",
+    timeZone: FUSO,
+  })
+    .format(new Date(Date.UTC(ano, mes - 1, 15, 12)))
+    .replace(".", "");
+  return `${nome}/${String(ano).slice(2)}`;
+}

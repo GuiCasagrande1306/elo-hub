@@ -5,6 +5,7 @@ import type { ZodError } from "zod";
 
 import { isDemoMode } from "@/lib/env";
 import { brandColorFromName } from "@/lib/brand-color";
+import { dataNoBrasil, mesCorrenteBR } from "@/lib/date-br";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   CLIENT_SEGMENTS,
@@ -397,10 +398,10 @@ export async function setClientGoal(input: {
     return { ok: false, error: "Informe a meta de resultados." };
   }
 
-  const agora = new Date();
-  const iso = (d: Date) => d.toISOString().slice(0, 10);
-  const inicio = iso(new Date(agora.getFullYear(), agora.getMonth(), 1));
-  const fim = iso(new Date(agora.getFullYear(), agora.getMonth() + 1, 0));
+  /* Mês no fuso de São Paulo. `new Date(y, m, 1)` + `toISOString()`
+     constrói no fuso do servidor e formata em UTC: na Vercel, às 22h de
+     31 de agosto isso grava a meta em setembro. */
+  const { start: inicio, end: fim } = mesCorrenteBR();
 
   if (isDemoMode) {
     const { demoGoals } = await import("@/lib/mock/data");
@@ -422,7 +423,7 @@ export async function setClientGoal(input: {
         executed_results_override: null,
         override_reason: null,
         notes: null,
-        created_at: iso(agora),
+        created_at: dataNoBrasil(),
       });
     }
     revalidatePath("/clientes");

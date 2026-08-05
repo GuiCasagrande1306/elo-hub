@@ -15,7 +15,13 @@ import { useRealtimeRefresh } from "@/hooks/use-realtime";
 import { cn } from "@/lib/utils";
 import { formatPeriod } from "@/lib/format";
 import type { KpiResult, PlatformSplit, TrendPoint } from "@/lib/metrics/kpi";
-import type { IntegrationStatus } from "@/lib/data";
+import type {
+  GoalHistoryEntry,
+  IntegrationStatus,
+  MonthlyGoalStatus,
+} from "@/lib/data";
+import { GoalHistory } from "@/components/clients/goal-history";
+import { MonthlyGoalAlert } from "@/components/clients/monthly-goal-alert";
 import type { AdCreative, Client } from "@/types/database";
 
 /* =====================================================================
@@ -52,6 +58,9 @@ export interface ClientDashboardProps {
   presets?: number[];
   integrations: IntegrationStatus[];
   goal: { plannedBudgetCents: number; plannedResults: number } | null;
+  /** Meta do mês corrente e se ela ainda precisa ser preenchida. */
+  goalStatus: MonthlyGoalStatus;
+  goalHistory: GoalHistoryEntry[];
 }
 
 export function ClientDashboard({
@@ -65,6 +74,8 @@ export function ClientDashboard({
   presets = [7, 30, 90],
   integrations,
   goal,
+  goalStatus,
+  goalHistory,
 }: ClientDashboardProps) {
   // Qualquer sync de métricas ou anúncio revalida esta página para todos
   // os usuários conectados que têm acesso a esta conta.
@@ -142,6 +153,16 @@ export function ClientDashboard({
             </div>
           </div>
 
+          {/* Pendência ANTES dos KPIs: os números abaixo são lidos
+              contra a meta, e ver "0% da meta" sem saber que o campo
+              está vazio faz o mês parecer ruim em vez de não medido. */}
+          {goalStatus.needsGoal && (
+            <MonthlyGoalAlert
+              clientId={client.id}
+              referenceMonth={goalStatus.referenceMonth}
+            />
+          )}
+
           {/* ---------------- CARDS DE KPI ----------------
               Grid de 3 no desktop; no mobile viram uma coluna, com o
               Investimento em destaque. Ordem fixa: Investimento →
@@ -208,6 +229,8 @@ export function ClientDashboard({
         {/* Configuração por último: é ajuste, não leitura do período.
             Integrações antes dos ajustes porque sem conta de mídia
             vinculada não há número nenhum para relatar. */}
+        <GoalHistory entries={goalHistory} />
+
         <div id="ajustes" className="scroll-mt-20" />
         <IntegrationsCard
           clientId={client.id}

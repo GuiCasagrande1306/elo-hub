@@ -8,6 +8,7 @@ import {
   dataNoBrasil,
   diaDaSemanaNoBrasil,
   inicioDoDiaBR,
+  mesCorrenteBR,
   segundaDestaSemana,
 } from "@/lib/date-br";
 import type {
@@ -884,4 +885,117 @@ export async function getClientOptimizations(
     .limit(limit);
 
   return (data ?? []) as unknown as OptimizationEntry[];
+}
+
+/* ------------------------------------------------------------------ */
+/* Metas mensais                                                       */
+/* ------------------------------------------------------------------ */
+
+export interface MonthlyGoalStatus {
+  /** "2026-08" */
+  referenceMonth: string;
+  goal: ClientGoal | null;
+  /**
+   * Precisa ser definida.
+   *
+   * NÃO é só "a linha não existe". `create_client_with_setup` grava uma
+   * meta zerada quando o cadastro é preenchido sem orçamento — os dois
+   * clientes em produção estão assim. Uma verificação por existência
+   * diria que a meta está definida e o alerta nunca apareceria.
+   */
+  needsGoal: boolean;
+}
+
+/** Meta do mês corrente e se ela ainda precisa ser preenchida. */
+export async function getMonthlyGoalStatus(
+  clientId: string,
+): Promise<MonthlyGoalStatus> {
+  const { referencia, start } = mesCorrenteBR();
+
+  const goal = await (async (): Promise<ClientGoal | null> => {
+    if (isDemoMode) {
+      const { demoGoals } = await import("@/lib/mock/data");
+      return (
+        demoGoals.find(
+          (g) => g.client_id === clientId && g.period_start === start,
+        ) ?? null
+      );
+    }
+
+    const supabase = await createSupabaseServerClient();
+    const { data } = await supabase
+      .from("client_goals")
+      .select("*")
+      .eq("client_id", clientId)
+      .eq("period_start", start)
+      .maybeSingle();
+
+    return (data as ClientGoal) ?? null;
+  })();
+
+  const zerada =
+    !goal ||
+    (goal.planned_budget_cents === 0 && Number(goal.planned_results) === 0);
+
+  return { referenceMonth: referencia, goal, needsGoal: zerada };
+}
+
+export interface GoalHistoryEntry {
+  /** "2026-07" */
+  month: string;
+  plannedBudgetCents: number;
+  plannedResults: number;
+  executedSpendCents: number;
+  executedResults: number;
+}
+
+/**
+ * Meta contra realizado, mês a mês.
+ *
+ * O realizado é SOMADO de `daily_metrics`, não lido de uma coluna. É a
+ * mesma decisão do card: número guardado envelhece calado quando a
+ * plataforma reatribui conversão retroativamente, e aí o histórico
+ * passa a contar uma história que os dados não sustentam.
+ */
+export async function getGoalHistory(
+  clientId: string,
+  limite = 12,
+): Promise<GoalHistoryEntry[]> {
+  const goals = await (async (): Promise<ClientGoal[]> => {
+    if (isDemoMode) {
+      const { demoGoals } = await import("@/lib/mock/data");
+      return demoGoals.filter((g) => g.client_id === clientId);
+    }
+
+    const supabase = await createSupabaseServerClient();
+    const { data } = await supabase
+      .from("client_goals")
+      .select("*")
+      .eq("client_id", clientId)
+      .order("period_start", { ascending: false })
+      .limit(limite);
+
+    return (data ?? []) as ClientGoal[];
+  })();
+
+  return Promise.all(
+    goals.map(async (g) => {
+      const rows = await getMetrics(clientId, g.period_start, g.period_end);
+      const totals = sumMetrics(rows);
+
+      return {
+        month: g.period_start.slice(0, 7),
+        plannedBudgetCents: g.planned_budget_cents,
+        plannedResults: Number(g.planned_results),
+        /* Override existe para corrigir um mês em que a plataforma
+           mentiu. `??` e não `||`: zero é um valor legítimo, e tratá-lo
+           como ausente foi o bug que fazia toda conta parecer crítica. */
+        executedSpendCents:
+          g.executed_budget_cents_override ?? totals.spendCents,
+        executedResults: Number(
+          g.executed_results_override ?? totals.conversions,
+        ),
+      };
+    }),
+  );
 }

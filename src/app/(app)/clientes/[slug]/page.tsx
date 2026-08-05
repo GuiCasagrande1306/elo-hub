@@ -5,6 +5,8 @@ import { ClientDashboard } from "@/components/dashboard/ClientDashboard";
 import {
   getClientBySlug,
   getClientIntegrations,
+  getGoalHistory,
+  getMonthlyGoalStatus,
   getCreatives,
   getCurrentGoals,
   getMetricsWithComparison,
@@ -60,12 +62,15 @@ export default async function ClientPage({
   const days = PRESETS.includes(parsed) ? parsed : 30;
   const { start, end } = lastNDays(days);
 
-  const [metrics, creatives, integrations, goals] = await Promise.all([
-    getMetricsWithComparison(client.id, start, end),
-    getCreatives(client.id, 6),
-    getClientIntegrations(client.id),
-    getCurrentGoals(),
-  ]);
+  const [metrics, creatives, integrations, goals, goalStatus, goalHistory] =
+    await Promise.all([
+      getMetricsWithComparison(client.id, start, end),
+      getCreatives(client.id, 6),
+      getClientIntegrations(client.id),
+      getCurrentGoals(),
+      getMonthlyGoalStatus(client.id),
+      getGoalHistory(client.id, 12),
+    ]);
 
   const metaAtual = goals.get(client.id) ?? null;
 
@@ -93,6 +98,8 @@ export default async function ClientPage({
       period={{ start, end, days }}
       presets={PRESETS}
       integrations={integrations}
+      goalStatus={goalStatus}
+      goalHistory={goalHistory}
       goal={
         metaAtual
           ? {
