@@ -6,6 +6,7 @@ import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import { Radio, Search, SlidersHorizontal } from "lucide-react";
 
 import { ClientCard } from "./client-card";
+import { MonthFilter } from "./month-filter";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -71,7 +72,14 @@ const STATUS_LABELS: Record<Client["status"], string> = {
   churned: "Encerrado",
 };
 
-export function ClientsDirectory({ rows }: { rows: DirectoryRow[] }) {
+export function ClientsDirectory({
+  rows,
+  month,
+}: {
+  rows: DirectoryRow[];
+  /** Mês exibido, "YYYY-MM". Vem da URL, resolvido no servidor. */
+  month: string;
+}) {
   const router = useRouter();
 
   const [query, setQuery] = useState("");
@@ -191,6 +199,10 @@ export function ClientsDirectory({ rows }: { rows: DirectoryRow[] }) {
             aria-label="Buscar cliente"
           />
         </div>
+
+        {/* Mês primeiro: ele muda de onde os NÚMEROS vêm, enquanto
+            status e nicho só escondem linhas da mesma carteira. */}
+        <MonthFilter value={month} />
 
         <Select
           value={statusFilter}

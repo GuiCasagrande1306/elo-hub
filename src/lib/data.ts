@@ -8,6 +8,7 @@ import {
   dataNoBrasil,
   diaDaSemanaNoBrasil,
   inicioDoDiaBR,
+  intervaloDoMes,
   mesCorrenteBR,
   segundaDestaSemana,
 } from "@/lib/date-br";
@@ -188,6 +189,28 @@ export async function getCurrentGoals(): Promise<Map<string, ClientGoal>> {
   return new Map((data ?? []).map((g) => [g.client_id, g as ClientGoal]));
 }
 
+/** Metas cujo período começa num mês específico, indexadas por cliente. */
+async function getGoalsForMonth(
+  monthStart: string,
+): Promise<Map<string, ClientGoal>> {
+  if (isDemoMode) {
+    const { demoGoals } = await import("@/lib/mock/data");
+    return new Map(
+      demoGoals
+        .filter((g) => g.period_start === monthStart)
+        .map((g) => [g.client_id, g]),
+    );
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data } = await supabase
+    .from("client_goals")
+    .select("*")
+    .eq("period_start", monthStart);
+
+  return new Map((data ?? []).map((g) => [g.client_id, g as ClientGoal]));
+}
+
 /**
  * Clientes + meta vigente + o que já foi executado no período da meta.
  *
@@ -214,16 +237,36 @@ export interface ClientWithGoal {
   progress: ReturnType<typeof buildGoalProgress>;
 }
 
-export async function getClientsWithGoals(): Promise<ClientWithGoal[]> {
-  const [clients, goals] = await Promise.all([getClients(), getCurrentGoals()]);
+/**
+ * Carteira com meta e executado.
+ *
+ * `month` ("2026-07") fixa o período em vez de usar a meta vigente hoje.
+ * Sem ele o comportamento é o de sempre: meta que cobre a data corrente.
+ *
+ * A janela de métrica passa a ser SEMPRE a do mês pedido, mesmo quando
+ * não há meta cadastrada — foi isso que permitiu o mês passado aparecer
+ * com investimento e resultados reais e o rótulo de meta vazio, em vez
+ * de um card mudo.
+ */
+export async function getClientsWithGoals(
+  month?: string,
+): Promise<ClientWithGoal[]> {
+  const periodo = month ? intervaloDoMes(month) : null;
+
+  const [clients, goals] = await Promise.all([
+    getClients(),
+    periodo ? getGoalsForMonth(periodo.start) : getCurrentGoals(),
+  ]);
 
   return Promise.all(
     clients.map(async (client) => {
       const goal = goals.get(client.id) ?? null;
 
-      // Sem meta, mostramos o mês corrente só para a conta não ficar muda.
-      const start = goal?.period_start ?? monthStartISO();
-      const end = goal?.period_end ?? todayISO();
+      /* Com mês escolhido, a janela é o mês — não o período da meta.
+         Do contrário, um mês sem meta cairia no mês corrente e o card
+         mostraria número de agosto sob o rótulo de julho. */
+      const start = periodo?.start ?? goal?.period_start ?? monthStartISO();
+      const end = periodo?.end ?? goal?.period_end ?? todayISO();
 
       const rows = await getMetrics(client.id, start, end);
       const totals = sumMetrics(rows);

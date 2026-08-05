@@ -4,6 +4,7 @@ import { PageContainer, PageHeader } from "@/components/layout/page-header";
 import { ClientsDirectory } from "@/components/clients/clients-directory";
 import { NewClientSheet } from "@/components/clients/new-client-sheet";
 import { getClientsWithGoals } from "@/lib/data";
+import { mesCorrenteBR, nomeDoMes } from "@/lib/date-br";
 import { formatCurrency, formatNumber } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Clientes" };
@@ -21,8 +22,21 @@ export const metadata: Metadata = { title: "Clientes" };
  * `app/(app)/clientes/page.tsx` — criar um `/clients` paralelo
  * duplicaria a tela e quebraria os links já existentes na sidebar.
  */
-export default async function ClientsPage() {
-  const rows = await getClientsWithGoals();
+export default async function ClientsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ month?: string }>;
+}) {
+  const { month } = await searchParams;
+
+  /* Entrada do usuário: só aceitamos "YYYY-MM" plausível. Um mês
+     inválido cai no corrente em vez de virar erro — filtro quebrado não
+     pode derrubar a listagem inteira. */
+  const mesValido = month && /^\d{4}-(0[1-9]|1[0-2])$/.test(month) ? month : null;
+  const mesAtual = mesCorrenteBR().referencia;
+  const mes = mesValido ?? mesAtual;
+
+  const rows = await getClientsWithGoals(mes === mesAtual ? undefined : mes);
 
   // Totais da carteira: o número que o dono da agência olha primeiro.
   const totals = rows.reduce(
@@ -40,9 +54,12 @@ export default async function ClientsPage() {
       <PageHeader
         title="Clientes"
         description={
+          /* Nomear o mês importa mais quando NÃO é o corrente: sem
+             isso, olhar julho e ler "ciclo atual" faz o número parecer
+             de agosto. */
           totals.withGoal > 0
-            ? `${totals.withGoal} de ${rows.length} contas com meta definida no ciclo atual.`
-            : "Defina as metas do ciclo para acompanhar planejado versus executado."
+            ? `${totals.withGoal} de ${rows.length} contas com meta definida em ${nomeDoMes(mes)}.`
+            : `Nenhuma conta com meta definida em ${nomeDoMes(mes)}.`
         }
         // O botão vive DENTRO do Sheet (é o `SheetTrigger`), então o
         // estado de abertura não precisa subir para esta página, que é
@@ -77,7 +94,7 @@ export default async function ClientsPage() {
       )}
 
       <div className="mt-7">
-        <ClientsDirectory rows={rows} />
+        <ClientsDirectory rows={rows} month={mes} />
       </div>
     </PageContainer>
   );

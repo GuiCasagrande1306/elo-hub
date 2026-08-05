@@ -134,3 +134,30 @@ export function mesCurto(referencia: string): string {
     .replace(".", "");
   return `${nome}/${String(ano).slice(2)}`;
 }
+
+/** Primeiro e último dia de um mês "YYYY-MM". */
+export function intervaloDoMes(referencia: string): {
+  start: string;
+  end: string;
+} {
+  const [ano, mes] = referencia.split("-").map(Number);
+  const ultimo = new Date(Date.UTC(ano, mes, 0, 12));
+  return { start: `${referencia}-01`, end: ultimo.toISOString().slice(0, 10) };
+}
+
+/**
+ * Últimos N meses, do mais recente para o mais antigo.
+ *
+ * Gerado a partir de HOJE no fuso de São Paulo — não de uma lista fixa,
+ * que envelheceria calada na virada do ano.
+ */
+export function ultimosMeses(quantidade = 12, quando: Date = new Date()) {
+  const hoje = dataNoBrasil(quando);
+  const [ano, mes] = hoje.split("-").map(Number);
+
+  return Array.from({ length: quantidade }, (_, i) => {
+    const d = new Date(Date.UTC(ano, mes - 1 - i, 15, 12));
+    const ref = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+    return { value: ref, label: mesCurto(ref), atual: i === 0 };
+  });
+}
