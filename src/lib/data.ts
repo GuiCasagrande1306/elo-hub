@@ -480,6 +480,8 @@ export interface IntegrationStatus {
   displayName: string | null;
   lastSyncedAt: string | null;
   syncError: string | null;
+  /** Só 'prepaid' entra no alerta de saldo. */
+  billingType: "prepaid" | "postpaid";
 }
 
 /**
@@ -503,13 +505,16 @@ export async function getClientIntegrations(
       displayName: null,
       lastSyncedAt: null,
       syncError: null,
+      billingType: "postpaid" as const,
     }));
   }
 
   const supabase = await createSupabaseServerClient();
   const { data } = await supabase
     .from("client_integrations")
-    .select("platform, external_account_id, display_name, last_synced_at, sync_error")
+    .select(
+      "platform, external_account_id, display_name, last_synced_at, sync_error, billing_type",
+    )
     .eq("client_id", clientId);
 
   return plataformas.map((platform) => {
@@ -521,6 +526,8 @@ export async function getClientIntegrations(
       displayName: (linha?.display_name as string) ?? null,
       lastSyncedAt: (linha?.last_synced_at as string) ?? null,
       syncError: (linha?.sync_error as string) ?? null,
+      billingType:
+        (linha?.billing_type as "prepaid" | "postpaid") ?? "postpaid",
     };
   });
 }

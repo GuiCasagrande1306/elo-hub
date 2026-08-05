@@ -45,7 +45,7 @@ export default async function BalanceAlertsPage() {
     <PageContainer>
       <PageHeader
         title="⚠️ Alertas de saldo"
-        description={`Contas com verba para ${DIAS_DE_ALERTA} dias ou menos, no ritmo de gasto da última semana.`}
+        description={`Contas pré-pagas com verba para ${DIAS_DE_ALERTA} dias ou menos, no ritmo de gasto da última semana.`}
       />
 
       {/* O aviso vem ANTES dos cards, não num rodapé: alguém precisa
@@ -59,8 +59,8 @@ export default async function BalanceAlertsPage() {
           de faturamento. Não use esta tela para decidir recarga ainda.
         </p>
         <p className="mt-2 text-2xs text-muted-foreground">
-          Vale lembrar: saldo só existe em conta pré-paga. Em conta pós-paga
-          não há crédito a esgotar — o alerta não se aplica.
+          Só entram aqui as contas marcadas como pré-pagas na página do
+          cliente. Conta pós-paga não tem crédito a esgotar e fica de fora.
         </p>
       </div>
 
@@ -69,7 +69,11 @@ export default async function BalanceAlertsPage() {
           <CheckCircle2 className="mx-auto size-8 text-positive" />
           <p className="mt-3 text-sm font-medium">Nenhuma conta em risco</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Todas as contas ativas têm folga para mais de {DIAS_DE_ALERTA} dias.
+            As contas pré-pagas têm folga para mais de {DIAS_DE_ALERTA} dias.
+          </p>
+          <p className="mt-2 text-2xs text-muted-foreground">
+            Se você esperava ver alguma conta aqui, confirme que ela está
+            marcada como pré-paga na página do cliente.
           </p>
         </div>
       ) : (

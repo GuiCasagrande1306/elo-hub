@@ -303,3 +303,33 @@ export async function setAdAccountId(input: {
   revalidatePath("/clientes");
   return { ok: true };
 }
+
+/**
+ * Marca a conta como pré-paga ou pós-paga.
+ *
+ * Só conta pré-paga entra no alerta de saldo. O padrão do banco é
+ * `postpaid`, então conta nova nasce fora do alerta — errar para o lado
+ * do silêncio é melhor que para o do alarme falso, que treina a equipe
+ * a ignorar a tela.
+ */
+export async function setBillingType(input: {
+  clientId: string;
+  platform: "meta_ads" | "google_ads";
+  billingType: "prepaid" | "postpaid";
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (isDemoMode) return { ok: true };
+
+  const supabase = await createSupabaseServerClient();
+
+  const { error } = await supabase
+    .from("client_integrations")
+    .update({ billing_type: input.billingType })
+    .eq("client_id", input.clientId)
+    .eq("platform", input.platform);
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/clientes");
+  revalidatePath("/alertas-saldo");
+  return { ok: true };
+}

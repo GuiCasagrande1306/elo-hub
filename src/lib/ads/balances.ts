@@ -11,14 +11,15 @@ import type { AdPlatform, Client } from "@/types/database";
    silencioso, e o prejuízo (anúncio fora do ar) só aparece no resultado
    do mês. Este módulo estima quantos dias faltam.
 
-   ⚠️ "SALDO" SÓ EXISTE EM CONTA PRÉ-PAGA. Na Meta e no Google, contas
-   pós-pagas — a maioria no Brasil — não têm crédito restante: elas
-   acumulam gasto e faturam depois. Nelas o campo `balance` significa
-   dívida em aberto, não folga. Ler um pelo outro inverteria o alerta.
+   SÓ CONTA PRÉ-PAGA ENTRA AQUI. Em conta pós-paga o gasto é faturado
+   depois e o campo `balance` da Meta significa dívida acumulada — o
+   oposto de folga. O filtro é por `client_integrations.billing_type`,
+   marcado no cadastro da conta: confiar em quem lembra de conferir
+   produziria um alerta invertido, que parece certo.
 
-   Por isso `balanceSource` acompanha cada linha: enquanto for "mock", a
-   tela precisa dizer isso, sob pena de a equipe confiar num número
-   inventado para decidir recarga.
+   `balanceSource` acompanha cada linha: enquanto for "mock", a tela
+   precisa dizer isso, sob pena de a equipe confiar num número inventado
+   para decidir recarga.
 
    O GASTO MÉDIO, esse, é real: sai de `daily_metrics`, alimentada pela
    sincronização. Quando o saldo vier das APIs, metade do cálculo já
@@ -71,12 +72,15 @@ function saldoSimulado(clientId: string, platform: AdPlatform): number {
 }
 
 export async function getBalanceAlerts(): Promise<BalanceAlert[]> {
-  const { clients, gastoPorConta } = await carregar();
+  const { clients, gastoPorConta, prePagas } = await carregar();
 
   const alertas: BalanceAlert[] = [];
 
   for (const client of clients) {
     for (const platform of ["meta_ads", "google_ads"] as const) {
+      // Conta pós-paga não tem crédito a esgotar — nem entra na conta.
+      if (!prePagas.has(`${client.id}:${platform}`)) continue;
+
       const gasto7d = gastoPorConta.get(`${client.id}:${platform}`) ?? 0;
       const dailySpendCents = Math.round(gasto7d / JANELA_DIAS);
       const balanceCents = saldoSimulado(client.id, platform);
@@ -120,6 +124,8 @@ export async function getBalanceAlerts(): Promise<BalanceAlert[]> {
 async function carregar(): Promise<{
   clients: Client[];
   gastoPorConta: Map<string, number>;
+  /** Chaves `clientId:platform` das contas pré-pagas. */
+  prePagas: Set<string>;
 }> {
   const desde = new Date();
   desde.setDate(desde.getDate() - JANELA_DIAS);
@@ -135,7 +141,15 @@ async function carregar(): Promise<{
       mapa.set(chave, (mapa.get(chave) ?? 0) + m.spend_cents);
     }
 
-    return { clients: demoClients, gastoPorConta: mapa };
+    // No demo todas são pré-pagas, senão a tela nasceria vazia e não
+    // haveria como avaliar a interface.
+    const prePagas = new Set<string>();
+    for (const c of demoClients) {
+      prePagas.add(`${c.id}:meta_ads`);
+      prePagas.add(`${c.id}:google_ads`);
+    }
+
+    return { clients: demoClients, gastoPorConta: mapa, prePagas };
   }
 
   /* Leitura sob RLS. Desde que a carteira virou legível por toda a
@@ -144,13 +158,23 @@ async function carregar(): Promise<{
      acesso à conta. O alerta é global; o número é filtrado. */
   const supabase = await createSupabaseServerClient();
 
-  const [{ data: clients }, { data: metrics }] = await Promise.all([
-    supabase.from("clients").select("*").eq("status", "active").order("name"),
-    supabase
-      .from("daily_metrics")
-      .select("client_id, platform, spend_cents")
-      .gte("metric_date", desdeISO),
-  ]);
+  const [{ data: clients }, { data: metrics }, { data: integracoes }] =
+    await Promise.all([
+      supabase.from("clients").select("*").eq("status", "active").order("name"),
+      supabase
+        .from("daily_metrics")
+        .select("client_id, platform, spend_cents")
+        .gte("metric_date", desdeISO),
+      supabase
+        .from("client_integrations")
+        .select("client_id, platform")
+        .eq("billing_type", "prepaid")
+        .eq("is_active", true),
+    ]);
+
+  const prePagas = new Set(
+    (integracoes ?? []).map((i) => `${i.client_id}:${i.platform}`),
+  );
 
   const mapa = new Map<string, number>();
   for (const m of metrics ?? []) {
@@ -158,5 +182,5 @@ async function carregar(): Promise<{
     mapa.set(chave, (mapa.get(chave) ?? 0) + (m.spend_cents as number));
   }
 
-  return { clients: (clients ?? []) as Client[], gastoPorConta: mapa };
+  return { clients: (clients ?? []) as Client[], gastoPorConta: mapa, prePagas };
 }

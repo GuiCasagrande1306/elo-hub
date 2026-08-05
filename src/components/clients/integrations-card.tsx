@@ -6,7 +6,7 @@ import { Check, ExternalLink, Loader2, TriangleAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { setAdAccountId } from "@/app/(app)/clientes/actions";
+import { setAdAccountId, setBillingType } from "@/app/(app)/clientes/actions";
 import { cn } from "@/lib/utils";
 import type { IntegrationStatus } from "@/lib/data";
 
@@ -84,7 +84,29 @@ function LinhaIntegracao({
   const vinculado = status.connected && !pendente;
 
   const [conta, setConta] = useState(pendente ? "" : (status.externalAccountId ?? ""));
+  const [prePaga, setPrePaga] = useState(status.billingType === "prepaid");
   const [salvando, startTransition] = useTransition();
+
+  function alternarFaturamento(marcado: boolean) {
+    setPrePaga(marcado);
+    startTransition(async () => {
+      const r = await setBillingType({
+        clientId,
+        platform: status.platform,
+        billingType: marcado ? "prepaid" : "postpaid",
+      });
+      if (r.ok) {
+        toast.success(
+          marcado
+            ? `${meta.nome}: alerta de saldo ligado.`
+            : `${meta.nome}: fora do alerta de saldo.`,
+        );
+      } else {
+        setPrePaga(!marcado);
+        toast.error(r.error);
+      }
+    });
+  }
 
   function salvarConta() {
     startTransition(async () => {
@@ -170,6 +192,25 @@ function LinhaIntegracao({
           <p className="mt-1.5 text-2xs text-muted-foreground">
             Encontre em: {meta.onde}
           </p>
+
+          {/* O alerta de saldo só se aplica a conta pré-paga: em
+              pós-paga não há crédito a esgotar, e o `balance` da Meta
+              significa dívida, não folga. */}
+          <label className="mt-3 flex items-start gap-2 border-t border-hairline pt-3">
+            <input
+              type="checkbox"
+              checked={prePaga}
+              onChange={(e) => alternarFaturamento(e.target.checked)}
+              disabled={salvando}
+              className="mt-0.5 size-3.5 accent-[var(--primary)]"
+            />
+            <span>
+              <span className="text-xs font-medium">Conta pré-paga</span>
+              <span className="mt-0.5 block text-2xs text-muted-foreground">
+                Monitora o saldo e avisa quando faltarem 3 dias de verba.
+              </span>
+            </span>
+          </label>
         </div>
       )}
 
