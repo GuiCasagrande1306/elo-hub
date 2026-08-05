@@ -53,8 +53,22 @@ export async function GET(request: NextRequest) {
   const mode = searchParams.get("mode") === "month" ? "month" : "recent";
   const lookbackDays = Number(searchParams.get("lookbackDays"));
 
+  /* Backfill: `?since=&until=`. Conta vinculada no meio da relação
+     chega com histórico que o sistema nunca viu, e `mode` só alcança o
+     mês corrente. Formato validado aqui — data malformada viraria um
+     `time_range` que a Graph API recusa com erro obscuro. */
+  const since = searchParams.get("since");
+  const until = searchParams.get("until");
+  const ISO = /^\d{4}-\d{2}-\d{2}$/;
+  const range =
+    since && until && ISO.test(since) && ISO.test(until) && since <= until
+      ? { since, until }
+      : undefined;
+
   const report = await syncAllClients({
     mode,
+    range,
+    clientId: searchParams.get("clientId") ?? undefined,
     lookbackDays: Number.isFinite(lookbackDays) && lookbackDays > 0
       ? Math.min(lookbackDays, 90)
       : undefined,

@@ -60,6 +60,15 @@ export interface SyncOptions {
   lookbackDays?: number;
   /** Restringe a um cliente — usado pelo botão de sincronizar avulso. */
   clientId?: string;
+  /**
+   * Período explícito, para backfill.
+   *
+   * `mode` só alcança o mês corrente. Uma conta vinculada no meio da
+   * relação chega com histórico que o sistema nunca viu — o Brazzo
+   * Pizza tinha R$ 1.696,61 e 85 compras em julho, e um relatório
+   * daquele mês sairia vazio. Ganha de `mode` quando presente.
+   */
+  range?: { since: string; until: string };
 }
 
 interface IntegrationRow {
@@ -80,7 +89,10 @@ export async function syncAllClients(
   const mode = options.mode ?? "recent";
 
   const period =
-    mode === "month" ? currentMonthRange() : lookbackRange(options.lookbackDays ?? 3);
+    options.range ??
+    (mode === "month"
+      ? currentMonthRange()
+      : lookbackRange(options.lookbackDays ?? 3));
 
   // service_role: o job não tem usuário na ponta, e `integration_secrets`
   // não tem policy alguma — só esta chave alcança os tokens.
