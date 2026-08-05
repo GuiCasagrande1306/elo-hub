@@ -17,7 +17,11 @@ import {
 } from "@/components/ui/select";
 import { setClientGoal, setClientLogo, updateClientSettings } from "@/app/(app)/clientes/actions";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
-import { CLIENT_SEGMENTS, SEGMENT_LABELS } from "@/lib/validation/client";
+import {
+  CLIENT_SEGMENTS,
+  OPTIMIZATION_DAYS,
+  SEGMENT_LABELS,
+} from "@/lib/validation/client";
 import type { Client, ClientSegment } from "@/types/database";
 
 /* =====================================================================
@@ -44,6 +48,9 @@ export function ClientSettingsCard({
   const [enabled, setEnabled] = useState(client.report_enabled);
   const [day, setDay] = useState<string>(
     client.report_day ? String(client.report_day) : "",
+  );
+  const [diaEsteira, setDiaEsteira] = useState<string>(
+    client.optimization_day ? String(client.optimization_day) : "",
   );
   const [pendente, startTransition] = useTransition();
 
@@ -138,6 +145,7 @@ export function ClientSettingsCard({
         whatsappPhone: whatsapp,
         reportEnabled: enabled,
         reportDay: day ? Number(day) : null,
+        optimizationDay: diaEsteira ? Number(diaEsteira) : null,
       });
 
       if (r.ok) toast.success("Ajustes salvos.");
@@ -236,6 +244,34 @@ export function ClientSettingsCard({
           </Select>
           <p className="mt-1.5 text-2xs text-muted-foreground">
             Escolhe o template do PDF e como o resultado é chamado.
+          </p>
+        </div>
+
+        <div>
+          <Label htmlFor="dia-esteira">Dia de otimização</Label>
+          <Select
+            value={diaEsteira}
+            onValueChange={(v) => setDiaEsteira(v ?? "")}
+          >
+            <SelectTrigger id="dia-esteira" className="mt-1.5 w-full">
+              <SelectValue>
+                {(v: string) =>
+                  OPTIMIZATION_DAYS.find((d) => d.value === v)?.label ??
+                  "Sem rotina"
+                }
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">Sem rotina</SelectItem>
+              {OPTIMIZATION_DAYS.map((d) => (
+                <SelectItem key={d.value} value={d.value}>
+                  {d.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="mt-1.5 text-2xs text-muted-foreground">
+            Dia da semana em que esta conta entra na esteira.
           </p>
         </div>
 

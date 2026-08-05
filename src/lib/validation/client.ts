@@ -249,6 +249,8 @@ export const clientSettingsSchema = z
       .min(1, "O dia vai de 1 a 28.")
       .max(28, "O dia vai de 1 a 28.")
       .nullable(),
+    /** Dia útil da esteira, 1 a 5. null = conta sem rotina. */
+    optimizationDay: z.number().int().min(1).max(5).nullable(),
   })
   .refine((v) => !v.reportEnabled || v.reportDay !== null, {
     message: "Escolha o dia do mês para o envio automático.",

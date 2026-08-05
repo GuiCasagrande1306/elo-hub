@@ -205,6 +205,7 @@ export async function updateClientSettings(input: {
   whatsappPhone: string;
   reportEnabled: boolean;
   reportDay: number | null;
+  optimizationDay: number | null;
 }): Promise<UpdateClientSettingsResult> {
   const parsed = clientSettingsSchema.safeParse(input);
 
@@ -226,6 +227,7 @@ export async function updateClientSettings(input: {
     alvo.whatsapp_phone = values.whatsappPhone || null;
     alvo.report_enabled = values.reportEnabled;
     alvo.report_day = values.reportDay;
+    alvo.optimization_day = values.optimizationDay;
 
     revalidatePath("/clientes");
     return { ok: true };
@@ -242,6 +244,7 @@ export async function updateClientSettings(input: {
       whatsapp_phone: values.whatsappPhone || null,
       report_enabled: values.reportEnabled,
       report_day: values.reportDay,
+      optimization_day: values.optimizationDay,
     })
     .eq("id", values.clientId);
 
@@ -249,6 +252,7 @@ export async function updateClientSettings(input: {
 
   revalidatePath("/clientes");
   revalidatePath("/relatorios");
+  revalidatePath("/esteira");
   return { ok: true };
 }
 
