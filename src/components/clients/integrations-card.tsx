@@ -165,8 +165,22 @@ function LinhaIntegracao({
         platform: status.platform,
         externalAccountId: conta,
       });
-      if (r.ok) toast.success(`${meta.nome}: conta vinculada.`);
-      else toast.error(r.error);
+      if (!r.ok) {
+        toast.error(r.error);
+        return;
+      }
+      /* O aviso não é erro: o vínculo foi gravado e o cron reprocessa
+         de manhã. Mostrar como falha faria alguém desfazer algo que
+         está certo. */
+      if (r.warning) {
+        toast.warning(`${meta.nome}: conta vinculada.`, {
+          description: r.warning,
+        });
+      } else {
+        toast.success(`${meta.nome}: conta vinculada.`, {
+          description: "Números do mês atualizados.",
+        });
+      }
     });
   }
 

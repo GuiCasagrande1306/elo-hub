@@ -268,7 +268,9 @@ export async function setAdAccountId(input: {
   clientId: string;
   platform: "meta_ads" | "google_ads";
   externalAccountId: string;
-}): Promise<{ ok: true } | { ok: false; error: string }> {
+}): Promise<
+  { ok: true; warning?: string } | { ok: false; error: string }
+> {
   const valor = input.externalAccountId.trim();
 
   if (!valor) {
@@ -309,8 +311,34 @@ export async function setAdAccountId(input: {
 
   if (error) return { ok: false, error: error.message };
 
+  /* Puxa os números AGORA.
+     ---------------------------------------------------------------
+     Vincular a conta e buscar as métricas eram passos separados, e o
+     único gatilho do sync era o cron das 06:20. Quem conectava um
+     cliente durante o dia via o card seguir zerado até a manhã
+     seguinte — sem erro, sem aviso, com cara de integração quebrada.
+     Foi exatamente o que aconteceu no Brazzo Pizza.
+
+     Falhar aqui NÃO invalida o vínculo: a conta já está gravada e o
+     cron reprocessa amanhã. Por isso o erro do sync vira aviso e não
+     desfaz nada — e o `catch` existe porque uma exceção da Meta não
+     pode derrubar um vínculo que já foi persistido. */
+  let syncAviso: string | undefined;
+  try {
+    const { syncAllClients } = await import("@/lib/ads/sync");
+    const r = await syncAllClients({ mode: "month", clientId: input.clientId });
+    if (r.failed > 0) {
+      syncAviso =
+        r.results.find((x) => !x.ok)?.message ??
+        "Conta vinculada, mas a primeira sincronização falhou.";
+    }
+  } catch {
+    syncAviso = "Conta vinculada, mas não consegui buscar os números agora.";
+  }
+
   revalidatePath("/clientes");
-  return { ok: true };
+  revalidatePath("/performance");
+  return syncAviso ? { ok: true, warning: syncAviso } : { ok: true };
 }
 
 /**
