@@ -12,17 +12,21 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
    decisão sobre dinheiro real. Um alerta inventado é pior que alerta
    nenhum: ensina a equipe a confiar num número que não existe.
 
-   ⚠️ O QUE `balance` SIGNIFICA depende da forma de pagamento, e a Meta
-   não separa os dois campos:
+   ⚠️ `balance` NÃO É SALDO DISPONÍVEL. Medido contra o painel na conta
+   do Nuur: a Graph API devolveu `balance: 2334` (R$ 23,34) enquanto o
+   painel mostrava R$ 341,77 de fundos. Os R$ 23,34 são o valor
+   ACUMULADO A PAGAR desde o último débito — ele SOBE conforme veicula,
+   e zera quando a Meta cobra.
 
-     • conta PRÉ-PAGA  → crédito restante. Cai conforme veicula.
-     • conta PÓS-PAGA  → valor acumulado desde a última fatura. SOBE
-                          conforme veicula.
+   A carteira de fundos não é exposta pela Graph API. Foram testados
+   `prepay_balance`, `balance_percent_used`, `credit_limit`,
+   `funding_source_details`, e as edges `billing_transactions` e
+   `payment_methods`: nenhum existe ou traz o número. `is_prepay_account`
+   volta false mesmo em conta com carteira.
 
-   Ler o segundo como se fosse o primeiro inverte o alerta: a conta que
-   mais gastou pareceria a mais folgada. Por isso devolvemos também
-   `fundingType` e `fundingLabel` — a tela mostra a fonte junto do
-   número, e quem lê consegue julgar.
+   Por isso este módulo NÃO projeta dias restantes. Projeção a partir de
+   `balance` inverte o alerta — a conta que mais gastou apareceria como a
+   mais crítica, e foi exatamente o que aconteceu no primeiro teste.
    ===================================================================== */
 
 export interface ContaSaldo {

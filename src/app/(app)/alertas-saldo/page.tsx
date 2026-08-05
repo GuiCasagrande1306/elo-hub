@@ -45,22 +45,25 @@ export default async function BalanceAlertsPage() {
     <PageContainer>
       <PageHeader
         title="⚠️ Alertas de saldo"
-        description={`Contas pré-pagas e quanto a verba dura no ritmo da última semana. Alerta abaixo de ${DIAS_DE_ALERTA} dias.`}
+        description="Contas pré-pagas, gasto diário real e o valor acumulado a pagar. O saldo disponível ainda precisa ser conferido no painel da Meta."
       />
 
       {/* O aviso vem ANTES dos cards porque muda como o número deve ser
           lido — depois deles já é tarde. */}
       <div className="mt-6 rounded-xl border border-hairline bg-surface-2/60 p-4">
-        <p className="text-sm font-medium">Saldo vindo da Meta</p>
+        <p className="text-sm font-medium">
+          A Meta não entrega o saldo disponível
+        </p>
         <p className="mt-1 text-xs text-muted-foreground">
-          Saldo e gasto médio são <strong>reais</strong>, lidos da conta de
-          anúncios a cada abertura desta tela.
+          O gasto médio é <strong>real</strong>. O valor ao lado é o{" "}
+          <strong>acumulado a pagar</strong> — sobe conforme veicula e zera
+          quando a Meta cobra. Não é quanto resta de verba.
         </p>
         <p className="mt-2 text-2xs text-muted-foreground">
-          Confira a forma de pagamento no card. Em conta paga por cartão, o
-          campo <code>balance</code> da Meta é o valor acumulado desde a
-          última fatura — ele SOBE conforme veicula, em vez de cair. A
-          projeção de dias só faz sentido em conta com crédito pré-pago.
+          Medido na conta do Nuur: a API devolveu R$ 23,34 enquanto o painel
+          mostrava R$ 341,77 de fundos. A carteira não existe em nenhum campo
+          da Graph API. Por isso <strong>não há projeção de dias</strong> —
+          calculá-la a partir do acumulado inverteria o alerta.
         </p>
         <p className="mt-2 text-2xs text-muted-foreground">
           Só entram aqui as contas marcadas como pré-pagas na página do
@@ -169,7 +172,7 @@ function AlertCard({ alert }: { alert: BalanceAlert }) {
 
         <dl className="mt-4 flex flex-col gap-2 border-t border-hairline pt-3 text-xs">
           <div className="flex items-center justify-between">
-            <dt className="text-muted-foreground">Saldo atual</dt>
+            <dt className="text-muted-foreground">Acumulado a pagar</dt>
             <dd className="font-medium tabular-nums">
               {formatCurrency(alert.balanceCents)}
             </dd>

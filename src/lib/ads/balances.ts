@@ -68,24 +68,25 @@ export async function getBalanceAlerts(): Promise<BalanceAlert[]> {
          lista — aparece sem projeção, que é honesto. Sumir faria
          parecer que ninguém está monitorando. */
       const saldo = platform === "meta_ads" ? saldos.get(client.id) : undefined;
+      /* `balance` é o acumulado A PAGAR, não o disponível — ver
+         `meta-balance.ts`. Não serve para projetar quanto tempo a
+         verba dura, então a projeção fica desligada até haver origem
+         confiável para a carteira. */
       const balanceCents = saldo?.balanceCents ?? 0;
 
       /* Sem gasto não há ritmo, e sem ritmo não há projeção. Dividir por
          zero daria Infinity e a conta apareceria como "0 dias" — alarme
          falso justamente para quem está pausado. */
-      const daysLeft =
-        dailySpendCents > 0
-          ? Math.floor(balanceCents / dailySpendCents)
-          : null;
+      // Sempre null: não temos o saldo disponível, só o acumulado.
+      const daysLeft: number | null = null;
 
       /* TODA conta pré-paga entra na lista, em risco ou não.
          Antes só as em risco apareciam, e uma conta recém-marcada como
          pré-paga com saldo folgado simplesmente não existia na tela —
          indistinguível de "esqueci de configurar". A severidade
          diferencia; a ausência, não. */
-      const zerado = saldo !== undefined && balanceCents === 0;
-      const emRisco =
-        zerado || (daysLeft !== null && daysLeft <= DIAS_DE_ALERTA);
+      const zerado = false;
+      const emRisco = false;
 
       alertas.push({
         clientId: client.id,
