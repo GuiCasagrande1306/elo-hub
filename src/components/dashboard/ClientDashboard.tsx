@@ -237,6 +237,19 @@ function ClientMark({ client }: { client: Client }) {
     .join("")
     .toUpperCase();
 
+  if (client.logo_url) {
+    return (
+      <span className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white ring-1 ring-inset ring-black/10">
+        {/* eslint-disable-next-line @next/next/no-img-element -- URL do Storage é externa e variável. */}
+        <img
+          src={client.logo_url}
+          alt={client.name}
+          className="size-full object-contain p-1.5"
+        />
+      </span>
+    );
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.92 }}

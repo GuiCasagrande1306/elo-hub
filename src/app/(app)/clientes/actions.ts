@@ -415,3 +415,41 @@ export async function setClientGoal(input: {
   revalidatePath("/");
   return { ok: true };
 }
+
+/**
+ * Grava a URL da logo do cliente.
+ *
+ * O upload em si acontece no browser, direto no Storage, sob a policy
+ * `storage_brand_write` — que exige `can_write_client` na pasta. Aqui
+ * só persistimos a URL resultante; a policy `clients_update` barra
+ * quem não pode escrever na conta.
+ *
+ * `null` remove a referência. O arquivo antigo permanece no bucket de
+ * propósito: PDF já entregue aponta para ele, e apagar quebraria a capa
+ * de um relatório que o cliente ainda pode abrir.
+ */
+export async function setClientLogo(input: {
+  clientId: string;
+  logoUrl: string | null;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (isDemoMode) {
+    const { demoClients } = await import("@/lib/mock/data");
+    const alvo = demoClients.find((c) => c.id === input.clientId);
+    if (alvo) alvo.logo_url = input.logoUrl;
+    revalidatePath("/clientes");
+    return { ok: true };
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  const { error } = await supabase
+    .from("clients")
+    .update({ logo_url: input.logoUrl })
+    .eq("id", input.clientId);
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/clientes");
+  revalidatePath("/");
+  return { ok: true };
+}

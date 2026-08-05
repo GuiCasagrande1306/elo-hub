@@ -266,6 +266,26 @@ function ClientMark({ client }: { client: Client }) {
     .join("")
     .toUpperCase();
 
+  /* Com logo, a marca do cliente manda. Sem, cai no monograma sobre a
+     cor da marca — que é o que existia antes e continua sendo o estado
+     normal enquanto ninguém subiu arquivo.
+
+     `object-contain` sobre fundo branco: logo de cliente costuma vir
+     com margem própria e fundo transparente, e `cover` cortaria o
+     símbolo. Branco porque a maioria é desenhada para papel. */
+  if (client.logo_url) {
+    return (
+      <span className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white ring-1 ring-inset ring-black/10">
+        {/* eslint-disable-next-line @next/next/no-img-element -- URL do Storage é externa e variável; next/image exigiria allowlist de domínio. */}
+        <img
+          src={client.logo_url}
+          alt={client.name}
+          className="size-full object-contain p-1"
+        />
+      </span>
+    );
+  }
+
   return (
     <span
       aria-hidden
