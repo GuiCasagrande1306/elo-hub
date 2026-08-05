@@ -6,9 +6,28 @@ import { Check, ExternalLink, Loader2, TriangleAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { setAdAccountId, setBillingType } from "@/app/(app)/clientes/actions";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  setAdAccountId,
+  setBillingType,
+  setConversionAction,
+} from "@/app/(app)/clientes/actions";
+import {
+  CONVERSION_ACTION_OPTIONS,
+  conversionActionFor,
+} from "@/lib/ads/conversion-action";
 import { cn } from "@/lib/utils";
 import type { IntegrationStatus } from "@/lib/data";
+import type { ClientSegment } from "@/types/database";
+
+/** Valor do seletor que significa "sem escolha explícita". */
+const PADRAO = "__padrao__";
 
 /* =====================================================================
    Contas de mídia do cliente
@@ -43,10 +62,13 @@ const RÓTULOS = {
 export function IntegrationsCard({
   clientId,
   clientSlug,
+  segment,
   integrations,
 }: {
   clientId: string;
   clientSlug: string;
+  /** Define qual evento do pixel conta como conversão por padrão. */
+  segment: ClientSegment | null;
   integrations: IntegrationStatus[];
 }) {
   return (
@@ -62,6 +84,7 @@ export function IntegrationsCard({
             key={i.platform}
             clientId={clientId}
             clientSlug={clientSlug}
+            segment={segment}
             status={i}
           />
         ))}
@@ -73,10 +96,12 @@ export function IntegrationsCard({
 function LinhaIntegracao({
   clientId,
   clientSlug,
+  segment,
   status,
 }: {
   clientId: string;
   clientSlug: string;
+  segment: ClientSegment | null;
   status: IntegrationStatus;
 }) {
   const meta = RÓTULOS[status.platform];
@@ -85,7 +110,31 @@ function LinhaIntegracao({
 
   const [conta, setConta] = useState(pendente ? "" : (status.externalAccountId ?? ""));
   const [prePaga, setPrePaga] = useState(status.billingType === "prepaid");
+  const [conversao, setConversao] = useState(status.conversionActionType ?? PADRAO);
   const [salvando, startTransition] = useTransition();
+
+  /* O que o sync usará HOJE — com a escolha explícita ou sem ela. Mostrar
+     isso resolvido evita a pergunta "e se eu deixar no padrão?", que só
+     seria respondida no relatório do mês seguinte. */
+  const efetivo = conversionActionFor(
+    segment,
+    conversao === PADRAO ? null : conversao,
+  );
+
+  function salvarConversao(valor: string) {
+    setConversao(valor);
+    startTransition(async () => {
+      const r = await setConversionAction({
+        clientId,
+        actionType: valor === PADRAO ? null : valor,
+      });
+      if (r.ok) toast.success("Conversão atualizada.");
+      else {
+        setConversao(status.conversionActionType ?? PADRAO);
+        toast.error(r.error);
+      }
+    });
+  }
 
   function alternarFaturamento(marcado: boolean) {
     setPrePaga(marcado);
@@ -211,6 +260,49 @@ function LinhaIntegracao({
               </span>
             </span>
           </label>
+
+          {/* Só Meta: no Google a conversão é definida na própria conta,
+              e o provider lê o que vier de lá. */}
+          {status.platform === "meta_ads" && (
+            <div className="mt-3 border-t border-hairline pt-3">
+              <label className="text-2xs text-muted-foreground">
+                O que conta como conversão
+              </label>
+              <Select
+                value={conversao}
+                onValueChange={(v) => salvarConversao(v ?? PADRAO)}
+              >
+                <SelectTrigger size="sm" className="mt-1 w-full">
+                  <SelectValue>
+                    {(v: string) =>
+                      v === PADRAO
+                        ? "Padrão do segmento"
+                        : (CONVERSION_ACTION_OPTIONS.find((o) => o.value === v)
+                            ?.label ?? v)
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={PADRAO}>Padrão do segmento</SelectItem>
+                  {CONVERSION_ACTION_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                      <span className="ml-1.5 text-2xs text-muted-foreground">
+                        {o.hint}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="mt-1.5 font-mono text-2xs text-muted-foreground">
+                {efetivo}
+              </p>
+              <p className="mt-1 text-2xs text-muted-foreground">
+                A Meta devolve todos os eventos do pixel juntos. Escolher o
+                errado zera conversão e receita no relatório.
+              </p>
+            </div>
+          )}
         </div>
       )}
 

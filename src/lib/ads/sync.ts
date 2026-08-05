@@ -4,13 +4,14 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { googleAdsProvider } from "./google-ads";
 import { metaAdsProvider } from "./meta-ads";
 import { currentMonthRange, lookbackRange } from "./normalize";
+import { conversionActionFor } from "./conversion-action";
 import type {
   AdsProvider,
   IntegrationSyncResult,
   NormalizedMetricRow,
   SyncReport,
 } from "./types";
-import type { AdPlatform } from "@/types/database";
+import type { AdPlatform, ClientSegment } from "@/types/database";
 
 /* =====================================================================
    Motor de sincronização
@@ -67,7 +68,8 @@ interface IntegrationRow {
   platform: AdPlatform;
   external_account_id: string;
   currency: string | null;
-  clients: { name: string; status: string } | null;
+  conversion_action_type: string | null;
+  clients: { name: string; status: string; segment: ClientSegment | null } | null;
   integration_secrets: { access_token: string | null; refresh_token: string | null } | null;
 }
 
@@ -89,7 +91,8 @@ export async function syncAllClients(
     .select(
       `
       id, client_id, platform, external_account_id, currency,
-      clients!inner(name, status),
+      conversion_action_type,
+      clients!inner(name, status, segment),
       integration_secrets(access_token, refresh_token)
     `,
     )
@@ -174,6 +177,14 @@ async function syncIntegration(
           ? (integration.integration_secrets?.refresh_token ?? null)
           : (integration.integration_secrets?.access_token ?? null),
       currency: integration.currency,
+      /* Sem isto o provider caía no padrão do código e contava lead em
+         conta de e-commerce — zerando conversão e receita com cara de
+         mês fraco. O segmento resolve o caso comum; a coluna existe
+         para o pixel fora do padrão. */
+      conversionActionType: conversionActionFor(
+        integration.clients?.segment,
+        integration.conversion_action_type,
+      ),
       since: period.since,
       until: period.until,
     });

@@ -212,6 +212,7 @@ export function ClientDashboard({
         <IntegrationsCard
           clientId={client.id}
           clientSlug={client.slug}
+          segment={client.segment}
           integrations={integrations}
         />
         <ClientSettingsCard client={client} goal={goal} />

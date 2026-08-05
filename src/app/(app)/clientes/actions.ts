@@ -457,3 +457,45 @@ export async function setClientLogo(input: {
   revalidatePath("/");
   return { ok: true };
 }
+
+/**
+ * Escolhe qual evento do pixel conta como conversão nesta conta.
+ *
+ * `null` devolve ao padrão do segmento — e-commerce conta compra, leads
+ * conta formulário, negócio local conta conversa iniciada. Só vale para
+ * o Meta: no Google a conversão é configurada na própria conta, e o
+ * provider lê o que vier de lá.
+ *
+ * Sem isto, `meta-ads.ts` procurava sempre por `..._lead`. Numa loja
+ * virtual não achava nada e o relatório imprimia zero conversão e zero
+ * receita — número plausível, e errado.
+ */
+export async function setConversionAction(input: {
+  clientId: string;
+  /** `null` = voltar ao padrão do segmento. */
+  actionType: string | null;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const valor = input.actionType?.trim() || null;
+
+  /* Os action_type da Graph API são ascii com ponto e underscore.
+     Barrar o resto evita gravar um rótulo colado sem querer, que só
+     apareceria como "0 conversões" semanas depois. */
+  if (valor !== null && !/^[a-z0-9._]{3,80}$/i.test(valor)) {
+    return { ok: false, error: "Tipo de conversão inválido." };
+  }
+
+  if (isDemoMode) return { ok: true };
+
+  const supabase = await createSupabaseServerClient();
+
+  const { error } = await supabase
+    .from("client_integrations")
+    .update({ conversion_action_type: valor })
+    .eq("client_id", input.clientId)
+    .eq("platform", "meta_ads");
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/clientes");
+  return { ok: true };
+}
