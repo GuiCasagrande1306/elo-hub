@@ -112,6 +112,7 @@ function TaskDialogBody({
   function commitField(patch: {
     status?: TaskStatus;
     priority?: TaskPriority;
+    dueDate?: string | null;
   }) {
     startTransition(async () => {
       const result = await updateTask({ taskId: task.id, ...patch });
@@ -259,16 +260,51 @@ function TaskDialogBody({
           </Property>
 
           <Property label="Prazo">
-            <span
-              className={cn(
-                "flex items-center gap-1.5 text-sm tabular-nums",
-                due.tone === "overdue" && "font-medium text-negative",
-                due.tone === "today" && "font-medium text-warning",
+            {/* Editável, não só exibido. `updateTask` sempre aceitou
+                `dueDate`; faltava a interface, e uma tarefa sem prazo
+                definível não entra em nenhuma cobrança.
+
+                `date` nativo em vez de date picker: o campo do sistema
+                traz o calendário do próprio aparelho, que no celular é
+                melhor que qualquer coisa que a gente desenhe. */}
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="date"
+                value={task.due_date ? task.due_date.slice(0, 10) : ""}
+                onChange={(e) =>
+                  commitField({ dueDate: e.target.value || null })
+                }
+                disabled={isPending}
+                className="rounded-md border border-hairline bg-transparent px-2 py-1 text-sm tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+
+              {due.label && (
+                <span
+                  className={cn(
+                    "flex items-center gap-1.5 text-xs tabular-nums",
+                    due.tone === "overdue" && "font-medium text-negative",
+                    due.tone === "today" && "font-medium text-warning",
+                    due.tone !== "overdue" &&
+                      due.tone !== "today" &&
+                      "text-muted-foreground",
+                  )}
+                >
+                  <CalendarDays className="size-3.5" />
+                  {due.label}
+                </span>
               )}
-            >
-              <CalendarDays className="size-3.5 text-muted-foreground" />
-              {due.label || "Sem prazo"}
-            </span>
+
+              {task.due_date && (
+                <button
+                  type="button"
+                  onClick={() => commitField({ dueDate: null })}
+                  disabled={isPending}
+                  className="text-2xs text-muted-foreground underline-offset-2 hover:underline"
+                >
+                  remover
+                </button>
+              )}
+            </div>
           </Property>
         </dl>
 

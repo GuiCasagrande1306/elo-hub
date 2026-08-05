@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { KanbanSquare, List, Plus, Search } from "lucide-react";
+import { CheckCircle2, KanbanSquare, List, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 
 import { TaskBoard } from "./task-board";
@@ -40,14 +40,20 @@ const ALL = "__all__";
 interface TasksWorkspaceProps {
   tasks: TaskWithRelations[];
   clients: Client[];
+  /** Data ISO (YYYY-MM-DD) do corte de tarefas concluídas recentes. */
+  corteConcluidas: string;
 }
 
-export function TasksWorkspace({ tasks, clients }: TasksWorkspaceProps) {
+export function TasksWorkspace({
+  tasks,
+  clients,
+  corteConcluidas,
+}: TasksWorkspaceProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [, startTransition] = useTransition();
 
-  const [view, setView] = useState<"board" | "list">("board");
+  const [view, setView] = useState<"board" | "list" | "done">("board");
   const [query, setQuery] = useState("");
   const [clientFilter, setClientFilter] = useState<string>(ALL);
   const [creating, setCreating] = useState(false);
@@ -83,6 +89,39 @@ export function TasksWorkspace({ tasks, clients }: TasksWorkspaceProps) {
       );
     });
   }, [tasks, query, clientFilter]);
+
+  /* Concluída some do quadro e da lista depois de 7 dias.
+
+     Não é arquivamento — a tarefa continua no banco e na aba
+     "Concluídas". É que uma coluna que só cresce transforma o quadro
+     numa lista de histórico, e o que importa no dia a dia é o que ainda
+     está em aberto. Sete dias porque a retrospectiva da semana ainda
+     precisa enxergar o que foi entregue.
+
+     O corte vem do SERVIDOR: calcular a data aqui seria impuro no render
+     e divergiria entre servidor e cliente na hidratação.
+
+     Sem `completed_at` a tarefa fica visível: é dado antigo, anterior ao
+     trigger que carimba a data, e sumir com ela seria perder tarefa. */
+  const concluidas = useMemo(
+    () =>
+      filtered
+        .filter((t) => t.status === "done")
+        .sort((a, b) =>
+          (b.completed_at ?? "").localeCompare(a.completed_at ?? ""),
+        ),
+    [filtered],
+  );
+
+  const emAndamento = useMemo(
+    () =>
+      filtered.filter((t) => {
+        if (t.status !== "done") return true;
+        if (!t.completed_at) return true;
+        return t.completed_at.slice(0, 10) >= corteConcluidas;
+      }),
+    [filtered, corteConcluidas],
+  );
 
   const openTask = tasks.find((t) => t.id === openTaskId) ?? null;
 
@@ -138,6 +177,12 @@ export function TasksWorkspace({ tasks, clients }: TasksWorkspaceProps) {
             onClick={() => setView("list")}
             icon={List}
             label="Lista"
+          />
+          <ViewButton
+            active={view === "done"}
+            onClick={() => setView("done")}
+            icon={CheckCircle2}
+            label={`Concluídas${concluidas.length ? ` (${concluidas.length})` : ""}`}
           />
         </div>
 
@@ -208,14 +253,37 @@ export function TasksWorkspace({ tasks, clients }: TasksWorkspaceProps) {
       )}
 
       {/* Conteúdo -------------------------------------------------- */}
-      {view === "board" ? (
+      {view === "board" && (
         <TaskBoard
-          tasks={filtered}
+          tasks={emAndamento}
           onOpenTask={setOpenTask}
           onMove={handleMove}
         />
-      ) : (
-        <TaskList tasks={filtered} onOpenTask={setOpenTask} />
+      )}
+
+      {view === "list" && (
+        <TaskList tasks={emAndamento} onOpenTask={setOpenTask} />
+      )}
+
+      {view === "done" && (
+        <div className="flex flex-col gap-3">
+          <p className="text-xs text-muted-foreground">
+            Tudo que já foi entregue, do mais recente para o mais antigo. No
+            quadro e na lista, uma tarefa concluída some depois de 7 dias —
+            aqui ela fica.
+          </p>
+
+          {concluidas.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-hairline py-14 text-center">
+              <CheckCircle2 className="mx-auto size-7 text-muted-foreground/50" />
+              <p className="mt-3 text-sm text-muted-foreground">
+                Nenhuma tarefa concluída ainda.
+              </p>
+            </div>
+          ) : (
+            <TaskList tasks={concluidas} onOpenTask={setOpenTask} />
+          )}
+        </div>
       )}
 
       <TaskDialog

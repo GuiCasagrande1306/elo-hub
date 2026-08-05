@@ -128,6 +128,12 @@ export function TaskBoard({ tasks, onOpenTask, onMove }: TaskBoardProps) {
 
   return (
     <DndContext
+      /* `id` fixo: sem ele o dnd-kit gera um contador próprio, que sai
+         diferente no render do servidor e no do cliente. O resultado é
+         um aviso de hidratação em `aria-describedby` a cada carga da
+         página — inofensivo para o usuário, mas ruído permanente no
+         console que esconde erro de verdade. */
+      id="quadro-tarefas"
       sensors={sensors}
       collisionDetection={closestCorners}
       onDragStart={handleDragStart}
