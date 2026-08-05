@@ -45,22 +45,26 @@ export default async function BalanceAlertsPage() {
     <PageContainer>
       <PageHeader
         title="⚠️ Alertas de saldo"
-        description={`Contas pré-pagas com verba para ${DIAS_DE_ALERTA} dias ou menos, no ritmo de gasto da última semana.`}
+        description={`Contas pré-pagas e quanto a verba dura no ritmo da última semana. Alerta abaixo de ${DIAS_DE_ALERTA} dias.`}
       />
 
-      {/* O aviso vem ANTES dos cards, não num rodapé: alguém precisa
-          saber que o número é simulado antes de decidir recarregar uma
-          conta com base nele. */}
-      <div className="mt-6 rounded-xl border border-hairline bg-warning-muted/30 p-4">
-        <p className="text-sm font-medium">Os saldos ainda são simulados</p>
+      {/* O aviso vem ANTES dos cards porque muda como o número deve ser
+          lido — depois deles já é tarde. */}
+      <div className="mt-6 rounded-xl border border-hairline bg-surface-2/60 p-4">
+        <p className="text-sm font-medium">Saldo vindo da Meta</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          O <strong>gasto médio diário é real</strong> — vem da sincronização
-          de mídia. O saldo é um valor de demonstração até plugarmos as APIs
-          de faturamento. Não use esta tela para decidir recarga ainda.
+          Saldo e gasto médio são <strong>reais</strong>, lidos da conta de
+          anúncios a cada abertura desta tela.
+        </p>
+        <p className="mt-2 text-2xs text-muted-foreground">
+          Confira a forma de pagamento no card. Em conta paga por cartão, o
+          campo <code>balance</code> da Meta é o valor acumulado desde a
+          última fatura — ele SOBE conforme veicula, em vez de cair. A
+          projeção de dias só faz sentido em conta com crédito pré-pago.
         </p>
         <p className="mt-2 text-2xs text-muted-foreground">
           Só entram aqui as contas marcadas como pré-pagas na página do
-          cliente. Conta pós-paga não tem crédito a esgotar e fica de fora.
+          cliente. Google Ads ainda não devolve saldo.
         </p>
       </div>
 
@@ -89,6 +93,7 @@ export default async function BalanceAlertsPage() {
 
 function AlertCard({ alert }: { alert: BalanceAlert }) {
   const zerado = alert.severity === "zerado";
+  const saudavel = alert.severity === "ok";
 
   /* Vermelho a partir de zero dia, não só com saldo zerado: no ritmo
      atual a conta cai HOJE, e a diferença entre "acabou" e "acaba em
@@ -106,11 +111,13 @@ function AlertCard({ alert }: { alert: BalanceAlert }) {
     <Card
       className={cn(
         "border-l-4",
-        urgente
-          ? "border-l-negative"
-          : alert.severity === "critico"
-            ? "border-l-negative/60"
-            : "border-l-warning",
+        saudavel
+          ? "border-l-positive"
+          : urgente
+            ? "border-l-negative"
+            : alert.severity === "critico"
+              ? "border-l-negative/60"
+              : "border-l-warning",
       )}
     >
       <CardHeader>
@@ -128,7 +135,13 @@ function AlertCard({ alert }: { alert: BalanceAlert }) {
           </div>
 
           <Badge variant={urgente ? "destructive" : "outline"}>
-            {zerado ? "Zerado" : alert.daysLeft === 0 ? "Hoje" : `${alert.daysLeft}d`}
+            {saudavel
+              ? (alert.daysLeft === null ? "Sem ritmo" : `${alert.daysLeft}d`)
+              : zerado
+                ? "Zerado"
+                : alert.daysLeft === 0
+                  ? "Hoje"
+                  : `${alert.daysLeft}d`}
           </Badge>
         </div>
       </CardHeader>
@@ -137,13 +150,21 @@ function AlertCard({ alert }: { alert: BalanceAlert }) {
         <p
           className={cn(
             "flex items-center gap-1.5 text-sm font-semibold",
-            urgente ? "text-negative" : "text-warning",
+            saudavel ? "text-positive" : urgente ? "text-negative" : "text-warning",
           )}
         >
-          <TriangleAlert className="size-4 shrink-0" />
-          {zerado
-            ? "Sem saldo — anúncios podem estar fora do ar"
-            : estimativa}
+          {saudavel ? (
+            <CheckCircle2 className="size-4 shrink-0" />
+          ) : (
+            <TriangleAlert className="size-4 shrink-0" />
+          )}
+          {saudavel
+            ? alert.daysLeft === null
+              ? "Sem gasto recente — não dá para projetar"
+              : estimativa
+            : zerado
+              ? "Sem saldo — anúncios podem estar fora do ar"
+              : estimativa}
         </p>
 
         <dl className="mt-4 flex flex-col gap-2 border-t border-hairline pt-3 text-xs">
@@ -153,6 +174,15 @@ function AlertCard({ alert }: { alert: BalanceAlert }) {
               {formatCurrency(alert.balanceCents)}
             </dd>
           </div>
+          {/* A fonte fica ao lado do saldo de propósito: em conta paga
+              por cartão, `balance` na Meta é dívida acumulada e não
+              crédito restante — quem lê precisa poder julgar. */}
+          {alert.fundingLabel && (
+            <div className="flex items-center justify-between">
+              <dt className="text-muted-foreground">Pagamento</dt>
+              <dd className="font-medium">{alert.fundingLabel}</dd>
+            </div>
+          )}
           <div className="flex items-center justify-between">
             <dt className="text-muted-foreground">Gasto médio</dt>
             <dd className="font-medium tabular-nums">

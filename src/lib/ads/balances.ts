@@ -2,6 +2,7 @@ import "server-only";
 
 import { isDemoMode } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { fetchPrepaidBalances, type ContaSaldo } from "./meta-balance";
 import type { AdPlatform, Client } from "@/types/database";
 
 /* =====================================================================
@@ -45,34 +46,14 @@ export interface BalanceAlert {
   dailySpendCents: number;
   /** null quando a conta não gastou nada — não dá para projetar. */
   daysLeft: number | null;
-  severity: "zerado" | "critico" | "atencao";
+  severity: "zerado" | "critico" | "atencao" | "ok";
   balanceSource: BalanceSource;
-}
-
-/**
- * Saldo por conta.
- *
- * ⚠️ MOCK. Nenhuma API está plugada ainda, e não há coluna no banco
- * para guardar saldo. Determinístico a partir do id do cliente para que
- * a tela não mude a cada refresh — número que dança sozinho na tela
- * treina a equipe a ignorar o alerta.
- *
- * Ao plugar de verdade:
- *   Meta   → GET /{ad_account_id}?fields=balance,spend_cap,amount_spent
- *   Google → GET customers/{id}/billingSetups + accountBudgets
- * e trocar `balanceSource` para a origem correspondente.
- */
-function saldoSimulado(clientId: string, platform: AdPlatform): number {
-  let semente = 0;
-  for (const ch of `${clientId}:${platform}`) {
-    semente = (semente * 31 + ch.charCodeAt(0)) % 100_000;
-  }
-  // De R$ 0 a R$ 800, em centavos.
-  return (semente % 801) * 100;
+  /** "VISA *1346" — deixa julgar se `balance` é crédito ou dívida. */
+  fundingLabel: string | null;
 }
 
 export async function getBalanceAlerts(): Promise<BalanceAlert[]> {
-  const { clients, gastoPorConta, prePagas } = await carregar();
+  const { clients, gastoPorConta, prePagas, saldos } = await carregar();
 
   const alertas: BalanceAlert[] = [];
 
@@ -83,7 +64,11 @@ export async function getBalanceAlerts(): Promise<BalanceAlert[]> {
 
       const gasto7d = gastoPorConta.get(`${client.id}:${platform}`) ?? 0;
       const dailySpendCents = Math.round(gasto7d / JANELA_DIAS);
-      const balanceCents = saldoSimulado(client.id, platform);
+      /* Só o Meta devolve saldo hoje. Sem dado, a conta não some da
+         lista — aparece sem projeção, que é honesto. Sumir faria
+         parecer que ninguém está monitorando. */
+      const saldo = platform === "meta_ads" ? saldos.get(client.id) : undefined;
+      const balanceCents = saldo?.balanceCents ?? 0;
 
       /* Sem gasto não há ritmo, e sem ritmo não há projeção. Dividir por
          zero daria Infinity e a conta apareceria como "0 dias" — alarme
@@ -93,13 +78,14 @@ export async function getBalanceAlerts(): Promise<BalanceAlert[]> {
           ? Math.floor(balanceCents / dailySpendCents)
           : null;
 
-      const zerado = balanceCents === 0;
-      const emRisco = zerado || (daysLeft !== null && daysLeft <= DIAS_DE_ALERTA);
-      if (!emRisco) continue;
-
-      // Conta parada e sem saldo não é urgência: não há campanha no ar
-      // para cair. Fica de fora para o alerta não virar ruído.
-      if (zerado && dailySpendCents === 0) continue;
+      /* TODA conta pré-paga entra na lista, em risco ou não.
+         Antes só as em risco apareciam, e uma conta recém-marcada como
+         pré-paga com saldo folgado simplesmente não existia na tela —
+         indistinguível de "esqueci de configurar". A severidade
+         diferencia; a ausência, não. */
+      const zerado = saldo !== undefined && balanceCents === 0;
+      const emRisco =
+        zerado || (daysLeft !== null && daysLeft <= DIAS_DE_ALERTA);
 
       alertas.push({
         clientId: client.id,
@@ -109,7 +95,14 @@ export async function getBalanceAlerts(): Promise<BalanceAlert[]> {
         balanceCents,
         dailySpendCents,
         daysLeft,
-        severity: zerado ? "zerado" : (daysLeft ?? 0) <= 1 ? "critico" : "atencao",
+        severity: !emRisco
+          ? "ok"
+          : zerado
+            ? "zerado"
+            : (daysLeft ?? 0) <= 1
+              ? "critico"
+              : "atencao",
+        fundingLabel: saldo?.fundingLabel ?? null,
         balanceSource: "mock",
       });
     }
@@ -126,6 +119,8 @@ async function carregar(): Promise<{
   gastoPorConta: Map<string, number>;
   /** Chaves `clientId:platform` das contas pré-pagas. */
   prePagas: Set<string>;
+  /** Saldo real do Meta, por `client_id`. Ausente = não obtido. */
+  saldos: Map<string, ContaSaldo>;
 }> {
   const desde = new Date();
   desde.setDate(desde.getDate() - JANELA_DIAS);
@@ -149,7 +144,28 @@ async function carregar(): Promise<{
       prePagas.add(`${c.id}:google_ads`);
     }
 
-    return { clients: demoClients, gastoPorConta: mapa, prePagas };
+    /* Demo não chama a Graph API. Saldo determinístico a partir do id
+       para a tela não mudar a cada refresh — número que dança sozinho
+       treina a equipe a ignorar o alerta. Só aqui: em produção o saldo
+       vem da Meta ou não vem. */
+    const saldos = new Map<string, ContaSaldo>(
+      demoClients.map((c) => {
+        let semente = 0;
+        for (const ch of c.id) semente = (semente * 31 + ch.charCodeAt(0)) % 100_000;
+        return [
+          c.id,
+          {
+            balanceCents: (semente % 801) * 100,
+            currency: "BRL",
+            fundingType: 2,
+            fundingLabel: "Saldo pré-pago (demo)",
+            amountSpentCents: 0,
+          },
+        ];
+      }),
+    );
+
+    return { clients: demoClients, gastoPorConta: mapa, prePagas, saldos };
   }
 
   /* Leitura sob RLS. Desde que a carteira virou legível por toda a
@@ -182,5 +198,10 @@ async function carregar(): Promise<{
     mapa.set(chave, (mapa.get(chave) ?? 0) + (m.spend_cents as number));
   }
 
-  return { clients: (clients ?? []) as Client[], gastoPorConta: mapa, prePagas };
+  return {
+    clients: (clients ?? []) as Client[],
+    gastoPorConta: mapa,
+    prePagas,
+    saldos: await fetchPrepaidBalances(),
+  };
 }
