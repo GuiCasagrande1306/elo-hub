@@ -5,6 +5,7 @@ import {
   Landmark,
   LayoutGrid,
   Settings,
+  TriangleAlert,
   Users,
 } from "lucide-react";
 
@@ -30,6 +31,9 @@ export const primaryNav: NavItem[] = [
   { href: "/tarefas", label: "Tarefas", icon: CheckSquare, matchPrefix: true },
   { href: "/relatorios", label: "Relatórios", icon: FileText, matchPrefix: true },
   { href: "/performance", label: "Performance", icon: BarChart3 },
+  // Não é adminOnly: quem gerencia a conta precisa ver antes de o
+  // anúncio cair, e saldo de mídia não é dado financeiro da agência.
+  { href: "/alertas-saldo", label: "Alertas de saldo", icon: TriangleAlert },
 ];
 
 export const secondaryNav: NavItem[] = [
