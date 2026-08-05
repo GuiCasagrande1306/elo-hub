@@ -4,6 +4,12 @@ import { isDemoMode } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { buildTrend, previousPeriod, sumMetrics } from "@/lib/metrics/kpi";
 import { buildGoalProgress } from "@/lib/metrics/goals";
+import {
+  dataNoBrasil,
+  diaDaSemanaNoBrasil,
+  inicioDoDiaBR,
+  segundaDestaSemana,
+} from "@/lib/date-br";
 import type {
   AdCreative,
   Client,
@@ -773,22 +779,16 @@ export interface OptimizationPipeline {
   };
 }
 
-/** Segunda desta semana, em ISO. A semana da esteira começa na segunda. */
-function segundaDaSemanaISO(hoje = new Date()): string {
-  const d = new Date(hoje);
-  // getDay(): 0=domingo. Domingo recua 6 dias, não 1.
-  const diff = d.getDay() === 0 ? 6 : d.getDay() - 1;
-  d.setDate(d.getDate() - diff);
-  return d.toISOString().slice(0, 10);
-}
-
 export async function getOptimizationPipeline(): Promise<OptimizationPipeline> {
+  /* Tudo no fuso de São Paulo. O servidor da Vercel roda em UTC: usar
+     `new Date()` cru aqui viraria o dia às 21h, e quem registrasse uma
+     rodada à noite a veria contada como amanhã. */
   const hoje = new Date();
-  const hojeISO = hoje.toISOString().slice(0, 10);
-  const inicioSemana = segundaDaSemanaISO(hoje);
+  const hojeISO = dataNoBrasil(hoje);
+  const inicioSemana = segundaDestaSemana(hoje);
 
   // 0=domingo e 6=sábado não são dia de esteira.
-  const diaSemana = hoje.getDay();
+  const diaSemana = diaDaSemanaNoBrasil(hoje);
   const todayWeekday = diaSemana >= 1 && diaSemana <= 5 ? diaSemana : null;
 
   const clients = (await getClients()).filter(
@@ -805,8 +805,10 @@ export async function getOptimizationPipeline(): Promise<OptimizationPipeline> {
       client,
       last,
       doneThisWeek: doCliente.length > 0,
+      /* `slice(0, 10)` daria a data em UTC — um registro das 22h de
+         segunda apareceria como terça. Converte antes de comparar. */
       doneToday: doCliente.some(
-        (h) => h.created_at.slice(0, 10) === hojeISO,
+        (h) => dataNoBrasil(h.created_at) === hojeISO,
       ),
     };
   });
@@ -841,7 +843,7 @@ async function getOptimizationHistorySince(
   if (isDemoMode) {
     const { demoOptimizations } = await import("@/lib/mock/data");
     return demoOptimizations
-      .filter((h) => h.created_at.slice(0, 10) >= desdeISO)
+      .filter((h) => dataNoBrasil(h.created_at) >= desdeISO)
       .sort((a, b) => b.created_at.localeCompare(a.created_at));
   }
 
@@ -849,7 +851,7 @@ async function getOptimizationHistorySince(
   const { data } = await supabase
     .from("optimization_history")
     .select("*, collaborator:profiles(id, full_name)")
-    .gte("created_at", `${desdeISO}T00:00:00Z`)
+    .gte("created_at", inicioDoDiaBR(desdeISO))
     .order("created_at", { ascending: false });
 
   return (data ?? []) as unknown as OptimizationEntry[];

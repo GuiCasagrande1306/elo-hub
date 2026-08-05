@@ -56,6 +56,13 @@ export async function registerOptimization(input: {
     return { ok: false, error: "A projeção precisa ser um número positivo." };
   }
 
+  /* A coluna é `numeric(6,2)`: acima de 9999,99 o banco recusa com
+     "numeric field overflow", que chegaria cru na tela. Passar de 1000%
+     é dedo errado, não leitura — o aviso diz isso. */
+  if (projecao !== null && projecao > 1000) {
+    return { ok: false, error: "Projeção acima de 1000%. Confira o valor." };
+  }
+
   if (isDemoMode) {
     const { demoOptimizations } = await import("@/lib/mock/data");
     demoOptimizations.unshift({
