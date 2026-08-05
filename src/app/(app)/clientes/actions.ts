@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import type { ZodError } from "zod";
 
 import { isDemoMode } from "@/lib/env";
+import { brandColorFromName } from "@/lib/brand-color";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   CLIENT_SEGMENTS,
@@ -67,7 +68,7 @@ export async function createClientAction(
       segment: values.segment,
       status: values.status,
       logo_url: null,
-      brand_primary: values.brandPrimary ?? null,
+      brand_primary: brandColorFromName(values.name),
       brand_secondary: null,
       brand_font: null,
       website: values.website ?? null,

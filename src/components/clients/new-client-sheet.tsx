@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2, Plus } from "lucide-react";
+import { ImageIcon, Loader2, Plus, Upload } from "lucide-react";
 import { toast } from "sonner";
 
-import { createClientAction } from "@/app/(app)/clientes/actions";
+import { createClientAction, setClientLogo } from "@/app/(app)/clientes/actions";
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
   CLIENT_SEGMENTS,
   CREATABLE_STATUSES,
@@ -28,6 +29,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { WhatsAppDestinationPicker } from "./whatsapp-destination-picker";
 import { OPTIMIZATION_DAYS } from "@/lib/validation/client";
 import {
@@ -77,6 +79,85 @@ export function NewClientSheet() {
     mode: "onBlur",
   });
 
+  /* Arquivo e preview no MESMO estado. Separá-los obrigaria um efeito
+     para manter os dois em sincronia, e efeito que chama setState roda
+     um render extra a cada troca de arquivo. */
+  const [logo, setLogo] = useState<{ file: File; url: string } | null>(null);
+  /* Trocar a key remonta o input vazio. É como limpar um `<input
+     type="file">` sem tocar em `ref.current.value` durante o render. */
+  const [inputKey, setInputKey] = useState(0);
+  const arquivoRef = useRef<HTMLInputElement>(null);
+
+  /* A logo vive fora do react-hook-form, então `form.reset` sozinho a
+     deixaria para trás — e o arquivo do cliente anterior subiria para o
+     próximo cadastro. Os dois caminhos de limpeza passam por aqui. */
+  function limparFormulario() {
+    form.reset(newClientDefaults);
+    escolherLogo(undefined);
+  }
+
+  function escolherLogo(arquivo: File | undefined) {
+    // `createObjectURL` reserva memória até alguém devolver. Sem isto,
+    // escolher cinco arquivos seguidos vaza os cinco.
+    setLogo((anterior) => {
+      if (anterior) URL.revokeObjectURL(anterior.url);
+      return null;
+    });
+    setInputKey((k) => k + 1);
+
+    if (!arquivo) return;
+
+    /* Mesmo teto do bucket. Barrar aqui evita o upload inteiro subir
+       para ser recusado no fim, depois do cliente já criado. */
+    if (arquivo.size > 5 * 1024 * 1024) {
+      toast.error("A imagem precisa ter no máximo 5MB.");
+      return;
+    }
+
+    setLogo({ file: arquivo, url: URL.createObjectURL(arquivo) });
+  }
+
+  /**
+   * Sobe a logo DEPOIS que o cliente existe.
+   *
+   * A policy `storage_brand_write` autoriza pela primeira pasta do
+   * caminho, que é o id do cliente — antes do insert não há id, e o
+   * upload voltaria negado. Por isso o envio não acontece na seleção do
+   * arquivo, e sim aqui.
+   *
+   * Falhar aqui NÃO desfaz o cadastro: o cliente já está criado e é
+   * útil sem logo. Avisa e segue.
+   */
+  async function enviarLogo(clientId: string, arquivo: File) {
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return;
+
+    const ext = arquivo.name.split(".").pop()?.toLowerCase() ?? "png";
+    const caminho = `${clientId}/${Date.now()}.${ext}`;
+
+    const { error } = await supabase.storage
+      .from("brand")
+      .upload(caminho, arquivo);
+
+    if (error) {
+      toast.warning("Cliente criado, mas a logo não subiu.", {
+        description: `${error.message} Você pode enviá-la nos ajustes da conta.`,
+      });
+      return;
+    }
+
+    const {
+      data: { publicUrl },
+    } = supabase.storage.from("brand").getPublicUrl(caminho);
+
+    const r = await setClientLogo({ clientId, logoUrl: publicUrl });
+    if (!r.ok) {
+      toast.warning("Logo enviada, mas não vinculada.", {
+        description: r.error,
+      });
+    }
+  }
+
   function onSubmit() {
     const values = form.getValues();
 
@@ -99,11 +180,13 @@ export function NewClientSheet() {
         return;
       }
 
+      if (logo) await enviarLogo(result.client.id, logo.file);
+
       toast.success("Cliente adicionado com sucesso!", {
         description: `${result.client.name} já aparece na listagem.`,
       });
 
-      form.reset(newClientDefaults);
+      limparFormulario();
       setOpen(false);
     });
   }
@@ -116,7 +199,7 @@ export function NewClientSheet() {
         // gravou. O painel só destrava quando a action termina.
         if (isPending) return;
         setOpen(next);
-        if (!next) form.reset(newClientDefaults);
+        if (!next) limparFormulario();
       }}
     >
       <SheetTrigger
@@ -390,36 +473,71 @@ export function NewClientSheet() {
                   />
                 </div>
 
-                <FormField
-                  control={form.control}
-                  name="brandPrimary"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Cor da marca</FormLabel>
-                      <div className="flex items-center gap-2">
-                        <span
-                          aria-hidden
-                          className="size-9 shrink-0 rounded-lg ring-1 ring-inset ring-hairline"
-                          style={{
-                            background: /^#[0-9a-fA-F]{6}$/.test(
-                              field.value ?? "",
-                            )
-                              ? field.value
-                              : "var(--surface-2)",
-                          }}
+                {/* Logo fora do react-hook-form de propósito: o valor
+                    útil é a URL pública, e ela só existe DEPOIS que o
+                    cliente foi criado — a policy do bucket autoriza pelo
+                    id dele. Guardar o File no formulário criaria um campo
+                    que nunca é submetido. */}
+                {/* Markup solto, não `FormItem`/`FormLabel`: esses
+                    primitivos chamam `useFormField`, que só existe
+                    dentro de um `<FormField>` — e a logo não é campo do
+                    react-hook-form. Usá-los aqui derruba a gaveta em
+                    runtime. */}
+                <div className="grid gap-2">
+                  <Label htmlFor="logo-cliente">Logo do cliente</Label>
+                  <div className="flex items-center gap-3">
+                    <span
+                      aria-hidden
+                      className="grid size-11 shrink-0 place-items-center overflow-hidden rounded-lg bg-surface-2 ring-1 ring-inset ring-hairline"
+                    >
+                      {logo ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={logo.url}
+                          alt=""
+                          className="size-full object-contain"
                         />
-                        <FormControl
-                          render={<Input placeholder="#2F6F4E" />}
-                          {...field}
-                        />
-                      </div>
-                      <FormDescription>
-                        Usada no card, no gráfico e na capa do PDF.
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                      ) : (
+                        <ImageIcon className="size-4 text-muted-foreground/50" />
+                      )}
+                    </span>
+
+                    <input
+                      id="logo-cliente"
+                      key={inputKey}
+                      ref={arquivoRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                      onChange={(e) => escolherLogo(e.target.files?.[0])}
+                      className="hidden"
+                    />
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => arquivoRef.current?.click()}
+                    >
+                      <Upload className="size-3.5" />
+                      {logo ? "Trocar" : "Escolher"}
+                    </Button>
+
+                    {logo && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => escolherLogo(undefined)}
+                      >
+                        Remover
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Aparece no card, na capa do PDF e no cabeçalho da conta.
+                    PNG ou SVG, até 5MB. Pode ficar em branco.
+                  </p>
+                </div>
               </div>
 
               {/* ============ METAS FINANCEIRAS ============ */}

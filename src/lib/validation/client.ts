@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { brandColorFromName } from "@/lib/brand-color";
+
 /* =====================================================================
    Schema de cadastro de cliente
    ---------------------------------------------------------------------
@@ -129,14 +131,6 @@ export const newClientSchema = z.object({
     z.string().trim().url("Informe a URL completa, com https://"),
   ]),
 
-  brandPrimary: z.union([
-    z.literal(""),
-    z
-      .string()
-      .trim()
-      .regex(/^#[0-9a-fA-F]{6}$/, "Use um hex de 6 dígitos, como #2F6F4E."),
-  ]),
-
   /* --- Metas do ciclo ----------------------------------------------- */
   plannedBudget: z
     .string()
@@ -173,7 +167,6 @@ export const newClientDefaults: NewClientValues = {
   contactEmail: "",
   whatsappPhone: "",
   website: "",
-  brandPrimary: "",
   plannedBudget: "",
   plannedResults: "",
   metaAccountId: "",
@@ -214,7 +207,10 @@ export function toClientPayload(values: NewClientValues): ClientRpcPayload {
     p_contact_email: nullIfBlank(values.contactEmail),
     p_whatsapp_phone: nullIfBlank(values.whatsappPhone),
     p_website: nullIfBlank(values.website),
-    p_brand_primary: nullIfBlank(values.brandPrimary),
+    /* Não vem mais do formulário: a logo tomou o lugar do seletor de
+       cor. Derivada do nome para os quadradinhos de identificação
+       continuarem distinguindo cliente nas telas sem imagem. */
+    p_brand_primary: brandColorFromName(values.name),
     // A validação já garantiu que converte; o `?? 0` é só para o tipo.
     p_planned_budget_cents: parseCurrencyToCents(values.plannedBudget) ?? 0,
     p_planned_results:
