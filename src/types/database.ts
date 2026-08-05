@@ -57,7 +57,6 @@ export interface Client {
   id: string;
   name: string;
   legal_name: string | null;
-  tax_id: string | null;
   slug: string;
   segment: ClientSegment;
   status: ClientStatus;
@@ -70,13 +69,26 @@ export interface Client {
   contact_email: string | null;
   whatsapp_phone: string | null;
   persona: ClientPersona;
-  monthly_fee_cents: number;
   contract_start: string | null;
   owner_id: string | null;
   /** Dia do mês (1-28) do envio automático; null quando não agendado. */
   report_day: number | null;
   report_enabled: boolean;
   created_at: string;
+}
+
+/**
+ * Dados contratuais — tabela SEPARADA, com policy de admin.
+ *
+ * Saíram de `clients` quando a carteira virou legível por toda a
+ * equipe: RLS é por linha, não por coluna, então a única forma de
+ * esconder honorário e CNPJ de um colaborador é não os guardar na
+ * tabela que ele pode ler.
+ */
+export interface ClientFinancials {
+  client_id: string;
+  monthly_fee_cents: number;
+  tax_id: string | null;
 }
 
 /** Briefing estratégico. Alimenta o contexto dos insights do relatório. */

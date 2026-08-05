@@ -62,7 +62,6 @@ export async function createClientAction(
       id,
       name: values.name,
       legal_name: null,
-      tax_id: null,
       slug,
       segment: values.segment,
       status: values.status,
@@ -75,7 +74,6 @@ export async function createClientAction(
       contact_email: values.contactEmail ?? null,
       whatsapp_phone: values.whatsappPhone ?? null,
       persona: {},
-      monthly_fee_cents: 0,
       contract_start: new Date().toISOString().slice(0, 10),
       // Cliente novo entra sem envio automático: o dia é combinado em
       // contrato, e ligar por padrão mandaria relatório para um grupo

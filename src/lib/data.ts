@@ -395,6 +395,30 @@ export async function getReports(clientId?: string): Promise<ReportHistory[]> {
  * lista vazia — a diferença importa, porque lista vazia sugeriria "não
  * há lançamentos".
  */
+/**
+ * Honorário contratado por cliente, indexado por id.
+ *
+ * Vive em `client_financials`, cuja policy é `app.is_admin()`. Um
+ * colaborador recebe lista vazia — não erro —, então o MRR aparece
+ * zerado em vez de a página quebrar. É o comportamento certo: a rota
+ * `/gestao` já é de admin, e isto é a segunda barreira.
+ */
+export async function getClientFees(): Promise<Map<string, number>> {
+  if (isDemoMode) {
+    const { demoClientFinancials } = await import("@/lib/mock/data");
+    return new Map(demoClientFinancials.map((f) => [f.client_id, f.monthly_fee_cents]));
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data } = await supabase
+    .from("client_financials")
+    .select("client_id, monthly_fee_cents");
+
+  return new Map(
+    (data ?? []).map((f) => [f.client_id as string, f.monthly_fee_cents as number]),
+  );
+}
+
 export async function getFinancialData(months = 12): Promise<{
   transactions: FinancialTransaction[];
   monthly: MonthlySummary[];

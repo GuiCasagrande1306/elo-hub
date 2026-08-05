@@ -132,14 +132,17 @@ export async function POST(request: NextRequest) {
 
   if (!clientId && customer?.cpfCnpj) {
     const digits = customer.cpfCnpj.replace(/\D/g, "");
+    /* O CNPJ mudou de casa: saiu de `clients` para `client_financials`
+       quando a carteira virou legível por toda a equipe. Aqui a leitura
+       é com service_role, que ignora RLS — o webhook não tem sessão. */
     const { data } = await admin
-      .from("clients")
-      .select("id, tax_id")
+      .from("client_financials")
+      .select("client_id, tax_id")
       .not("tax_id", "is", null);
 
     clientId =
       (data ?? []).find((c) => (c.tax_id ?? "").replace(/\D/g, "") === digits)
-        ?.id ?? null;
+        ?.client_id ?? null;
   }
 
   if (!clientId && customer?.email) {

@@ -17,7 +17,7 @@ import type {
      Em atraso           → `pending` com `due_date` já vencido
 
    MRR NÃO sai desta tabela. Receita recorrente é o contratado com os
-   clientes ativos (`clients.monthly_fee_cents`), não a soma do que foi
+   clientes ativos (`client_financials.monthly_fee_cents`), não a soma do que foi
    faturado no mês — um mês com dois pagamentos adiantados inflaria o
    MRR e faria a agência achar que cresceu.
    ===================================================================== */
@@ -43,6 +43,10 @@ const todayISO = () => new Date().toISOString().slice(0, 10);
 export function buildFinanceSnapshot(
   transactions: FinancialTransaction[],
   clients: Client[],
+  /* Honorários vêm de `client_financials`, tabela de admin — não mais
+     de uma coluna em `clients`, que hoje é legível por toda a equipe.
+     Indexado por client_id para não custar O(n²) na soma. */
+  fees: Map<string, number>,
   today = todayISO(),
 ): FinanceSnapshot {
   let paidIncome = 0;
@@ -77,7 +81,7 @@ export function buildFinanceSnapshot(
 
   const mrrCents = clients
     .filter((c) => c.status === "active")
-    .reduce((acc, c) => acc + c.monthly_fee_cents, 0);
+    .reduce((acc, c) => acc + (fees.get(c.id) ?? 0), 0);
 
   return {
     mrrCents,

@@ -5,7 +5,7 @@ import { AlertTriangle, Landmark, TrendingUp, Wallet } from "lucide-react";
 import { PageContainer, PageHeader } from "@/components/layout/page-header";
 import { CashflowChart, GrowthChart } from "@/components/finance/finance-charts";
 import { TransactionsTable } from "@/components/finance/transactions-table";
-import { getClients, getFinancialData } from "@/lib/data";
+import { getClientFees, getClients, getFinancialData } from "@/lib/data";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { buildCashflowSeries, buildFinanceSnapshot } from "@/lib/finance/kpi";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/format";
@@ -38,12 +38,13 @@ export default async function GestaoPage() {
   if (!user) redirect("/login");
   if (user.role !== "admin") redirect("/");
 
-  const [{ transactions, monthly }, clients] = await Promise.all([
+  const [{ transactions, monthly }, clients, fees] = await Promise.all([
     getFinancialData(12),
     getClients(),
+    getClientFees(),
   ]);
 
-  const snapshot = buildFinanceSnapshot(transactions, clients);
+  const snapshot = buildFinanceSnapshot(transactions, clients, fees);
   const series = buildCashflowSeries(monthly);
 
   return (
