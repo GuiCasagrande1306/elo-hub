@@ -51,6 +51,7 @@ export interface ClientDashboardProps {
   /** Dias disponíveis no seletor. */
   presets?: number[];
   integrations: IntegrationStatus[];
+  goal: { plannedBudgetCents: number; plannedResults: number } | null;
 }
 
 export function ClientDashboard({
@@ -63,6 +64,7 @@ export function ClientDashboard({
   period,
   presets = [7, 30, 90],
   integrations,
+  goal,
 }: ClientDashboardProps) {
   // Qualquer sync de métricas ou anúncio revalida esta página para todos
   // os usuários conectados que têm acesso a esta conta.
@@ -206,12 +208,13 @@ export function ClientDashboard({
         {/* Configuração por último: é ajuste, não leitura do período.
             Integrações antes dos ajustes porque sem conta de mídia
             vinculada não há número nenhum para relatar. */}
+        <div id="ajustes" className="scroll-mt-20" />
         <IntegrationsCard
           clientId={client.id}
           clientSlug={client.slug}
           integrations={integrations}
         />
-        <ClientSettingsCard client={client} />
+        <ClientSettingsCard client={client} goal={goal} />
       </div>
     </div>
   );

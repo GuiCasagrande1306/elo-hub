@@ -200,7 +200,7 @@ export function ClientCard({
           variant="outline"
           className="h-8"
           nativeButton={false}
-          render={<Link href={`/clientes/${client.slug}/editar`} />}
+          render={<Link href={`/clientes/${client.slug}#ajustes`} />}
         >
           <Pencil className="size-3.5" />
           <span className="sr-only sm:not-sr-only">Editar infos</span>
@@ -246,7 +246,7 @@ function NoGoalState({
       </dl>
 
       <Link
-        href={`/clientes/${slug}/editar#metas`}
+        href={`/clientes/${slug}#metas`}
         className="flex items-center gap-2 rounded-lg border border-dashed border-hairline px-3 py-2 text-xs text-muted-foreground transition-colors hover:border-signal hover:text-foreground"
       >
         <Target className="size-3.5 shrink-0" />

@@ -15,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { updateClientSettings } from "@/app/(app)/clientes/actions";
+import { setClientGoal, updateClientSettings } from "@/app/(app)/clientes/actions";
 import { CLIENT_SEGMENTS, SEGMENT_LABELS } from "@/lib/validation/client";
 import type { Client, ClientSegment } from "@/types/database";
 
@@ -31,7 +31,13 @@ import type { Client, ClientSegment } from "@/types/database";
    junto, em vez de ser um dropdown solto.
    ===================================================================== */
 
-export function ClientSettingsCard({ client }: { client: Client }) {
+export function ClientSettingsCard({
+  client,
+  goal,
+}: {
+  client: Client;
+  goal: { plannedBudgetCents: number; plannedResults: number } | null;
+}) {
   const [segment, setSegment] = useState<ClientSegment>(client.segment);
   const [whatsapp, setWhatsapp] = useState(client.whatsapp_phone ?? "");
   const [enabled, setEnabled] = useState(client.report_enabled);
@@ -39,6 +45,26 @@ export function ClientSettingsCard({ client }: { client: Client }) {
     client.report_day ? String(client.report_day) : "",
   );
   const [pendente, startTransition] = useTransition();
+
+  const [orcamento, setOrcamento] = useState(
+    goal ? (goal.plannedBudgetCents / 100).toFixed(2).replace(".", ",") : "",
+  );
+  const [metaResultados, setMetaResultados] = useState(
+    goal ? String(goal.plannedResults) : "",
+  );
+  const [salvandoMeta, startMeta] = useTransition();
+
+  function salvarMeta() {
+    startMeta(async () => {
+      const r = await setClientGoal({
+        clientId: client.id,
+        plannedBudget: orcamento,
+        plannedResults: metaResultados,
+      });
+      if (r.ok) toast.success("Meta do mês salva.");
+      else toast.error(r.error);
+    });
+  }
 
   function salvar() {
     startTransition(async () => {
@@ -137,6 +163,57 @@ export function ClientSettingsCard({ client }: { client: Client }) {
             </p>
           </div>
         )}
+      </div>
+
+      {/* Meta do período ------------------------------------------
+          Âncora `#metas`: o card do cliente na listagem aponta para
+          cá quando a conta ainda não tem meta. */}
+      <div id="metas" className="mt-5 scroll-mt-20 border-t border-hairline pt-5">
+        <p className="text-sm font-medium">Meta deste mês</p>
+        <p className="mt-0.5 text-2xs text-muted-foreground">
+          É contra ela que a saúde da conta é medida nos painéis.
+        </p>
+
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <div>
+            <Label htmlFor="orcamento">Orçamento previsto (R$)</Label>
+            <Input
+              id="orcamento"
+              inputMode="decimal"
+              value={orcamento}
+              onChange={(e) => setOrcamento(e.target.value)}
+              placeholder="5.000,00"
+              className="mt-1.5 tabular-nums"
+            />
+          </div>
+          <div>
+            <Label htmlFor="meta-resultados">Meta de resultados</Label>
+            <Input
+              id="meta-resultados"
+              inputMode="numeric"
+              value={metaResultados}
+              onChange={(e) => setMetaResultados(e.target.value)}
+              placeholder="120"
+              className="mt-1.5 tabular-nums"
+            />
+          </div>
+        </div>
+
+        <div className="mt-3 flex justify-end">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={salvarMeta}
+            disabled={salvandoMeta}
+          >
+            {salvandoMeta ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Check className="size-3.5" />
+            )}
+            Salvar meta
+          </Button>
+        </div>
       </div>
 
       <div className="mt-5 flex justify-end border-t border-hairline pt-4">

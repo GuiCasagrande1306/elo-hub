@@ -6,6 +6,7 @@ import {
   getClientBySlug,
   getClientIntegrations,
   getCreatives,
+  getCurrentGoals,
   getMetricsWithComparison,
   lastNDays,
 } from "@/lib/data";
@@ -59,11 +60,14 @@ export default async function ClientPage({
   const days = PRESETS.includes(parsed) ? parsed : 30;
   const { start, end } = lastNDays(days);
 
-  const [metrics, creatives, integrations] = await Promise.all([
+  const [metrics, creatives, integrations, goals] = await Promise.all([
     getMetricsWithComparison(client.id, start, end),
     getCreatives(client.id, 6),
     getClientIntegrations(client.id),
+    getCurrentGoals(),
   ]);
+
+  const metaAtual = goals.get(client.id) ?? null;
 
   const kpis = HERO_METRICS.map((key) =>
     computeKpi(key, metrics.currentTotals, metrics.previousTotals),
@@ -89,6 +93,14 @@ export default async function ClientPage({
       period={{ start, end, days }}
       presets={PRESETS}
       integrations={integrations}
+      goal={
+        metaAtual
+          ? {
+              plannedBudgetCents: metaAtual.planned_budget_cents,
+              plannedResults: metaAtual.planned_results,
+            }
+          : null
+      }
     />
   );
 }

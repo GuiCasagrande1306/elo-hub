@@ -8,6 +8,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   CLIENT_SEGMENTS,
   clientSettingsSchema,
+  parseCurrencyToCents,
   newClientSchema,
   toClientPayload,
   type NewClientValues,
@@ -334,5 +335,83 @@ export async function setBillingType(input: {
 
   revalidatePath("/clientes");
   revalidatePath("/alertas-saldo");
+  return { ok: true };
+}
+
+/**
+ * Define a meta do período corrente.
+ *
+ * `upsert` em `(client_id, period_start)`, que é a chave única da
+ * tabela: mexer na meta do mês é editar a linha existente, não empilhar
+ * uma nova. Sem isso o card leria a mais antiga e ignoraria a correção.
+ *
+ * O período é o MÊS CIVIL. Meta de mídia se acerta com fatura, e fatura
+ * fecha no mês — deixar o usuário escolher datas soltas criaria metas
+ * sobrepostas que nenhum gráfico saberia somar.
+ */
+export async function setClientGoal(input: {
+  clientId: string;
+  plannedBudget: string;
+  plannedResults: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const orcamento = parseCurrencyToCents(input.plannedBudget);
+  const resultados = Number(input.plannedResults.replace(",", "."));
+
+  if (orcamento === null) {
+    return { ok: false, error: "Informe o orçamento previsto." };
+  }
+  if (!Number.isFinite(resultados) || resultados < 0) {
+    return { ok: false, error: "Informe a meta de resultados." };
+  }
+
+  const agora = new Date();
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  const inicio = iso(new Date(agora.getFullYear(), agora.getMonth(), 1));
+  const fim = iso(new Date(agora.getFullYear(), agora.getMonth() + 1, 0));
+
+  if (isDemoMode) {
+    const { demoGoals } = await import("@/lib/mock/data");
+    const atual = demoGoals.find(
+      (g) => g.client_id === input.clientId && g.period_start === inicio,
+    );
+    if (atual) {
+      atual.planned_budget_cents = orcamento;
+      atual.planned_results = resultados;
+    } else {
+      demoGoals.push({
+        id: `g-${Date.now()}`,
+        client_id: input.clientId,
+        period_start: inicio,
+        period_end: fim,
+        planned_budget_cents: orcamento,
+        planned_results: resultados,
+        executed_budget_cents_override: null,
+        executed_results_override: null,
+        override_reason: null,
+        notes: null,
+        created_at: iso(agora),
+      });
+    }
+    revalidatePath("/clientes");
+    return { ok: true };
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  const { error } = await supabase.from("client_goals").upsert(
+    {
+      client_id: input.clientId,
+      period_start: inicio,
+      period_end: fim,
+      planned_budget_cents: orcamento,
+      planned_results: resultados,
+    },
+    { onConflict: "client_id,period_start" },
+  );
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/clientes");
+  revalidatePath("/");
   return { ok: true };
 }
