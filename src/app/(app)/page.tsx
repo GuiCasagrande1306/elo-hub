@@ -1,102 +1,160 @@
 import Link from "next/link";
-import { ArrowUpRight } from "lucide-react";
+import { redirect } from "next/navigation";
+import { ArrowUpRight, CalendarClock, ListChecks, Users } from "lucide-react";
 
 import { PageContainer, PageHeader } from "@/components/layout/page-header";
-import { KpiCard } from "@/components/dashboard/kpi-card";
+import { GoalHealthChart } from "@/components/dashboard/goal-health-chart";
+import { UrgentTasks } from "@/components/dashboard/urgent-tasks";
 import { Sparkline } from "@/components/dashboard/sparkline";
-import { TaskDigest } from "@/components/tasks/task-digest";
 import { SyncButton } from "@/components/admin/sync-button";
 import {
   getClients,
   getMetricsWithComparison,
-  getTasks,
+  getMyDashboard,
   lastNDays,
 } from "@/lib/data";
 import { getCurrentUser } from "@/lib/supabase/server";
-import { buildTrend, computeKpi, deriveMetric, sumMetrics } from "@/lib/metrics/kpi";
+import { buildTrend, computeKpi, deriveMetric } from "@/lib/metrics/kpi";
 import { formatCurrency, formatNumber } from "@/lib/format";
-import type { MetricKey } from "@/types/database";
+import { cn } from "@/lib/utils";
 
 /**
- * Visão geral da agência.
+ * Painel individual.
  *
- * Consolida o portfólio inteiro que o usuário pode ver. Para um admin,
- * é toda a carteira; para um colaborador, apenas as contas atribuídas —
- * a soma sai naturalmente diferente porque a origem já vem filtrada pelo
- * RLS, sem nenhum `if (role === ...)` nesta página.
+ * ⚠️ MUDANÇA DE PREMISSA: esta página consolidava "o portfólio inteiro
+ * que o usuário pode ver", contando com o RLS para filtrar. Isso deixou
+ * de valer quando `clients` virou legível por toda a equipe — de lá para
+ * cá, `getClients()` devolve a agência inteira para qualquer um, e o
+ * "consolidado" de um colaborador passou a somar contas que não são
+ * dele.
+ *
+ * Agora a carteira é explícita: `getMyDashboard` resolve por `owner_id`
+ * e `client_members`, não pelo que o RLS deixa ler.
  */
-
-const HERO_METRICS: MetricKey[] = ["spend", "results", "cpa"];
-
 export default async function OverviewPage() {
-  const [user, clients] = await Promise.all([getCurrentUser(), getClients()]);
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
+
+  const [clients, painel] = await Promise.all([
+    getClients(),
+    getMyDashboard(user.id),
+  ]);
+
+  const minhasContas = clients.filter((c) => painel.myClientIds.includes(c.id));
   const { start, end } = lastNDays(30);
 
-  // Uma consulta por cliente, em paralelo. Com carteira grande isto
-  // vira uma única RPC agregada no Postgres — ver nota no README.
-  const perClient = await Promise.all(
-    clients.map(async (client) => {
+  // Uma consulta por conta, em paralelo — e só das minhas.
+  const porConta = await Promise.all(
+    minhasContas.map(async (client) => {
       const metrics = await getMetricsWithComparison(client.id, start, end);
       return { client, metrics, trend: buildTrend(metrics.current) };
     }),
   );
 
-  const portfolioCurrent = sumMetrics(perClient.flatMap((c) => c.metrics.current));
-  const portfolioPrevious = sumMetrics(
-    perClient.flatMap((c) => c.metrics.previous),
-  );
-
-  const kpis = HERO_METRICS.map((key) =>
-    computeKpi(key, portfolioCurrent, portfolioPrevious),
-  );
-
-  const allTrend = buildTrend(perClient.flatMap((c) => c.metrics.current));
-  const sparklines: Record<string, number[]> = {
-    spend: allTrend.map((p) => p.spend),
-    results: allTrend.map((p) => p.results),
-    cpa: allTrend.map((p) => p.cpa),
-  };
-
-  const tasks = await getTasks();
+  const primeiroNome = user.full_name.split(" ")[0];
 
   return (
     <PageContainer>
       <PageHeader
-        title={`Olá, ${user?.full_name.split(" ")[0] ?? "time"}`}
-        description={`Consolidado dos últimos 30 dias em ${clients.length} ${
-          clients.length === 1 ? "conta" : "contas"
-        }.`}
-        // Só admin vê o botão. Esconder é cosmético — a Server Action
-        // valida a role de novo no servidor, que é o que de fato barra.
-        actions={user?.role === "admin" ? <SyncButton /> : undefined}
+        title={`Olá, ${primeiroNome}`}
+        description="Sua operação de hoje: contas sob sua responsabilidade e o que vence."
+        actions={user.role === "admin" ? <SyncButton /> : undefined}
       />
 
-      <div className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 lg:gap-4">
-        {kpis.map((kpi, index) => (
-          <KpiCard
-            key={kpi.key}
-            kpi={kpi}
-            index={index}
-            trend={sparklines[kpi.key]}
-            emphasis={index === 0}
-          />
-        ))}
+      {/* Linha 1 — produtividade -------------------------------------- */}
+      <div className="mt-7 grid gap-3 sm:grid-cols-3 lg:gap-4">
+        <StatCard
+          icon={Users}
+          label="Minhas contas"
+          value={painel.myClientIds.length}
+          hint={
+            painel.myClientIds.length === 0
+              ? "nenhuma atribuída a você"
+              : "sob sua responsabilidade"
+          }
+        />
+        <StatCard
+          icon={CalendarClock}
+          label="Para hoje"
+          value={painel.tasksToday}
+          hint="inclui as atrasadas"
+          /* Destaque só quando há o que fazer. Card vermelho marcando
+             zero treina a pessoa a ignorar a cor. */
+          tone={painel.tasksToday > 0 ? "alerta" : "neutro"}
+        />
+        <StatCard
+          icon={ListChecks}
+          label="Próximos 7 dias"
+          value={painel.tasksWeek}
+          hint="tarefas com prazo"
+        />
       </div>
 
+      {/* Linha 2 — análise e ação ------------------------------------- */}
       <div className="mt-8 grid gap-6 lg:grid-cols-3">
-        <section className="lg:col-span-2">
-          <div className="mb-4 flex items-end justify-between">
-            <h2 className="text-lg font-semibold tracking-[-0.015em]">Contas</h2>
+        <section className="surface-card p-5">
+          <h2 className="text-sm font-semibold">Saúde das metas</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Resultados do período contra o previsto, nas suas contas.
+          </p>
+
+          <div className="mt-5">
+            <GoalHealthChart health={painel.health} />
+          </div>
+        </section>
+
+        <section className="surface-card p-5 lg:col-span-2">
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold">O que vence primeiro</h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Suas cinco tarefas mais urgentes. Marque como feita sem sair
+                daqui.
+              </p>
+            </div>
             <Link
-              href="/clientes"
-              className="text-xs text-muted-foreground transition-colors hover:text-foreground"
+              href="/tarefas"
+              className="shrink-0 text-xs text-muted-foreground transition-colors hover:text-foreground"
             >
-              ver todas
+              ver quadro
             </Link>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            {perClient.map(({ client, metrics, trend }) => {
+          <div className="mt-4">
+            <UrgentTasks tasks={painel.urgent} />
+          </div>
+        </section>
+      </div>
+
+      {/* Minhas contas ------------------------------------------------ */}
+      <section className="mt-8">
+        <div className="mb-4 flex items-end justify-between">
+          <h2 className="text-lg font-semibold tracking-[-0.015em]">
+            Minhas contas
+          </h2>
+          <Link
+            href="/clientes"
+            className="text-xs text-muted-foreground transition-colors hover:text-foreground"
+          >
+            ver todas
+          </Link>
+        </div>
+
+        {porConta.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-hairline py-14 text-center">
+            <Users className="mx-auto size-7 text-muted-foreground/50" />
+            <p className="mt-3 text-sm font-medium">
+              Nenhuma conta atribuída a você
+            </p>
+            <p className="mx-auto mt-1 max-w-[46ch] text-xs text-muted-foreground">
+              Um administrador precisa vincular você às contas que vai
+              atender. Enquanto isso, você continua vendo a carteira inteira
+              em Clientes.
+            </p>
+          </div>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {porConta.map(({ client, metrics, trend }) => {
               const spend = metrics.currentTotals.spendCents;
               const results = deriveMetric("results", metrics.currentTotals);
               const cpaKpi = computeKpi(
@@ -143,18 +201,56 @@ export default async function OverviewPage() {
                       {formatNumber(Math.round(results))} resultados
                     </span>
                     <span aria-hidden>•</span>
-                    <span className="tabular-nums">
-                      CPA {cpaKpi.formatted}
-                    </span>
+                    <span className="tabular-nums">CPA {cpaKpi.formatted}</span>
                   </div>
                 </Link>
               );
             })}
           </div>
-        </section>
-
-        <TaskDigest tasks={tasks} currentUserId={user?.id ?? ""} />
-      </div>
+        )}
+      </section>
     </PageContainer>
+  );
+}
+
+function StatCard({
+  icon: Icon,
+  label,
+  value,
+  hint,
+  tone = "neutro",
+}: {
+  icon: typeof Users;
+  label: string;
+  value: number;
+  hint: string;
+  tone?: "neutro" | "alerta";
+}) {
+  return (
+    <div
+      className={cn(
+        "surface-card flex items-start gap-3 p-4",
+        tone === "alerta" && "ring-warning/35",
+      )}
+    >
+      <span
+        className={cn(
+          "flex size-9 shrink-0 items-center justify-center rounded-lg",
+          tone === "alerta"
+            ? "bg-warning-muted text-warning"
+            : "bg-surface-2 text-muted-foreground",
+        )}
+      >
+        <Icon className="size-4" />
+      </span>
+
+      <div className="min-w-0">
+        <p className="eyebrow">{label}</p>
+        <p className="mt-0.5 text-2xl font-semibold tabular-nums leading-none tracking-[-0.02em]">
+          {value}
+        </p>
+        <p className="mt-1 text-2xs text-muted-foreground">{hint}</p>
+      </div>
+    </div>
   );
 }

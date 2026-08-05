@@ -531,3 +531,134 @@ export async function getClientIntegrations(
     };
   });
 }
+
+/* ------------------------------------------------------------------ */
+/* Painel individual                                                   */
+/* ------------------------------------------------------------------ */
+
+export type GoalHealth = "batendo" | "atencao" | "critico";
+
+export interface MyDashboard {
+  /** Contas sob responsabilidade do usuário. */
+  myClientIds: string[];
+  tasksToday: number;
+  tasksWeek: number;
+  /** Contagem por faixa de atingimento da meta do período. */
+  health: Record<GoalHealth, number>;
+  /** As mais urgentes, já ordenadas: vencidas primeiro. */
+  urgent: TaskWithRelations[];
+}
+
+/**
+ * Resumo da operação de QUEM ESTÁ LOGADO.
+ *
+ * "Minha carteira" é `owner_id` OU vínculo em `client_members` — não a
+ * lista de clientes visíveis. Desde que a carteira virou legível por
+ * toda a equipe, `getClients()` devolve tudo para todo mundo; usá-la
+ * aqui transformaria o painel pessoal num painel da agência.
+ *
+ * As tarefas já vêm filtradas pelo RLS: um colaborador só enxerga as
+ * atribuídas a ele, então não há filtro por usuário nesta função.
+ */
+export async function getMyDashboard(userId: string): Promise<MyDashboard> {
+  const [tasks, goals] = await Promise.all([getTasks(), getCurrentGoals()]);
+
+  const hoje = new Date();
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  const hojeISO = iso(hoje);
+
+  const emSete = new Date(hoje);
+  emSete.setDate(emSete.getDate() + 7);
+  const semanaISO = iso(emSete);
+
+  const abertas = tasks.filter((t) => t.status !== "done");
+
+  const vence = (t: TaskWithRelations) => t.due_date?.slice(0, 10) ?? null;
+
+  const tasksToday = abertas.filter((t) => {
+    const d = vence(t);
+    // Atrasada conta como "de hoje": ninguém resolve amanhã o que já
+    // venceu, e escondê-la faria o número mentir para menos.
+    return d !== null && d <= hojeISO;
+  }).length;
+
+  const tasksWeek = abertas.filter((t) => {
+    const d = vence(t);
+    return d !== null && d <= semanaISO;
+  }).length;
+
+  /* Urgentes: vencidas e as com prazo mais próximo. Tarefa sem prazo
+     fica fora — ela não é urgente, é indefinida, e misturar as duas
+     esconderia o que realmente vence hoje. */
+  const urgent = abertas
+    .filter((t) => vence(t) !== null)
+    .sort((a, b) => (vence(a) ?? "").localeCompare(vence(b) ?? ""))
+    .slice(0, 5);
+
+  const myClientIds = await getMyClientIds(userId);
+
+  const health: Record<GoalHealth, number> = {
+    batendo: 0,
+    atencao: 0,
+    critico: 0,
+  };
+
+  /* O realizado sai de `daily_metrics`, não de
+     `executed_results_override`. O override é a EXCEÇÃO — existe para
+     corrigir a plataforma quando ela erra (lead que era spam, venda
+     fechada por telefone) e é nulo na esmagadora maioria dos casos.
+     Lê-lo como se fosse o valor corrente pintaria toda a carteira de
+     vermelho: foi exatamente o que aconteceu na primeira versão desta
+     função, e o gráfico parecia plausível. */
+  await Promise.all(
+    myClientIds.map(async (clientId) => {
+      const goal = goals.get(clientId);
+      if (!goal || goal.planned_results <= 0) return;
+
+      const rows = await getMetrics(
+        clientId,
+        goal.period_start,
+        goal.period_end,
+      );
+
+      const feito =
+        goal.executed_results_override ?? sumMetrics(rows).conversions;
+
+      const pct = (feito / goal.planned_results) * 100;
+
+      if (pct >= 80) health.batendo += 1;
+      else if (pct >= 50) health.atencao += 1;
+      else health.critico += 1;
+    }),
+  );
+
+  return { myClientIds, tasksToday, tasksWeek, health, urgent };
+}
+
+/**
+ * Contas do usuário.
+ *
+ * ⚠️ `client_members` está vazia hoje: nenhuma tela atribui colaborador
+ * a cliente, e a RPC de cadastro só grava `owner_id`. Por isso o OR —
+ * sem ele, todo colaborador veria carteira zerada.
+ */
+async function getMyClientIds(userId: string): Promise<string[]> {
+  if (isDemoMode) {
+    const { demoClients } = await import("@/lib/mock/data");
+    return demoClients.filter((c) => c.owner_id === userId).map((c) => c.id);
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  const [{ data: proprias }, { data: vinculos }] = await Promise.all([
+    supabase.from("clients").select("id").eq("owner_id", userId),
+    supabase.from("client_members").select("client_id").eq("profile_id", userId),
+  ]);
+
+  return [
+    ...new Set([
+      ...(proprias ?? []).map((c) => c.id as string),
+      ...(vinculos ?? []).map((m) => m.client_id as string),
+    ]),
+  ];
+}
