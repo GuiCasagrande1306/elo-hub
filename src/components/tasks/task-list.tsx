@@ -3,8 +3,6 @@
 import { CheckSquare } from "lucide-react";
 
 import {
-  PRIORITY_LABELS,
-  PRIORITY_STYLES,
 } from "./task-meta";
 import { cn } from "@/lib/utils";
 import { ColorTagCell, CriticalityCell, StatusCell } from "./task-quick-edit";
@@ -71,14 +69,6 @@ export function TaskList({
                   onClick={() => onOpenTask(task.id)}
                   className="flex min-w-0 items-start gap-2.5 text-left"
                 >
-                  <span
-                    className={cn(
-                      "mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide",
-                      PRIORITY_STYLES[task.priority],
-                    )}
-                  >
-                    {PRIORITY_LABELS[task.priority]}
-                  </span>
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">{task.title}</p>
                     {task.checklist.length > 0 && (
