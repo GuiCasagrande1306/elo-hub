@@ -52,16 +52,34 @@ import type {
 /* Clientes                                                            */
 /* ------------------------------------------------------------------ */
 
-export async function getClients(agency?: string): Promise<Client[]> {
+/**
+ * Contas da carteira.
+ *
+ * ENCERRADAS FICAM DE FORA por padrão. Um contrato cancelado não some do
+ * sistema — o histórico continua inteiro e a conta é reaberta em um
+ * clique —, mas ele também não pode continuar dividindo espaço com
+ * quem está sendo operado hoje. Quem quer vê-las pede explicitamente
+ * (`/clientes/encerrados`).
+ */
+export async function getClients(
+  agency?: string,
+  opts?: { onlyChurned?: boolean },
+): Promise<Client[]> {
+  const churn = opts?.onlyChurned ?? false;
+
   if (isDemoMode) {
     const { demoClients } = await import("@/lib/mock/data");
-    return agency
-      ? demoClients.filter((c) => c.agency_partner === agency)
-      : demoClients;
+    return demoClients
+      .filter((c) => (churn ? c.status === "churned" : c.status !== "churned"))
+      .filter((c) => !agency || c.agency_partner === agency);
   }
 
   const supabase = await createSupabaseServerClient();
   let query = supabase.from("clients").select("*").order("name");
+
+  query = churn
+    ? query.eq("status", "churned")
+    : query.neq("status", "churned");
 
   /* Filtro no BANCO, não em memória: os totais do topo somam sobre esta
      mesma lista, então filtrar depois faria os cards mostrarem uma
@@ -273,11 +291,12 @@ export interface ClientWithGoal {
 export async function getClientsWithGoals(
   month?: string,
   agency?: string,
+  opts?: { onlyChurned?: boolean },
 ): Promise<ClientWithGoal[]> {
   const periodo = month ? intervaloDoMes(month) : null;
 
   const [clients, goals] = await Promise.all([
-    getClients(agency),
+    getClients(agency, opts),
     periodo ? getGoalsForMonth(periodo.start) : getCurrentGoals(),
   ]);
 

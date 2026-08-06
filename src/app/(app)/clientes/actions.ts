@@ -492,6 +492,128 @@ export async function setClientGoal(input: {
   return { ok: true };
 }
 
+/* =====================================================================
+   Encerrar e reabrir contrato
+   ---------------------------------------------------------------------
+   Encerrar NÃO apaga nada. Muda o status para `churned`, e com isso a
+   conta sai da listagem principal e aparece em /clientes/encerrados.
+   Métricas, metas, relatórios e histórico continuam inteiros — é o que
+   permite responder "quanto essa conta rendeu enquanto durou?" depois
+   do cancelamento, e é o que torna a ação reversível num clique.
+
+   É de propósito que isto seja um caminho separado de
+   `updateClientSettings`: encerrar contrato não é ajuste de formulário,
+   é decisão comercial, e misturar as duas coisas faria um salvamento
+   distraído mudar o estado da conta.
+   ===================================================================== */
+export async function setClientChurned(input: {
+  clientId: string;
+  churned: boolean;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const novo = input.churned ? "churned" : "active";
+
+  if (isDemoMode) {
+    const { demoClients } = await import("@/lib/mock/data");
+    const alvo = demoClients.find((c) => c.id === input.clientId);
+    if (!alvo) return { ok: false, error: "Cliente não encontrado." };
+    alvo.status = novo;
+    revalidatePath("/clientes");
+    return { ok: true };
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  /* `.select()` para saber se a linha foi mesmo alterada: sem ele, um
+     update barrado pela RLS volta sem erro e com zero linhas, e a tela
+     diria "encerrado" sobre uma conta que continua ativa. */
+  const { data, error } = await supabase
+    .from("clients")
+    .update({ status: novo })
+    .eq("id", input.clientId)
+    .select("id");
+
+  if (error) return { ok: false, error: error.message };
+  if (!data || data.length === 0) {
+    return { ok: false, error: "Você não tem permissão para alterar esta conta." };
+  }
+
+  revalidatePath("/clientes");
+  revalidatePath("/clientes/encerrados");
+  revalidatePath("/");
+  return { ok: true };
+}
+
+/**
+ * Apaga o cliente e TUDO que pende dele.
+ *
+ * As foreign keys são `on delete cascade`: vão junto métricas diárias,
+ * metas, histórico de relatórios, otimizações da esteira, criativos e
+ * integrações. Não há lixeira e não há desfazer.
+ *
+ * Por isso a interface exige o nome digitado e o banco exige admin
+ * (`clients_delete` usa `app.is_admin()`, desde a migration 2 — a 23 e a
+ * 24 abriram criar e editar para a equipe, e deixaram apagar de fora
+ * justamente por causa do cascade).
+ *
+ * NÃO usa `service_role`: a checagem de papel tem que continuar sendo do
+ * Postgres. Se um colaborador chamar esta action direto, a policy
+ * devolve zero linhas e o retorno abaixo transforma isso em recusa
+ * explícita — em vez do "apagado com sucesso" sobre um cliente intacto.
+ */
+export async function deleteClient(input: {
+  clientId: string;
+  /** Nome digitado pelo usuário, conferido contra o cadastro. */
+  confirmName: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (isDemoMode) {
+    const { demoClients } = await import("@/lib/mock/data");
+    const i = demoClients.findIndex((c) => c.id === input.clientId);
+    if (i < 0) return { ok: false, error: "Cliente não encontrado." };
+    if (demoClients[i].name.trim() !== input.confirmName.trim()) {
+      return { ok: false, error: "O nome digitado não confere." };
+    }
+    demoClients.splice(i, 1);
+    revalidatePath("/clientes");
+    return { ok: true };
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  /* Confere o nome CONTRA O BANCO, não contra o que a tela mandou. A
+     confirmação só vale alguma coisa se o texto esperado vier de uma
+     fonte que o chamador não controla. */
+  const { data: cliente } = await supabase
+    .from("clients")
+    .select("name")
+    .eq("id", input.clientId)
+    .maybeSingle();
+
+  if (!cliente) return { ok: false, error: "Cliente não encontrado." };
+
+  if (cliente.name.trim() !== input.confirmName.trim()) {
+    return { ok: false, error: "O nome digitado não confere." };
+  }
+
+  const { data, error } = await supabase
+    .from("clients")
+    .delete()
+    .eq("id", input.clientId)
+    .select("id");
+
+  if (error) return { ok: false, error: error.message };
+  if (!data || data.length === 0) {
+    return {
+      ok: false,
+      error: "Apagar cliente é restrito a administradores.",
+    };
+  }
+
+  revalidatePath("/clientes");
+  revalidatePath("/clientes/encerrados");
+  revalidatePath("/");
+  return { ok: true };
+}
+
 /**
  * Grava a URL da logo do cliente.
  *

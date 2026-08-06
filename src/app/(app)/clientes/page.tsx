@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import { Archive } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { PageContainer, PageHeader } from "@/components/layout/page-header";
 import { ClientsDirectory } from "@/components/clients/clients-directory";
 import { NewClientSheet } from "@/components/clients/new-client-sheet";
@@ -77,7 +80,22 @@ export default async function ClientsPage({
         // O botão vive DENTRO do Sheet (é o `SheetTrigger`), então o
         // estado de abertura não precisa subir para esta página, que é
         // Server Component.
-        actions={<NewClientSheet />}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Contas encerradas não aparecem mais na grade — sem esta
+                porta elas ficariam inalcançáveis pela interface. */}
+            <Button
+              size="sm"
+              variant="outline"
+              nativeButton={false}
+              render={<Link href="/clientes/encerrados" />}
+            >
+              <Archive className="size-3.5" />
+              Encerrados
+            </Button>
+            <NewClientSheet />
+          </div>
+        }
       />
 
       {/* Resumo da carteira ---------------------------------------- */}

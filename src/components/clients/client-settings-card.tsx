@@ -1,10 +1,26 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Check, ImagePlus, Loader2, Trash2 } from "lucide-react";
+import {
+  Archive,
+  Check,
+  ImagePlus,
+  Loader2,
+  RotateCcw,
+  Trash2,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { WhatsAppDestinationPicker } from "./whatsapp-destination-picker";
 import { Label } from "@/components/ui/label";
@@ -15,7 +31,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { setClientGoal, setClientLogo, updateClientSettings } from "@/app/(app)/clientes/actions";
+import {
+  deleteClient,
+  setClientChurned,
+  setClientGoal,
+  setClientLogo,
+  updateClientSettings,
+} from "@/app/(app)/clientes/actions";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { goalInputValue, goalMetricFor } from "@/lib/metrics/goal-metric";
 import {
@@ -407,6 +429,179 @@ export function ClientSettingsCard({
           Salvar
         </Button>
       </div>
+
+      <ZonaDeRisco client={client} />
     </section>
+  );
+}
+
+/* =====================================================================
+   Fim do contrato
+   ---------------------------------------------------------------------
+   Duas ações que parecem vizinhas e não são. Encerrar é reversível e
+   preserva tudo; apagar leva junto métricas, metas, relatórios e
+   histórico, por cascade, sem lixeira.
+
+   Por isso não ficam lado a lado com o mesmo peso: encerrar é um botão
+   comum, apagar é texto discreto que abre um diálogo exigindo o nome
+   digitado. A assimetria visual é a proteção — botões gêmeos num canto
+   perigoso é como se apaga a conta errada às 19h de uma sexta.
+   ===================================================================== */
+
+function ZonaDeRisco({ client }: { client: Client }) {
+  const router = useRouter();
+  const [confirmando, setConfirmando] = useState(false);
+  const [nomeDigitado, setNomeDigitado] = useState("");
+  const [pendente, startTransition] = useTransition();
+
+  const encerrado = client.status === "churned";
+  const nomeConfere = nomeDigitado.trim() === client.name.trim();
+
+  function alternarChurn() {
+    startTransition(async () => {
+      const r = await setClientChurned({
+        clientId: client.id,
+        churned: !encerrado,
+      });
+
+      if (!r.ok) {
+        toast.error(r.error);
+        return;
+      }
+
+      toast.success(
+        encerrado
+          ? "Contrato reaberto. A conta voltou para a carteira."
+          : "Contrato encerrado. A conta saiu da carteira ativa.",
+      );
+      router.refresh();
+    });
+  }
+
+  function apagar() {
+    startTransition(async () => {
+      const r = await deleteClient({
+        clientId: client.id,
+        confirmName: nomeDigitado,
+      });
+
+      if (!r.ok) {
+        toast.error(r.error);
+        return;
+      }
+
+      toast.success(`${client.name} foi apagado.`);
+      /* `replace` e não `push`: a página deste cliente deixou de
+         existir, e voltar para ela daria 404. */
+      router.replace("/clientes");
+    });
+  }
+
+  return (
+    <div className="mt-5 border-t border-hairline pt-5">
+      <p className="text-sm font-medium">Fim do contrato</p>
+
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={alternarChurn}
+          disabled={pendente}
+        >
+          {pendente ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : encerrado ? (
+            <RotateCcw className="size-3.5" />
+          ) : (
+            <Archive className="size-3.5" />
+          )}
+          {encerrado ? "Reabrir contrato" : "Encerrar contrato"}
+        </Button>
+
+        <p className="min-w-0 flex-1 text-2xs text-muted-foreground">
+          {encerrado
+            ? "A conta está em Encerrados. Reabrir devolve ela à carteira com todo o histórico."
+            : "Tira a conta da carteira e leva para Encerrados. Nada é apagado e dá para reabrir."}
+        </p>
+      </div>
+
+      {/* Apagar mora abaixo, em texto, e não como botão irmão do de
+          encerrar — ver a nota no topo. */}
+      <button
+        type="button"
+        onClick={() => {
+          setNomeDigitado("");
+          setConfirmando(true);
+        }}
+        className="mt-4 text-2xs text-muted-foreground underline underline-offset-2 transition-colors hover:text-negative"
+      >
+        Apagar este cliente definitivamente
+      </button>
+
+      <Dialog open={confirmando} onOpenChange={setConfirmando}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Apagar {client.name}?</DialogTitle>
+            <DialogDescription>
+              Isto não tem desfazer.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-3 py-1">
+            {/* O que some junto, dito por extenso. "Tem certeza?" não
+                informa nada — a pessoa já acha que tem. */}
+            <div className="rounded-lg border border-negative/35 bg-negative-muted/30 px-3 py-2.5">
+              <p className="text-xs font-medium text-negative">
+                Vai junto, sem cópia:
+              </p>
+              <ul className="mt-1 list-inside list-disc text-2xs text-muted-foreground">
+                <li>todo o histórico de métricas diárias</li>
+                <li>metas e o histórico mês a mês</li>
+                <li>relatórios já gerados e enviados</li>
+                <li>anotações da esteira e integrações</li>
+              </ul>
+            </div>
+
+            <p className="text-2xs text-muted-foreground">
+              Se o contrato apenas acabou, use{" "}
+              <strong className="text-foreground">Encerrar contrato</strong> —
+              guarda tudo e desfaz num clique.
+            </p>
+
+            <div>
+              <Label htmlFor="confirmar-nome">
+                Digite <strong>{client.name}</strong> para confirmar
+              </Label>
+              <Input
+                id="confirmar-nome"
+                value={nomeDigitado}
+                onChange={(e) => setNomeDigitado(e.target.value)}
+                autoComplete="off"
+                className="mt-1.5"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setConfirmando(false)}
+              disabled={pendente}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={apagar}
+              disabled={pendente || !nomeConfere}
+              className="bg-negative text-white hover:bg-negative/90"
+            >
+              {pendente && <Loader2 className="size-4 animate-spin" />}
+              <Trash2 className="size-4" />
+              Apagar para sempre
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
