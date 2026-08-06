@@ -47,12 +47,14 @@ export function TaskList({
   return (
     <div className="surface-card overflow-hidden">
       {/* Cabeçalho só faz sentido quando há colunas: escondido no mobile. */}
-      <div className="hidden grid-cols-[1fr_140px_120px_110px_92px] gap-4 border-b border-hairline px-4 py-2.5 md:grid">
-        {["Tarefa", "Cliente", "Status", "Prazo", "Equipe"].map((label) => (
-          <span key={label} className="eyebrow">
-            {label}
-          </span>
-        ))}
+      <div className="hidden grid-cols-[1fr_140px_120px_110px_84px_92px_44px] gap-4 border-b border-hairline px-4 py-2.5 md:grid">
+        {["Tarefa", "Cliente", "Status", "Prazo", "Equipe", "Criticidade", ""].map(
+          (label, i) => (
+            <span key={i} className="eyebrow">
+              {label}
+            </span>
+          ),
+        )}
       </div>
 
       <ul className="divide-y divide-hairline">
@@ -62,7 +64,7 @@ export function TaskList({
 
           return (
             <li key={task.id}>
-              <div className="grid w-full grid-cols-1 gap-x-4 gap-y-2 px-4 py-3 text-left transition-colors hover:bg-accent/45 md:grid-cols-[1fr_140px_120px_110px_92px_auto_auto] md:items-center">
+              <div className="grid w-full grid-cols-1 gap-x-4 gap-y-2 px-4 py-3 text-left transition-colors hover:bg-accent/45 md:grid-cols-[1fr_140px_120px_110px_84px_92px_44px] md:items-center">
                 {/* Tarefa — só o título abre a gaveta. As células de
                     edição rápida ficam fora do alvo de clique, senão
                     ajustar criticidade abriria a tarefa junto. */}

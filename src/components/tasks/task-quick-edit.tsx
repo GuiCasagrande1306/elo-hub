@@ -60,18 +60,32 @@ export function CriticalityCell({
           <button
             type="button"
             aria-label={`Criticidade ${nivel} de 10`}
-            className="flex items-center gap-1.5 rounded px-1 py-0.5 transition-colors hover:bg-accent/60"
+            className="group flex w-full items-center gap-2 rounded-md px-1.5 py-1 transition-colors hover:bg-accent"
           />
         }
       >
-        <span className="h-1 w-10 overflow-hidden rounded-full bg-muted">
+        {/* Número primeiro e com peso: é o que se lê na varredura. A
+            barra é reforço, não a informação principal. */}
+        <span
+          className={cn(
+            "text-xs font-semibold tabular-nums transition-colors",
+            nivel >= 9
+              ? "text-negative"
+              : nivel >= 7
+                ? "text-warning"
+                : "text-muted-foreground",
+          )}
+        >
+          {nivel}
+        </span>
+        <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
           <span
-            className={cn("block h-full rounded-full", criticalityTone(nivel))}
+            className={cn(
+              "block h-full rounded-full transition-[width] duration-300",
+              criticalityTone(nivel),
+            )}
             style={{ width: `${nivel * 10}%` }}
           />
-        </span>
-        <span className="text-2xs tabular-nums text-muted-foreground">
-          {nivel}
         </span>
       </PopoverTrigger>
 
@@ -83,10 +97,14 @@ export function CriticalityCell({
               type="button"
               onClick={() => escolher(n)}
               className={cn(
-                "size-7 rounded text-xs tabular-nums transition-colors",
+                "size-8 rounded-md text-xs font-medium tabular-nums transition-all",
                 n === nivel
-                  ? "bg-foreground font-medium text-background"
-                  : "hover:bg-accent",
+                  ? "scale-110 bg-foreground text-background"
+                  : n >= 9
+                    ? "text-negative hover:bg-negative-muted"
+                    : n >= 7
+                      ? "text-warning hover:bg-warning-muted"
+                      : "text-muted-foreground hover:bg-accent",
               )}
             >
               {n}
@@ -133,16 +151,16 @@ export function ColorTagCell({
           <button
             type="button"
             aria-label={cor ? `Cor ${COLOR_TAG_LABELS[cor]}` : "Sem cor"}
-            className="grid size-6 place-items-center rounded transition-colors hover:bg-accent/60"
+            className="grid size-7 place-items-center rounded-md transition-colors hover:bg-accent"
           />
         }
       >
         <span
           className={cn(
-            "size-3 rounded-full",
+            "size-4 rounded-full ring-1 ring-inset ring-black/10 transition-transform hover:scale-110 dark:ring-white/15",
             cor
               ? COLOR_TAG_CLASSES[cor]
-              : "border border-dashed border-muted-foreground/50",
+              : "border border-dashed border-muted-foreground/50 ring-0",
           )}
         />
       </PopoverTrigger>
@@ -156,11 +174,11 @@ export function ColorTagCell({
               title={COLOR_TAG_LABELS[c]}
               onClick={() => escolher(c)}
               className={cn(
-                "grid size-7 place-items-center rounded transition-colors hover:bg-accent",
-                c === cor && "ring-2 ring-foreground/60",
+                "grid size-8 place-items-center rounded-md transition-all hover:scale-110 hover:bg-accent",
+                c === cor && "bg-accent ring-2 ring-foreground/60",
               )}
             >
-              <span className={cn("size-3.5 rounded-full", COLOR_TAG_CLASSES[c])} />
+              <span className={cn("size-4 rounded-full", COLOR_TAG_CLASSES[c])} />
             </button>
           ))}
 
