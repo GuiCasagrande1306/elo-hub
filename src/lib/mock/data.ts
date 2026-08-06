@@ -779,6 +779,8 @@ export const demoTasks: TaskWithRelations[] = taskSeeds.map((seed, index) => {
     content: doc(seed.body),
     status: seed.status,
     priority: seed.priority,
+    criticality: { low: 2, medium: 5, high: 8, urgent: 10 }[seed.priority],
+    color_tag: null,
     position: (index + 1) * 1000,
     due_date: seed.due === null ? null : daysAhead(seed.due),
     completed_at: seed.status === "done" ? daysAhead(-2) : null,

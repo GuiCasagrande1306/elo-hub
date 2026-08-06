@@ -1,0 +1,58 @@
+{\rtf1\ansi\ansicpg1252\deff0
+{\fonttbl{\f0\fswiss Helvetica;}}
+\f0\fs24
+
+{\b\fs32 Elo Hub \endash  Google Ads API Design Document\par}
+{\fs20 Elo Marketing \endash  marketingelo.com.br \endash  August 2026\par}
+\par
+{\b\fs28 1. Company Overview\par}
+Elo Marketing is a Brazilian digital marketing agency based in Santa Catarina. We manage paid media campaigns (Google Ads and Meta Ads) for third-party clients across e-commerce, food delivery, lead generation and local business segments. We operate a Google Ads Manager Account (MCC) that oversees our client accounts.\par
+\par
+{\b\fs28 2. Tool Overview\par}
+{\b Name:} Elo Hub\par
+{\b Type:} Internal web application, not offered to the public and not sold as a product.\par
+{\b Users:} Employees of Elo Marketing only. Currently four named users. We expect fewer than twenty internal users within the next twelve months. Access is authenticated and role-restricted; the tool is never exposed to clients or to the public.\par
+{\b Purpose:} Consolidate performance data from Google Ads and Meta Ads into a single reporting and account-management dashboard, replacing manual spreadsheet compilation.\par
+\par
+The tool does NOT create, edit, pause or otherwise mutate campaigns, ad groups, ads, keywords, budgets or bids. It is strictly read-only against the Google Ads API.\par
+\par
+{\b\fs28 3. API Usage\par}
+{\b Services used:} GoogleAdsService.SearchStream only.\par
+\par
+{\b Resources queried:} the customer resource, aggregated at account level.\par
+\par
+{\b Fields requested:} metrics.cost_micros, metrics.clicks, metrics.impressions, metrics.conversions, segments.date.\par
+\par
+{\b Representative GAQL query:}\par
+\par
+SELECT segments.date, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions FROM customer WHERE segments.date BETWEEN '2026-08-01' AND '2026-08-31'\par
+\par
+{\b MCC access pattern:} All requests are authenticated with a single OAuth 2.0 refresh token belonging to the agency MCC. The login-customer-id header carries the MCC ID; the path customer ID is the client account being read. No client is asked to authenticate individually.\par
+\par
+{\b Expected call volume:} One scheduled synchronization per day covering the current month for each linked account, plus occasional manual refreshes triggered by a user. With our current portfolio this is fewer than 50 API calls per day. Volume scales with the number of managed accounts rather than with the number of users, and we do not expect to exceed 1,000 calls per day within the next twelve months.\par
+\par
+{\b Rate limiting and error handling:} Requests are issued sequentially, never in parallel bursts. Authentication errors are surfaced to an administrator for re-authorization; rate-limit responses are retried on the following scheduled run rather than immediately.\par
+\par
+{\b\fs28 4. Architecture and Data Flow\par}
+1. An administrator authorizes the agency Google account once, via OAuth 2.0 with access_type=offline. The resulting refresh token is stored server-side.\par
+2. A scheduled job runs once per day. For each linked client account it issues a SearchStream request through the MCC.\par
+3. Returned metrics are normalized (cost_micros divided by 1,000,000 and stored as integer cents) and written to a per-day, per-account metrics table.\par
+4. The web interface reads exclusively from that stored table. No end-user action triggers a direct API call.\par
+5. Aggregated figures are rendered as dashboards and as PDF reports delivered to the corresponding client.\par
+\par
+{\b Technology:} Next.js application hosted on Vercel; PostgreSQL database hosted on Supabase; REST calls to googleads.googleapis.com using the standard HTTPS interface.\par
+\par
+{\b\fs28 5. Credential and Data Security\par}
+OAuth refresh tokens and the developer token are stored in a dedicated database table that has row-level security enabled with no access policies whatsoever. This makes the table unreachable by any authenticated end-user session; it is readable only by the server using a privileged service credential that never reaches the browser.\par
+\par
+Advertising data is scoped per client. Each client sees only its own reports. Data is retained only as long as the client relationship is active and is deleted on request.\par
+\par
+{\b\fs28 6. Who Has Access\par}
+Internal users only \endash  employees of Elo Marketing. Clients receive rendered PDF and messaging reports containing their own data; they have no login to the tool and no direct or indirect access to the Google Ads API.\par
+\par
+{\b\fs28 7. Third-Party Tools\par}
+The tool is developed and operated entirely by Elo Marketing. We do not use a token issued to us with software developed by anyone else, and we do not provide API access to any third party.\par
+\par
+{\b\fs28 8. App Conversion Tracking and Remarketing API\par}
+Not used. The tool performs reporting only and does not upload conversions or manage remarketing audiences.\par
+}

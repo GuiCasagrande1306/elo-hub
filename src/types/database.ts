@@ -202,6 +202,18 @@ export interface RichTextDoc {
   content?: unknown[];
 }
 
+export const TASK_COLOR_TAGS = [
+  "rosa",
+  "laranja",
+  "ambar",
+  "verde",
+  "azul",
+  "roxo",
+  "cinza",
+] as const;
+
+export type TaskColorTag = (typeof TASK_COLOR_TAGS)[number];
+
 export interface Task {
   id: string;
   client_id: string | null;
@@ -209,7 +221,12 @@ export interface Task {
   title: string;
   content: RichTextDoc;
   status: TaskStatus;
+  /** Derivada de `criticality` por trigger. Não editar direto. */
   priority: TaskPriority;
+  /** 1–10. Fonte da verdade da importância. */
+  criticality: number;
+  /** Marcação pessoal de cor. Token do tema, não hex. */
+  color_tag: TaskColorTag | null;
   position: number;
   due_date: string | null;
   completed_at: string | null;

@@ -7,6 +7,7 @@ import { CheckSquare, MessageSquare } from "lucide-react";
 
 import { PRIORITY_LABELS, PRIORITY_STYLES } from "./task-meta";
 import { cn } from "@/lib/utils";
+import { COLOR_TAG_CLASSES, criticalityTone } from "./task-meta";
 import { formatDueDate, initials } from "@/lib/format";
 import type { TaskWithRelations } from "@/types/database";
 
@@ -113,8 +114,22 @@ export function TaskCardShell({
         dragging && "rotate-1 ring-signal/45 shadow-2xl",
       )}
     >
+      {/* Faixa da cor pessoal no topo, largura inteira: é marcação de
+          quem organiza, não estado da tarefa — fica visível na varredura
+          do quadro sem competir com prioridade ou prazo. */}
+      {task.color_tag && (
+        <span
+          aria-hidden
+          className={cn(
+            "-mx-3 -mt-3 h-1 rounded-t-[inherit]",
+            COLOR_TAG_CLASSES[task.color_tag],
+          )}
+        />
+      )}
+
       <div className="flex items-start gap-2">
         <span
+          title={`Criticidade ${task.criticality}/10`}
           className={cn(
             "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide",
             PRIORITY_STYLES[task.priority],
@@ -151,6 +166,23 @@ export function TaskCardShell({
           </div>
           <span className="text-[10px] tabular-nums text-muted-foreground">
             {task.progress}%
+          </span>
+        </div>
+      )}
+
+      {/* Criticidade só aparece de 7 para cima. Barra em toda tarefa
+          faria as urgentes deixarem de saltar aos olhos — que é a única
+          coisa que a barra precisa fazer. */}
+      {task.criticality >= 7 && (
+        <div className="flex items-center gap-2">
+          <div className="h-1 w-14 overflow-hidden rounded-full bg-muted">
+            <div
+              className={cn("h-full rounded-full", criticalityTone(task.criticality))}
+              style={{ width: `${task.criticality * 10}%` }}
+            />
+          </div>
+          <span className="text-[10px] tabular-nums text-muted-foreground">
+            {task.criticality}/10
           </span>
         </div>
       )}

@@ -97,6 +97,11 @@ const updateSchema = z.object({
   priority: prioritySchema.optional(),
   status: statusSchema.optional(),
   dueDate: z.string().nullable().optional(),
+  criticality: z.number().int().min(1).max(10).optional(),
+  colorTag: z
+    .enum(["rosa", "laranja", "ambar", "verde", "azul", "roxo", "cinza"])
+    .nullable()
+    .optional(),
 });
 
 export async function updateTask(input: {
@@ -106,11 +111,14 @@ export async function updateTask(input: {
   priority?: TaskPriority;
   status?: TaskStatus;
   dueDate?: string | null;
+  /** 1–10. `priority` é derivada disto por trigger no banco. */
+  criticality?: number;
+  colorTag?: string | null;
 }): Promise<ActionResult> {
   const parsed = updateSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Dados inválidos." };
 
-  const { taskId, dueDate, ...rest } = parsed.data;
+  const { taskId, dueDate, colorTag, ...rest } = parsed.data;
 
   if (isDemoMode) {
     const { demoTasks } = await import("@/lib/mock/data");
@@ -125,6 +133,8 @@ export async function updateTask(input: {
         task.content = rest.content as unknown as typeof task.content;
       }
       if (dueDate !== undefined) task.due_date = dueDate;
+      if (rest.criticality !== undefined) task.criticality = rest.criticality;
+      if (colorTag !== undefined) task.color_tag = colorTag;
       task.updated_at = new Date().toISOString();
     }
     revalidatePath("/tarefas");
@@ -137,6 +147,7 @@ export async function updateTask(input: {
     .update({
       ...rest,
       ...(dueDate !== undefined ? { due_date: dueDate } : {}),
+      ...(colorTag !== undefined ? { color_tag: colorTag } : {}),
     })
     .eq("id", taskId);
 
@@ -278,6 +289,8 @@ export async function createTask(input: {
       content: { type: "doc", content: [] },
       status,
       priority,
+      criticality: 5,
+      color_tag: null,
       position: 0,
       due_date: null,
       completed_at: null,
@@ -312,6 +325,8 @@ export async function createTask(input: {
     client_id: clientId,
     status,
     priority,
+    criticality: 5,
+    color_tag: null,
     // A policy `tasks_insert` exige created_by = auth.uid(): o campo não
     // pode ser forjado para atribuir a tarefa a outra pessoa.
     created_by: user.id,
