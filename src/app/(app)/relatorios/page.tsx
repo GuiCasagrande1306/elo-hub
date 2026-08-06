@@ -4,12 +4,18 @@ import { CheckCircle2, Clock, FileText, TriangleAlert } from "lucide-react";
 
 import { PageContainer, PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
-import { getClients, getReports, getReportTemplates } from "@/lib/data";
+import {
+  getClients,
+  getClientsWithGoals,
+  getReports,
+  getReportTemplates,
+} from "@/lib/data";
 import { formatDateFull, formatPeriod } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { ClientSegment, ReportStatus } from "@/types/database";
 import { listarPendentes } from "./actions";
 import { SendQueue } from "./send-queue";
+import { CommandStation } from "./command-station";
 
 export const metadata: Metadata = { title: "Relatórios" };
 
@@ -34,12 +40,25 @@ const STATUS_META: Record<
 };
 
 export default async function ReportsPage() {
-  const [templates, reports, clients, pendentes] = await Promise.all([
-    getReportTemplates(),
-    getReports(),
-    getClients(),
-    listarPendentes(),
-  ]);
+  const [templates, reports, clients, pendentes, comMetricas] =
+    await Promise.all([
+      getReportTemplates(),
+      getReports(),
+      getClients(),
+      listarPendentes(),
+      /* Resumo REAL por cliente, somado de `daily_metrics` no servidor.
+         A estação troca os números junto com a seleção sem ida ao banco,
+         e nenhum valor da tela é inventado — o texto que sai daqui vai
+         para o cliente final. */
+      getClientsWithGoals(),
+    ]);
+
+  const resumos = comMetricas.map((linha) => ({
+    id: linha.client.id,
+    name: linha.client.name,
+    spendCents: linha.computedSpendCents,
+    results: Math.round(linha.computedResults),
+  }));
 
   const clientName = (id: string) =>
     clients.find((c) => c.id === id)?.name ?? "Cliente";
@@ -61,6 +80,13 @@ export default async function ReportsPage() {
         }
       />
 
+      <div className="mt-6">
+        <CommandStation
+          clients={resumos}
+          templates={templates.map((t) => ({ id: t.id, name: t.name }))}
+        />
+      </div>
+
       {/* Fila de envio ---------------------------------------------
           Primeiro na página porque é a única seção com trabalho a
           fazer hoje; templates e histórico são consulta. */}
@@ -73,7 +99,8 @@ export default async function ReportsPage() {
           sai do <strong>seu</strong> WhatsApp — conecte-o em Configurações.
         </p>
 
-        <SendQueue itens={pendentes} />
+        <span id="fila-de-envio" className="scroll-mt-20" />
+      <SendQueue itens={pendentes} />
       </section>
 
       {/* Templates ------------------------------------------------- */}
