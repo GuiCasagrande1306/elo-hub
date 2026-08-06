@@ -54,11 +54,10 @@ interface TasksWorkspaceProps {
   corteConcluidas: string;
 }
 
-export function TasksWorkspace({
-  tasks,
-  clients,
-  corteConcluidas,
-}: TasksWorkspaceProps) {
+/* `clients` e `corteConcluidas` seguem aceitos pela página mas não são
+   mais lidos aqui: o filtro de cliente saiu da barra, e a janela de 7
+   dias deixou de existir quando o agrupamento virou estrito. */
+export function TasksWorkspace({ tasks }: TasksWorkspaceProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [, startTransition] = useTransition();
@@ -67,12 +66,8 @@ export function TasksWorkspace({
     "board" | "list" | "calendar" | "done"
   >("board");
   const [query, setQuery] = useState("");
-  const [clientFilter, setClientFilter] = useState<string>(ALL);
   const [statusFilter, setStatusFilter] = useState<string>(ALL);
   const [assigneeFilter, setAssigneeFilter] = useState<string>(ALL);
-  /* Faixa, não valor exato: ninguém filtra por "criticidade 7". A
-     pergunta real é "o que está crítico". */
-  const [critFilter, setCritFilter] = useState<string>(ALL);
   /* Dia das concluídas. Vazio = todas — o padrão não pode esconder
      entrega, senão alguém conclui e acha que não salvou. */
   const [diaConcluidas, setDiaConcluidas] = useState("");
@@ -112,7 +107,6 @@ export function TasksWorkspace({
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return tasks.filter((task) => {
-      if (clientFilter !== ALL && task.client_id !== clientFilter) return false;
       if (statusFilter !== ALL && task.status !== statusFilter) return false;
       if (
         assigneeFilter !== ALL &&
@@ -120,15 +114,13 @@ export function TasksWorkspace({
       ) {
         return false;
       }
-      if (critFilter === "alta" && task.criticality < 7) return false;
-      if (critFilter === "critica" && task.criticality < 9) return false;
       if (!needle) return true;
       return (
         task.title.toLowerCase().includes(needle) ||
         (task.client?.name.toLowerCase().includes(needle) ?? false)
       );
     });
-  }, [tasks, query, clientFilter, statusFilter, critFilter, assigneeFilter]);
+  }, [tasks, query, statusFilter, assigneeFilter]);
 
 
   /* Concluída some do quadro e da lista depois de 7 dias.
@@ -164,14 +156,13 @@ export function TasksWorkspace({
     );
   }, [concluidas, diaConcluidas]);
 
+  /* Estritamente não-concluídas. A regra antiga mantinha as concluídas
+     por 7 dias, o que fazia sentido quando "Concluídas" era uma aba
+     separada — com o grupo logo abaixo na mesma tela, a tarefa aparecia
+     duas vezes e o contador do topo mentia. */
   const emAndamento = useMemo(
-    () =>
-      filtered.filter((t) => {
-        if (t.status !== "done") return true;
-        if (!t.completed_at) return true;
-        return t.completed_at.slice(0, 10) >= corteConcluidas;
-      }),
-    [filtered, corteConcluidas],
+    () => filtered.filter((t) => t.status !== "done"),
+    [filtered],
   );
 
   const openTask = tasks.find((t) => t.id === openTaskId) ?? null;
@@ -205,7 +196,9 @@ export function TasksWorkspace({
     startTransition(async () => {
       const result = await createTask({
         title,
-        clientId: clientFilter === ALL ? null : clientFilter,
+        /* Sem filtro de cliente na barra, a criação rápida nasce sem
+           conta — quem precisa vincular faz na gaveta. */
+        clientId: null,
       });
       if (result.ok) toast.success("Tarefa criada.");
       else toast.error(result.error);
@@ -254,32 +247,6 @@ export function TasksWorkspace({
         </div>
 
         {/* Base UI entrega `string | null` (null = seleção limpa). */}
-        <Select
-          value={clientFilter}
-          onValueChange={(value) => setClientFilter(value ?? ALL)}
-        >
-          <SelectTrigger size="sm" className="w-full sm:w-48">
-            {/* Base UI renderiza o VALOR selecionado, não o rótulo do
-                item. Sem esta função o gatilho mostraria "__all__" ou o
-                UUID do cliente. */}
-            <SelectValue>
-              {(value: string) =>
-                value === ALL
-                  ? "Todos os clientes"
-                  : (clients.find((c) => c.id === value)?.name ??
-                    "Todos os clientes")
-              }
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>Todos os clientes</SelectItem>
-            {clients.map((client) => (
-              <SelectItem key={client.id} value={client.id}>
-                {client.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
 
         <Select
           value={assigneeFilter}
@@ -328,27 +295,6 @@ export function TasksWorkspace({
           </SelectContent>
         </Select>
 
-        <Select
-          value={critFilter}
-          onValueChange={(value) => setCritFilter(value ?? ALL)}
-        >
-          <SelectTrigger size="sm" className="w-full sm:w-44">
-            <SelectValue>
-              {(value: string) =>
-                value === "alta"
-                  ? "Criticidade 7+"
-                  : value === "critica"
-                    ? "Criticidade 9+"
-                    : "Toda criticidade"
-              }
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>Toda criticidade</SelectItem>
-            <SelectItem value="alta">Criticidade 7+</SelectItem>
-            <SelectItem value="critica">Criticidade 9+</SelectItem>
-          </SelectContent>
-        </Select>
 
         {/* Destaque no CTA: é a única ação de escrita da barra, e no
             meio de cinco filtros cinzas ela desaparecia. */}
@@ -406,7 +352,6 @@ export function TasksWorkspace({
             onOpenTask={setOpenTask}
             title="Demandas da semana"
             tone="aberto"
-            defaultClientId={clientFilter === ALL ? null : clientFilter}
           />
 
           <TaskList

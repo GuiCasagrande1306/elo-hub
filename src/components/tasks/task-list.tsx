@@ -241,17 +241,28 @@ function TaskRow({
           )}
         </span>
 
-        {/* Responsável — só o primeiro. Os demais aparecem na gaveta. */}
-        <span className="flex">
-          {task.assignees[0] ? (
-            <span
-              title={task.assignees[0].full_name}
-              className="grid size-6 place-items-center rounded-full bg-surface-2 text-[9px] font-semibold ring-1 ring-hairline"
-            >
-              {initials(task.assignees[0].full_name)}
-            </span>
-          ) : (
+        {/* Avatares sobrepostos. Três e um contador: quatro cabeças
+            numa célula de 44px viram borrão ilegível. */}
+        <span className="flex -space-x-1.5">
+          {task.assignees.length === 0 ? (
             <span className="text-2xs text-muted-foreground/60">—</span>
+          ) : (
+            <>
+              {task.assignees.slice(0, 3).map((p) => (
+                <span
+                  key={p.id}
+                  title={p.full_name}
+                  className="grid size-6 place-items-center rounded-full bg-surface-2 text-[9px] font-semibold ring-2 ring-card"
+                >
+                  {initials(p.full_name)}
+                </span>
+              ))}
+              {task.assignees.length > 3 && (
+                <span className="grid size-6 place-items-center rounded-full bg-surface-2 text-[9px] font-medium text-muted-foreground ring-2 ring-card">
+                  +{task.assignees.length - 3}
+                </span>
+              )}
+            </>
           )}
         </span>
 
@@ -264,15 +275,39 @@ function TaskRow({
           startedAt={task.timer_started_at}
         />
 
-        {/* Criticidade: badge derivada + edição no clique. */}
-        <span className="flex items-center gap-1.5">
+        {/* Barra segmentada 1–10 no lugar da badge textual: "Alta"
+            agrupa 7 e 8 no mesmo rótulo, e a diferença entre eles é
+            justamente o que decide o que se faz primeiro. O número fica
+            ao lado porque a barra sozinha não se lê com precisão. */}
+        <span className="flex items-center gap-1.5" title={badge.label}>
           <span
             className={cn(
-              "rounded-md px-1.5 py-0.5 text-2xs font-medium ring-1 ring-inset",
-              badge.className,
+              "text-xs font-semibold tabular-nums",
+              task.criticality >= 8
+                ? "text-negative"
+                : task.criticality >= 4
+                  ? "text-warning"
+                  : "text-muted-foreground",
             )}
           >
-            {badge.label}
+            {task.criticality}
+          </span>
+          <span className="flex gap-px">
+            {Array.from({ length: 10 }, (_, i) => (
+              <span
+                key={i}
+                className={cn(
+                  "h-2.5 w-1 rounded-[1px]",
+                  i < task.criticality
+                    ? task.criticality >= 8
+                      ? "bg-negative"
+                      : task.criticality >= 4
+                        ? "bg-warning"
+                        : "bg-positive"
+                    : "bg-muted",
+                )}
+              />
+            ))}
           </span>
         </span>
 
