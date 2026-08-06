@@ -26,8 +26,9 @@ import type { Client } from "@/types/database";
  * ou sem integração, que ninguém percebe até o card aparecer vazio.
  *
  * A RPC é SECURITY INVOKER, então cada INSERT lá dentro continua sob
- * RLS: um colaborador recebe violação de policy em vez de criar conta.
- * Não há checagem de papel aqui de propósito — quem barra é o banco.
+ * RLS. Desde a migration 23 toda a equipe cadastra — mas editar e
+ * apagar seguem restritos a admin. Não há checagem de papel aqui de
+ * propósito: quem decide é o banco, não a aplicação.
  */
 export type CreateClientResult =
   | { ok: true; client: Pick<Client, "id" | "name" | "slug"> }
@@ -131,7 +132,8 @@ export async function createClientAction(
     if (error.code === "42501") {
       return {
         ok: false,
-        error: "Apenas administradores podem cadastrar clientes.",
+        error:
+          "O banco recusou o cadastro. Recarregue e tente de novo; se persistir, avise um administrador.",
       };
     }
     return { ok: false, error: error.message };
