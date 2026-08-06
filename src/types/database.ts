@@ -225,6 +225,10 @@ export interface Task {
   priority: TaskPriority;
   /** 1–10. Fonte da verdade da importância. */
   criticality: number;
+  /** Tempo FECHADO em segundos. Não inclui o cronômetro em curso. */
+  tracked_seconds: number;
+  /** Quando o cronômetro ligou. null = parado. */
+  timer_started_at: string | null;
   /** Marcação pessoal de cor. Token do tema, não hex. */
   color_tag: TaskColorTag | null;
   position: number;

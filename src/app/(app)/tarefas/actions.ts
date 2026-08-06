@@ -291,6 +291,8 @@ export async function createTask(input: {
       priority,
       criticality: 5,
       color_tag: null,
+      tracked_seconds: 0,
+      timer_started_at: null,
       position: 0,
       due_date: null,
       completed_at: null,
@@ -332,6 +334,59 @@ export async function createTask(input: {
     created_by: user.id,
     position: Date.now(),
   });
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/tarefas");
+  return { ok: true };
+}
+
+/* ------------------------------------------------------------------ */
+/* Cronômetro                                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Liga o cronômetro da tarefa.
+ *
+ * `timer_started_at` recebe `now()` do BANCO, não do navegador: relógio
+ * de máquina adiantado gravaria tempo negativo ao parar. Por isso a
+ * escrita usa a expressão do Postgres e não um ISO montado aqui.
+ *
+ * Ligar duas vezes é inofensivo — o segundo start reposiciona a âncora,
+ * e o tempo entre os dois cliques é desprezível comparado ao estrago de
+ * um erro na tela por dois cliques rápidos.
+ */
+export async function startTaskTimer(
+  taskId: string,
+): Promise<ActionResult> {
+  if (isDemoMode) return { ok: true };
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase
+    .from("tasks")
+    .update({ timer_started_at: new Date().toISOString() })
+    .eq("id", taskId);
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/tarefas");
+  return { ok: true };
+}
+
+/**
+ * Para o cronômetro e soma o que correu.
+ *
+ * Delega para a RPC `stop_task_timer`: a soma precisa do relógio do
+ * servidor. Feita aqui com `Date.now()`, um relógio atrasado subtrairia
+ * tempo já trabalhado do total.
+ */
+export async function stopTaskTimer(
+  taskId: string,
+): Promise<ActionResult> {
+  if (isDemoMode) return { ok: true };
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc("stop_task_timer", { p_task: taskId });
 
   if (error) return { ok: false, error: error.message };
 

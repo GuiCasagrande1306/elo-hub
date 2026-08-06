@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { criticalityBadge } from "./task-meta";
 import { cn } from "@/lib/utils";
 import { ColorTagCell, CriticalityCell, StatusCell } from "./task-quick-edit";
+import { TimeCell } from "./task-timer";
 import { createTask, updateTask } from "@/app/(app)/tarefas/actions";
 import { formatDueDate, initials } from "@/lib/format";
 import type { TaskWithRelations } from "@/types/database";
@@ -28,7 +29,7 @@ import type { TaskWithRelations } from "@/types/database";
    ===================================================================== */
 
 const GRID =
-  "grid-cols-[28px_1fr_150px_44px_128px_92px_96px_44px_28px]";
+  "grid-cols-[28px_1fr_150px_44px_128px_84px_92px_96px_44px_28px]";
 
 /** Tarefa criada pelo sistema, não por uma pessoa. */
 function isAlerta(title: string): boolean {
@@ -114,11 +115,13 @@ export function TaskList({
             )}
           >
             <span />
-            {["Tarefa", "Cliente", "Resp.", "Status", "Criticidade"].map((l) => (
-              <span key={l} className="eyebrow">
-                {l}
-              </span>
-            ))}
+            {["Tarefa", "Cliente", "Resp.", "Status", "Tempo", "Criticidade"].map(
+              (l) => (
+                <span key={l} className="eyebrow">
+                  {l}
+                </span>
+              ),
+            )}
             <span className="eyebrow">{concluido ? "Concluído" : "Prazo"}</span>
             <span />
             <span />
@@ -253,6 +256,13 @@ function TaskRow({
         </span>
 
         <StatusCell taskId={task.id} value={task.status} />
+
+        {/* Tempo rastreado. Play aparece no hover; parado mostra "—". */}
+        <TimeCell
+          taskId={task.id}
+          trackedSeconds={task.tracked_seconds}
+          startedAt={task.timer_started_at}
+        />
 
         {/* Criticidade: badge derivada + edição no clique. */}
         <span className="flex items-center gap-1.5">
