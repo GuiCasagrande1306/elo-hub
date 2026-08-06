@@ -286,7 +286,7 @@ function TaskRow({
             agrupa 7 e 8 no mesmo rótulo, e a diferença entre eles é
             justamente o que decide o que se faz primeiro. O número fica
             ao lado porque a barra sozinha não se lê com precisão. */}
-        <span className="flex items-center gap-1.5" title={badge.label}>
+        <span className="flex shrink-0 items-center gap-1.5" title={badge.label}>
           <span
             className={cn(
               "text-xs font-semibold tabular-nums",
@@ -319,7 +319,7 @@ function TaskRow({
         </span>
 
         {/* Prazo ou conclusão */}
-        <span className="text-2xs tabular-nums">
+        <span className="shrink-0 text-2xs tabular-nums">
           {concluido ? (
             task.completed_at ? (
               <ConcluidoEm iso={task.completed_at} />
@@ -341,7 +341,13 @@ function TaskRow({
           )}
         </span>
 
-        <CriticalityCell taskId={task.id} value={task.criticality} />
+        {/* Editor de criticidade fora do mobile: as barrinhas coloridas
+            acima já mostram o mesmo número, e os dois juntos viravam
+            duas leituras do mesmo dado na mesma linha. No celular a
+            edição acontece na gaveta, que tem o slider. */}
+        <span className="hidden md:contents">
+          <CriticalityCell taskId={task.id} value={task.criticality} />
+        </span>
         <span className="hidden md:contents">
           <ColorTagCell taskId={task.id} value={task.color_tag} />
         </span>
