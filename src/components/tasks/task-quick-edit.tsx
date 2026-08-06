@@ -9,9 +9,16 @@ import { cn } from "@/lib/utils";
 import {
   COLOR_TAG_CLASSES,
   COLOR_TAG_LABELS,
+  STATUS_DOT,
+  STATUS_LABELS,
+  TASK_COLUMNS,
   criticalityTone,
 } from "./task-meta";
-import { TASK_COLOR_TAGS, type TaskColorTag } from "@/types/database";
+import {
+  TASK_COLOR_TAGS,
+  type TaskColorTag,
+  type TaskStatus,
+} from "@/types/database";
 
 /* =====================================================================
    Edição rápida na tabela
@@ -196,6 +203,74 @@ export function ColorTagCell({
             <span className="size-3.5 rounded-full border border-dashed border-muted-foreground/60" />
           </button>
         </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/**
+ * Status editável em linha.
+ *
+ * O Kanban move por arraste; a lista não tem para onde arrastar. Sem
+ * isto, mudar o status de uma tarefa na tabela obrigava a abrir a
+ * gaveta — três cliques para o que é a mudança mais frequente do dia.
+ */
+export function StatusCell({
+  taskId,
+  value,
+}: {
+  taskId: string;
+  value: TaskStatus;
+}) {
+  const [status, setStatus] = useState(value);
+  const [aberto, setAberto] = useState(false);
+  const [, startTransition] = useTransition();
+
+  function escolher(novo: TaskStatus) {
+    const anterior = status;
+    setStatus(novo);
+    setAberto(false);
+
+    startTransition(async () => {
+      const r = await updateTask({ taskId, status: novo });
+      if (!r.ok) {
+        setStatus(anterior);
+        toast.error(r.error);
+      }
+    });
+  }
+
+  return (
+    <Popover open={aberto} onOpenChange={setAberto}>
+      <PopoverTrigger
+        render={
+          <button
+            type="button"
+            className="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-xs transition-colors hover:bg-accent"
+          />
+        }
+      >
+        <span className={cn("size-2 shrink-0 rounded-full", STATUS_DOT[status])} />
+        <span className="truncate text-muted-foreground">
+          {STATUS_LABELS[status]}
+        </span>
+      </PopoverTrigger>
+
+      <PopoverContent className="w-44 p-1" align="start">
+        {TASK_COLUMNS.map(({ status: s }) => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => escolher(s)}
+            className={cn(
+              "flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs transition-colors",
+              s === status ? "bg-accent font-medium" : "hover:bg-accent/60",
+            )}
+          >
+            <span className={cn("size-2 shrink-0 rounded-full", STATUS_DOT[s])} />
+            {STATUS_LABELS[s]}
+          </button>
+        ))}
       </PopoverContent>
     </Popover>
   );

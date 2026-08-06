@@ -5,11 +5,9 @@ import { CheckSquare } from "lucide-react";
 import {
   PRIORITY_LABELS,
   PRIORITY_STYLES,
-  STATUS_DOT,
-  STATUS_LABELS,
 } from "./task-meta";
 import { cn } from "@/lib/utils";
-import { ColorTagCell, CriticalityCell } from "./task-quick-edit";
+import { ColorTagCell, CriticalityCell, StatusCell } from "./task-quick-edit";
 import { formatDueDate, initials } from "@/lib/format";
 import type { TaskWithRelations } from "@/types/database";
 
@@ -108,13 +106,10 @@ export function TaskList({
                   )}
                 </span>
 
-                {/* Status */}
-                <span className="flex items-center gap-1.5 text-xs">
-                  <span className={cn("size-2 rounded-full", STATUS_DOT[task.status])} />
-                  <span className="truncate text-muted-foreground">
-                    {STATUS_LABELS[task.status]}
-                  </span>
-                </span>
+                {/* Status — editável em linha: é a mudança mais
+                    frequente do dia, e o Kanban resolve por arraste
+                    enquanto a lista não tem para onde arrastar. */}
+                <StatusCell taskId={task.id} value={task.status} />
 
                 {/* Prazo */}
                 <span

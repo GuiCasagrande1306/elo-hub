@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/select";
 import { useRealtimeRefresh } from "@/hooks/use-realtime";
 import { cn } from "@/lib/utils";
+import { STATUS_LABELS, TASK_COLUMNS } from "./task-meta";
 import type { Client, TaskStatus, TaskWithRelations } from "@/types/database";
 
 /**
@@ -56,6 +57,10 @@ export function TasksWorkspace({
   const [view, setView] = useState<"board" | "list" | "done">("board");
   const [query, setQuery] = useState("");
   const [clientFilter, setClientFilter] = useState<string>(ALL);
+  const [statusFilter, setStatusFilter] = useState<string>(ALL);
+  /* Faixa, não valor exato: ninguém filtra por "criticidade 7". A
+     pergunta real é "o que está crítico". */
+  const [critFilter, setCritFilter] = useState<string>(ALL);
   const [creating, setCreating] = useState(false);
   const [newTitle, setNewTitle] = useState("");
 
@@ -82,13 +87,16 @@ export function TasksWorkspace({
     const needle = query.trim().toLowerCase();
     return tasks.filter((task) => {
       if (clientFilter !== ALL && task.client_id !== clientFilter) return false;
+      if (statusFilter !== ALL && task.status !== statusFilter) return false;
+      if (critFilter === "alta" && task.criticality < 7) return false;
+      if (critFilter === "critica" && task.criticality < 9) return false;
       if (!needle) return true;
       return (
         task.title.toLowerCase().includes(needle) ||
         (task.client?.name.toLowerCase().includes(needle) ?? false)
       );
     });
-  }, [tasks, query, clientFilter]);
+  }, [tasks, query, clientFilter, statusFilter, critFilter]);
 
   /* Concluída some do quadro e da lista depois de 7 dias.
 
@@ -221,6 +229,51 @@ export function TasksWorkspace({
                 {client.name}
               </SelectItem>
             ))}
+          </SelectContent>
+        </Select>
+
+        <Select
+          value={statusFilter}
+          onValueChange={(value) => setStatusFilter(value ?? ALL)}
+        >
+          <SelectTrigger size="sm" className="w-full sm:w-40">
+            <SelectValue>
+              {(value: string) =>
+                value === ALL
+                  ? "Todos os status"
+                  : (STATUS_LABELS[value as TaskStatus] ?? "Todos os status")
+              }
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>Todos os status</SelectItem>
+            {TASK_COLUMNS.map(({ status }) => (
+              <SelectItem key={status} value={status}>
+                {STATUS_LABELS[status]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select
+          value={critFilter}
+          onValueChange={(value) => setCritFilter(value ?? ALL)}
+        >
+          <SelectTrigger size="sm" className="w-full sm:w-44">
+            <SelectValue>
+              {(value: string) =>
+                value === "alta"
+                  ? "Criticidade 7+"
+                  : value === "critica"
+                    ? "Criticidade 9+"
+                    : "Toda criticidade"
+              }
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>Toda criticidade</SelectItem>
+            <SelectItem value="alta">Criticidade 7+</SelectItem>
+            <SelectItem value="critica">Criticidade 9+</SelectItem>
           </SelectContent>
         </Select>
 
