@@ -32,7 +32,36 @@ const BRL = new Intl.NumberFormat("pt-BR", {
   maximumFractionDigits: 0,
 });
 
+const BRL_COMPACT = new Intl.NumberFormat("pt-BR", {
+  style: "currency",
+  currency: "BRL",
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
+
+const INT = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 });
+
+/**
+ * Formata pela unidade DAQUELE mês.
+ *
+ * Uma conta que mudou de contagem para faturamento tem linhas nas duas
+ * unidades. Formatar o histórico inteiro pela regra de hoje imprimiria
+ * "R$ 1,20" onde foram 120 leads.
+ */
+function valorDoMes(entry: GoalHistoryEntry, valor: number): string {
+  return entry.metricKey === "revenue"
+    ? BRL.format(valor / 100)
+    : INT.format(valor);
+}
+
 export function GoalHistory({ entries }: { entries: GoalHistoryEntry[] }) {
+  /* O gráfico tem um eixo Y só. Meses em centavos e meses em contagem
+     na mesma escala fariam a barra de R$ 40.000 esmagar a de 120 leads
+     até virar um traço. Quando as unidades divergem, o gráfico sai e
+     fica a tabela, que formata linha a linha. */
+  const unidades = new Set(entries.map((e) => e.metricKey));
+  const misturado = unidades.size > 1;
+  const emDinheiro = entries[0]?.metricKey === "revenue";
   /* Mais antigo à esquerda: gráfico de tempo lido da direita para a
      esquerda inverte a leitura de tendência. */
   const dados = [...entries]
@@ -61,6 +90,13 @@ export function GoalHistory({ entries }: { entries: GoalHistoryEntry[] }) {
         </p>
       ) : (
         <>
+          {misturado ? (
+            <p className="mt-5 rounded-lg border border-hairline px-3 py-2 text-2xs text-muted-foreground">
+              O indicador desta conta mudou ao longo do período, então os
+              meses não são comparáveis num gráfico só. A tabela abaixo
+              mostra cada mês na unidade em que a meta foi definida.
+            </p>
+          ) : (
           <div className="mt-5 h-56">
             <ResponsiveContainer width="100%" height="100%">
               {/* `isAnimationActive={false}`: a animação do Recharts é
@@ -85,7 +121,13 @@ export function GoalHistory({ entries }: { entries: GoalHistoryEntry[] }) {
                   stroke="var(--muted-foreground)"
                   tickLine={false}
                   axisLine={false}
-                  width={34}
+                  /* Meta em dinheiro trafega em CENTAVOS: sem o divisor
+                     o eixo marcaria "5.000.000" para R$ 50 mil. E o
+                     rótulo formatado é mais largo que uma contagem. */
+                  width={emDinheiro ? 60 : 34}
+                  tickFormatter={(v: number) =>
+                    emDinheiro ? BRL_COMPACT.format(v / 100) : INT.format(v)
+                  }
                 />
                 <Tooltip
                   cursor={{ fill: "var(--surface-2)" }}
@@ -95,6 +137,11 @@ export function GoalHistory({ entries }: { entries: GoalHistoryEntry[] }) {
                     borderRadius: 10,
                     fontSize: 12,
                   }}
+                  formatter={(v) =>
+                    emDinheiro
+                      ? BRL.format(Number(v) / 100)
+                      : INT.format(Number(v))
+                  }
                 />
                 <Legend
                   wrapperStyle={{ fontSize: 11 }}
@@ -117,6 +164,7 @@ export function GoalHistory({ entries }: { entries: GoalHistoryEntry[] }) {
               </BarChart>
             </ResponsiveContainer>
           </div>
+          )}
 
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[26rem] text-xs">
@@ -141,7 +189,9 @@ export function GoalHistory({ entries }: { entries: GoalHistoryEntry[] }) {
                       <tr key={e.month}>
                         <td className="py-2">{nomeDoMes(e.month)}</td>
                         <td className="py-2 text-right tabular-nums">
-                          {e.plannedResults || "—"}
+                          {e.plannedResults
+                            ? valorDoMes(e, e.plannedResults)
+                            : "—"}
                         </td>
                         <td
                           className={
@@ -150,7 +200,7 @@ export function GoalHistory({ entries }: { entries: GoalHistoryEntry[] }) {
                               : "py-2 text-right tabular-nums"
                           }
                         >
-                          {e.executedResults}
+                          {valorDoMes(e, e.executedResults)}
                         </td>
                         <td className="py-2 text-right tabular-nums text-muted-foreground">
                           {e.plannedBudgetCents

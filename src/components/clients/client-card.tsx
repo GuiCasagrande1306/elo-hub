@@ -8,12 +8,15 @@ import { Sparkline } from "@/components/dashboard/sparkline";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  GOAL_STATUS_LABELS,
   GOAL_TONE_CLASSES,
   buildGoalProgress,
 } from "@/lib/metrics/goals";
+import {
+  formatGoalValue,
+  type GoalMetric,
+} from "@/lib/metrics/goal-metric";
 import { cn } from "@/lib/utils";
-import { formatCurrency, formatNumber } from "@/lib/format";
+import { formatCurrency } from "@/lib/format";
 import type { Client } from "@/types/database";
 
 /* =====================================================================
@@ -42,7 +45,10 @@ export interface ClientCardProps {
   progress: GoalProgressPair | null;
   /** Fallback quando não há meta: mostra o que já foi executado. */
   computedSpendCents: number;
-  computedResults: number;
+  /** Executado já na unidade de `metric` — resolvido no servidor. */
+  computedGoalValue: number;
+  /** O que conta como resultado nesta conta. */
+  metric: GoalMetric;
   trend: number[];
   index?: number;
 }
@@ -73,7 +79,8 @@ export function ClientCard({
   client,
   progress,
   computedSpendCents,
-  computedResults,
+  computedGoalValue,
+  metric,
   trend,
   index = 0,
 }: ClientCardProps) {
@@ -145,7 +152,8 @@ export function ClientCard({
         ) : (
           <NoGoalState
             spendCents={computedSpendCents}
-            results={computedResults}
+            value={computedGoalValue}
+            metric={metric}
             slug={client.slug}
           />
         )}
@@ -172,13 +180,13 @@ export function ClientCard({
               GOAL_TONE_CLASSES[worstTone].chip,
             )}
           >
-            {GOAL_STATUS_LABELS[
-              worstTone === "negative"
-                ? progress.budget.tone === "negative"
-                  ? progress.budget.status
-                  : progress.results.status
-                : progress.results.status
-            ]}
+            {/* O rótulo sai do próprio indicador: "Gasto acelerado" e
+                "Adiantado" nascem do mesmo status e querem dizer coisas
+                opostas. */}
+            {(worstTone === "negative" && progress.budget.tone === "negative"
+              ? progress.budget
+              : progress.results
+            ).statusLabel}
           </span>
         </div>
       )}
@@ -221,11 +229,13 @@ export function ClientCard({
  */
 function NoGoalState({
   spendCents,
-  results,
+  value,
+  metric,
   slug,
 }: {
   spendCents: number;
-  results: number;
+  value: number;
+  metric: GoalMetric;
   slug: string;
 }) {
   return (
@@ -238,9 +248,12 @@ function NoGoalState({
           </dd>
         </div>
         <div>
-          <dt className="eyebrow">Resultados</dt>
+          {/* Sem meta o número já precisa se identificar: "1.240" sob o
+              rótulo genérico "Resultados" numa loja virtual se lê como
+              1.240 vendas, quando são R$ 12,40 de faturamento. */}
+          <dt className="eyebrow">{metric.label}</dt>
           <dd className="mt-0.5 text-sm font-semibold tabular-nums">
-            {formatNumber(Math.round(results))}
+            {formatGoalValue(metric, value)}
           </dd>
         </div>
       </dl>

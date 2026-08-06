@@ -16,10 +16,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  buildGoalProgress,
-  type GoalProgressPair,
-} from "@/lib/metrics/goals";
+import { buildGoalProgress, type GoalProgressPair } from "@/lib/metrics/goals";
+import { goalExecutedFrom, goalMetricFor } from "@/lib/metrics/goal-metric";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useRealtimeRefresh } from "@/hooks/use-realtime";
 import { isDemoMode } from "@/lib/env";
@@ -51,6 +49,7 @@ export interface DirectoryRow {
   goal: ClientGoal | null;
   computedSpendCents: number;
   computedResults: number;
+  computedRevenueCents: number;
   trend: number[];
   /** Calculado no servidor — ver a nota em `ClientCardProps.progress`. */
   progress: GoalProgressPair | null;
@@ -285,11 +284,28 @@ export function ClientsDirectory({
             // a barra precisa se mover na hora.
             const patched = liveGoals[row.client.id];
 
+            /* A unidade vem da meta, e o Realtime pode ter acabado de
+               trazer uma meta em outra unidade — salvar "faturamento"
+               num cliente que era contagem chega por aqui. Por isso o
+               indicador é resolvido junto do progresso, e não fixado
+               uma vez no servidor. */
+            const metric = goalMetricFor(
+              row.client.segment,
+              (patched ?? row.goal)?.results_metric,
+            );
+
+            const totals = {
+              conversions: row.computedResults,
+              revenueCents: row.computedRevenueCents,
+            };
+
             const progress = patched
               ? buildGoalProgress({
                   goal: patched,
+                  metric,
                   computedSpendCents: row.computedSpendCents,
-                  computedResults: row.computedResults,
+                  computedConversions: row.computedResults,
+                  computedRevenueCents: row.computedRevenueCents,
                 })
               : row.progress;
 
@@ -299,8 +315,9 @@ export function ClientsDirectory({
                 index={index}
                 client={row.client}
                 progress={progress}
+                metric={metric}
                 computedSpendCents={row.computedSpendCents}
-                computedResults={row.computedResults}
+                computedGoalValue={goalExecutedFrom(metric, totals)}
                 trend={row.trend}
               />
             );

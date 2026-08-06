@@ -17,6 +17,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { setClientGoal } from "@/app/(app)/clientes/actions";
 import { nomeDoMes } from "@/lib/date-br";
+import { defaultGoalMetricFor } from "@/lib/metrics/goal-metric";
+import { cn } from "@/lib/utils";
+import type { ClientSegment } from "@/types/database";
 
 /* =====================================================================
    Meta do mês ainda não definida
@@ -32,12 +35,14 @@ import { nomeDoMes } from "@/lib/date-br";
 
 export function MonthlyGoalAlert({
   clientId,
+  segment,
   referenceMonth,
   /** Valores atuais, quando existe linha zerada para editar. */
   plannedBudget,
   plannedResults,
 }: {
   clientId: string;
+  segment: ClientSegment;
   referenceMonth: string;
   plannedBudget?: string;
   plannedResults?: string;
@@ -49,10 +54,16 @@ export function MonthlyGoalAlert({
 
   const mes = nomeDoMes(referenceMonth);
 
+  /* Meta NOVA: a unidade é a do segmento. Não existe linha gravada com
+     unidade própria para respeitar — este alerta só aparece quando a
+     meta está em branco. */
+  const metrica = defaultGoalMetricFor(segment);
+
   function salvar() {
     startTransition(async () => {
       const r = await setClientGoal({
         clientId,
+        segment,
         plannedBudget: orcamento,
         plannedResults: resultados,
       });
@@ -109,18 +120,27 @@ export function MonthlyGoalAlert({
             </div>
 
             <div>
-              <Label htmlFor="meta-resultados">Meta de resultados</Label>
-              <Input
-                id="meta-resultados"
-                inputMode="decimal"
-                value={resultados}
-                onChange={(e) => setResultados(e.target.value)}
-                placeholder="120"
-                className="mt-1.5 tabular-nums"
-              />
+              <Label htmlFor="meta-resultados">{metrica.inputLabel}</Label>
+              {/* Prefixo "R$" só quando a meta É dinheiro: um campo de
+                  contagem com cifrão convida a digitar valor de venda
+                  onde se espera quantidade. */}
+              <div className="relative mt-1.5">
+                {metrica.isCurrency && (
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                    R$
+                  </span>
+                )}
+                <Input
+                  id="meta-resultados"
+                  inputMode="decimal"
+                  value={resultados}
+                  onChange={(e) => setResultados(e.target.value)}
+                  placeholder={metrica.placeholder}
+                  className={cn("tabular-nums", metrica.isCurrency && "pl-9")}
+                />
+              </div>
               <p className="mt-1.5 text-2xs text-muted-foreground">
-                Quantas conversões o mês precisa entregar — pedidos, leads
-                ou compras, conforme o segmento da conta.
+                {metrica.hint}
               </p>
             </div>
           </div>

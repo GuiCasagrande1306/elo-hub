@@ -8,6 +8,10 @@ import { brandColorFromName } from "@/lib/brand-color";
 import { dataNoBrasil, mesCorrenteBR } from "@/lib/date-br";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
+  defaultGoalMetricFor,
+  parseGoalInput,
+} from "@/lib/metrics/goal-metric";
+import {
   CLIENT_SEGMENTS,
   clientSettingsSchema,
   parseCurrencyToCents,
@@ -15,7 +19,7 @@ import {
   toClientPayload,
   type NewClientValues,
 } from "@/lib/validation/client";
-import type { Client } from "@/types/database";
+import type { Client, ClientSegment } from "@/types/database";
 
 /**
  * Cadastro de novo cliente.
@@ -108,6 +112,11 @@ export async function createClientAction(
         period_end: iso(end),
         planned_budget_cents: payload.p_planned_budget_cents,
         planned_results: payload.p_planned_results,
+        /* Espelha o trigger `client_goals_default_metric`: no banco a
+           unidade vem do segmento no INSERT, e o modo demo precisa
+           gravar a mesma coisa ou o card demo lê centavos como
+           contagem. */
+        results_metric: defaultGoalMetricFor(values.segment).key,
         executed_budget_cents_override: null,
         executed_results_override: null,
         override_reason: null,
@@ -405,15 +414,23 @@ export async function setClientGoal(input: {
   clientId: string;
   plannedBudget: string;
   plannedResults: string;
+  /**
+   * Segmento da conta, para saber se `plannedResults` chegou em reais
+   * ou em unidades. Vem do formulário porque é lá que o rótulo do campo
+   * foi escolhido — buscar o segmento aqui abriria a chance de gravar
+   * numa unidade diferente da que o usuário viu escrita na tela.
+   */
+  segment: ClientSegment;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const orcamento = parseCurrencyToCents(input.plannedBudget);
-  const resultados = Number(input.plannedResults.replace(",", "."));
+  const metrica = defaultGoalMetricFor(input.segment);
+  const resultados = parseGoalInput(metrica, input.plannedResults);
 
   if (orcamento === null) {
     return { ok: false, error: "Informe o orçamento previsto." };
   }
-  if (!Number.isFinite(resultados) || resultados < 0) {
-    return { ok: false, error: "Informe a meta de resultados." };
+  if (resultados === null) {
+    return { ok: false, error: `Informe a ${metrica.inputLabel.toLowerCase()}.` };
   }
 
   /* Mês no fuso de São Paulo. `new Date(y, m, 1)` + `toISOString()`
@@ -429,6 +446,7 @@ export async function setClientGoal(input: {
     if (atual) {
       atual.planned_budget_cents = orcamento;
       atual.planned_results = resultados;
+      atual.results_metric = metrica.key;
     } else {
       demoGoals.push({
         id: `g-${Date.now()}`,
@@ -437,6 +455,7 @@ export async function setClientGoal(input: {
         period_end: fim,
         planned_budget_cents: orcamento,
         planned_results: resultados,
+        results_metric: metrica.key,
         executed_budget_cents_override: null,
         executed_results_override: null,
         override_reason: null,
@@ -457,6 +476,11 @@ export async function setClientGoal(input: {
       period_end: fim,
       planned_budget_cents: orcamento,
       planned_results: resultados,
+      /* Explícito no upsert, porque o trigger do banco só preenche no
+         INSERT — sem isto, editar a meta de uma conta que virou de
+         contagem para faturamento gravaria centavos numa linha ainda
+         marcada como contagem. */
+      results_metric: metrica.key,
     },
     { onConflict: "client_id,period_start" },
   );

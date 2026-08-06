@@ -57,7 +57,12 @@ export default async function ReportsPage() {
     id: linha.client.id,
     name: linha.client.name,
     spendCents: linha.computedSpendCents,
-    results: Math.round(linha.computedResults),
+    /* O resultado já vem na unidade da conta: faturamento numa loja,
+       contagem numa clínica. É o texto do WhatsApp que se monta com
+       isso — escrever "Resultados: 4.820" onde são R$ 48,20 de receita
+       mandaria o erro direto para o cliente final. */
+    resultValue: linha.computedGoalValue,
+    metric: linha.metric,
   }));
 
   const clientName = (id: string) =>

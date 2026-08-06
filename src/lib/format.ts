@@ -38,6 +38,54 @@ export function formatCurrency(cents: number): string {
   return BRL.format(cents / 100);
 }
 
+/**
+ * "5.000,00" | "5000" | "R$ 5.000" → 500000 centavos. `null` = inválido.
+ *
+ * Aceita o que o brasileiro realmente digita: com ou sem separador de
+ * milhar, vírgula ou ponto decimal, com ou sem "R$". Devolver 0 em
+ * entrada inválida seria pior que falhar — o usuário acharia que
+ * cadastrou a meta e ela viria zerada.
+ *
+ * Mora aqui, e não em `validation/client`, porque é o par exato de
+ * `formatCurrency`: mesma borda, sentido inverso. Ficar junto do schema
+ * de cadastro criava ciclo de import assim que outro módulo de domínio
+ * precisava converter reais em centavos.
+ */
+export function parseCurrencyToCents(input: string): number | null {
+  const trimmed = input.trim();
+
+  // Campo em branco = "não definir meta agora". É diferente de campo
+  // preenchido com lixo.
+  if (trimmed === "") return 0;
+
+  const cleaned = trimmed.replace(/[^\d,.]/g, "");
+
+  // O usuário digitou ALGO, mas sem nenhum dígito ("abc", "R$"). Aceitar
+  // como zero faria a meta sumir sem aviso — ele sairia da tela achando
+  // que cadastrou um orçamento.
+  if (!/\d/.test(cleaned)) return null;
+
+  // Com vírgula, ela é o separador decimal (pt-BR) e o ponto é milhar.
+  // Sem vírgula, um ponto pode ser qualquer um dos dois — tratamos como
+  // decimal só quando sobram 1 ou 2 casas ("1.5" = 1,50; "1.500" = mil
+  // e quinhentos).
+  let normalized: string;
+
+  if (cleaned.includes(",")) {
+    normalized = cleaned.replace(/\./g, "").replace(",", ".");
+  } else {
+    const parts = cleaned.split(".");
+    const isDecimalPoint =
+      parts.length === 2 && parts[1].length > 0 && parts[1].length <= 2;
+    normalized = isDecimalPoint ? cleaned : cleaned.replace(/\./g, "");
+  }
+
+  const value = Number(normalized);
+  if (!Number.isFinite(value) || value < 0) return null;
+
+  return Math.round(value * 100);
+}
+
 /** Centavos → "R$ 12,3 mil". Para eixos de gráfico e telas estreitas. */
 export function formatCurrencyCompact(cents: number): string {
   return BRL_COMPACT.format(cents / 100);

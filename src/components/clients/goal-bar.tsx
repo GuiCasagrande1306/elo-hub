@@ -1,4 +1,21 @@
-import { GOAL_TONE_CLASSES, type GoalProgress } from "@/lib/metrics/goals";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  MinusCircle,
+  TrendingDown,
+  TrendingUp,
+} from "lucide-react";
+
+import {
+  GOAL_TONE_CLASSES,
+  type GoalProgress,
+  type GoalStatus,
+} from "@/lib/metrics/goals";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { formatPercent } from "@/lib/format";
 
@@ -100,7 +117,74 @@ export function GoalBar({ progress }: { progress: GoalProgress }) {
           )}
       </div>
 
-      <p className={cn("text-2xs leading-snug", tone.text)}>{progress.message}</p>
+      <PacingLine progress={progress} />
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Linha de ritmo                                                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Ícone por status. Seta para cima em "acelerado" tem sentido oposto
+ * nas duas barras — gastar rápido é alerta, entregar rápido é bom — e
+ * é justamente por isso que a COR vem do tom já resolvido, e não do
+ * ícone. O desenho diz a direção; a cor diz se é boa.
+ */
+const PACE_ICONS: Record<GoalStatus, typeof CheckCircle2> = {
+  "sem-meta": MinusCircle,
+  "no-ritmo": CheckCircle2,
+  acelerado: TrendingUp,
+  atrasado: TrendingDown,
+  estourou: AlertTriangle,
+  batida: CheckCircle2,
+};
+
+function PacingLine({ progress }: { progress: GoalProgress }) {
+  const tone = GOAL_TONE_CLASSES[progress.tone];
+  const Icon = PACE_ICONS[progress.status];
+
+  const linha = (
+    <span
+      className={cn(
+        "flex items-start gap-1.5 text-left text-2xs leading-snug",
+        tone.text,
+      )}
+    >
+      <Icon className="mt-px size-3 shrink-0" />
+      <span className="min-w-0">
+        <span className="font-medium">{progress.statusLabel}</span>
+        {" — "}
+        {progress.message}
+      </span>
+    </span>
+  );
+
+  /* Sem ritmo apurado não há conta para mostrar, e um tooltip vazio é
+     pior que nenhum: promete detalhe e entrega repetição. */
+  if (!progress.pacing) return linha;
+
+  return (
+    <Tooltip>
+      {/* `render` e não `asChild`: este shadcn roda sobre Base UI. Um
+          `span` no lugar do botão padrão — a frase é informativa, e um
+          botão sem ação poluiria a navegação por teclado. */}
+      <TooltipTrigger render={<span className="cursor-help" />}>
+        {linha}
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="flex-col items-start gap-0.5">
+        <span>
+          Esperado até hoje: <strong>{progress.pacing.expectedLabel}</strong>
+        </span>
+        <span>
+          Realizado: <strong>{progress.executedLabel}</strong>
+        </span>
+        <span className="opacity-70">
+          {formatPercent(progress.pacing.ratio, 0)} do ritmo ·{" "}
+          {formatPercent(progress.elapsed ?? 0, 0)} do período
+        </span>
+      </TooltipContent>
+    </Tooltip>
   );
 }

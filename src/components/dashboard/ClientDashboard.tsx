@@ -64,7 +64,11 @@ export interface ClientDashboardProps {
   /** Dias disponíveis no seletor. */
   presets?: number[];
   integrations: IntegrationStatus[];
-  goal: { plannedBudgetCents: number; plannedResults: number } | null;
+  goal: {
+    plannedBudgetCents: number;
+    plannedResults: number;
+    resultsMetric: "count" | "revenue" | null;
+  } | null;
   /** Meta do mês corrente e se ela ainda precisa ser preenchida. */
   goalStatus: MonthlyGoalStatus;
   goalHistory: GoalHistoryEntry[];
@@ -169,6 +173,7 @@ export function ClientDashboard({
           {goalStatus.needsGoal && (
             <MonthlyGoalAlert
               clientId={client.id}
+              segment={client.segment}
               referenceMonth={goalStatus.referenceMonth}
             />
           )}

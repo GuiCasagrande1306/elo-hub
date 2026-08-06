@@ -14,7 +14,8 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { formatCurrency, formatNumber } from "@/lib/format";
+import { formatCurrency, formatMultiplier } from "@/lib/format";
+import { formatGoalValue, type GoalMetric } from "@/lib/metrics/goal-metric";
 import { cn } from "@/lib/utils";
 
 /* =====================================================================
@@ -36,7 +37,9 @@ export interface ClientSummary {
   id: string;
   name: string;
   spendCents: number;
-  results: number;
+  /** Já na unidade de `metric` — resolvido no servidor. */
+  resultValue: number;
+  metric: GoalMetric;
 }
 
 const PERIODOS = [
@@ -70,25 +73,37 @@ export function CommandStation({
     PERIODOS.find((p) => p.value === periodo)?.label ?? "Últimos 30 dias";
 
   /* Custo por resultado calculado aqui e não guardado: dividir na hora
-     garante que ele nunca discorde do gasto e do resultado ao lado. */
-  const cpl = cliente && cliente.results > 0
-    ? cliente.spendCents / cliente.results
-    : null;
+     garante que ele nunca discorde do gasto e do resultado ao lado.
+
+     `costLabel` nulo = a meta já é em dinheiro, e "custo por
+     faturamento" não é uma grandeza. Ali a razão que interessa é ROAS. */
+  const cpl =
+    cliente && cliente.metric.costLabel && cliente.resultValue > 0
+      ? cliente.spendCents / cliente.resultValue
+      : null;
+
+  const roas =
+    cliente && cliente.metric.isCurrency && cliente.spendCents > 0
+      ? cliente.resultValue / cliente.spendCents
+      : null;
 
   const mensagem = useMemo(() => {
     if (!cliente) return "";
+    const { metric } = cliente;
+
     return [
       `Olá! Segue o resumo de ${periodoLabel.toLowerCase()} da campanha.`,
       "",
       `• Investimento: ${formatCurrency(cliente.spendCents)}`,
-      `• Resultados: ${formatNumber(cliente.results)}`,
-      cpl ? `• Custo por resultado: ${formatCurrency(Math.round(cpl))}` : null,
+      `• ${metric.label}: ${formatGoalValue(metric, cliente.resultValue)}`,
+      cpl ? `• ${metric.costLabel}: ${formatCurrency(Math.round(cpl))}` : null,
+      roas ? `• Retorno: ${formatMultiplier(roas)} sobre o investido` : null,
       "",
       "Qualquer dúvida, é só chamar por aqui.",
     ]
       .filter((l) => l !== null)
       .join("\n");
-  }, [cliente, periodoLabel, cpl]);
+  }, [cliente, periodoLabel, cpl, roas]);
 
   async function copiar() {
     await navigator.clipboard.writeText(mensagem);
@@ -252,8 +267,17 @@ export function CommandStation({
           <dl className="mt-4 grid grid-cols-3 gap-2 border-t border-white/20 pt-3">
             {[
               ["Investimento", cliente ? formatCurrency(cliente.spendCents) : "—"],
-              ["Resultados", cliente ? formatNumber(cliente.results) : "—"],
-              ["Custo", cpl ? formatCurrency(Math.round(cpl)) : "—"],
+              [
+                cliente?.metric.label ?? "Resultados",
+                cliente
+                  ? formatGoalValue(cliente.metric, cliente.resultValue)
+                  : "—",
+              ],
+              /* Terceira coluna: custo unitário onde ele existe, ROAS
+                 onde a meta é dinheiro. */
+              cliente?.metric.isCurrency
+                ? ["Retorno", roas ? formatMultiplier(roas) : "—"]
+                : ["Custo", cpl ? formatCurrency(Math.round(cpl)) : "—"],
             ].map(([label, valor]) => (
               <div key={label}>
                 <dt className="text-[10px] uppercase tracking-wide opacity-75">{label}</dt>

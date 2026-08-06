@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/select";
 import { setClientGoal, setClientLogo, updateClientSettings } from "@/app/(app)/clientes/actions";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import { goalInputValue, goalMetricFor } from "@/lib/metrics/goal-metric";
 import {
   CLIENT_SEGMENTS,
   OPTIMIZATION_DAYS,
@@ -41,7 +42,11 @@ export function ClientSettingsCard({
   goal,
 }: {
   client: Client;
-  goal: { plannedBudgetCents: number; plannedResults: number } | null;
+  goal: {
+    plannedBudgetCents: number;
+    plannedResults: number;
+    resultsMetric: "count" | "revenue" | null;
+  } | null;
 }) {
   const [segment, setSegment] = useState<ClientSegment>(client.segment);
   const [whatsapp, setWhatsapp] = useState(client.whatsapp_phone ?? "");
@@ -54,11 +59,21 @@ export function ClientSettingsCard({
   );
   const [pendente, startTransition] = useTransition();
 
+  /* A unidade da meta segue o segmento SALVO, não o `segment` que está
+     no dropdown acima. São dois botões de salvar independentes: quem
+     troca o nicho e mexe na meta sem salvar o nicho gravaria centavos
+     numa conta que o banco ainda considera de leads. Depois de salvar
+     os ajustes a página revalida e o campo volta na unidade nova.
+
+     Metas antigas trazem `resultsMetric` própria e ela vence — ver a
+     migration 20260806000025. */
+  const metrica = goalMetricFor(client.segment, goal?.resultsMetric);
+
   const [orcamento, setOrcamento] = useState(
     goal ? (goal.plannedBudgetCents / 100).toFixed(2).replace(".", ",") : "",
   );
   const [metaResultados, setMetaResultados] = useState(
-    goal ? String(goal.plannedResults) : "",
+    goal ? goalInputValue(metrica, goal.plannedResults) : "",
   );
   const [salvandoMeta, startMeta] = useTransition();
 
@@ -129,6 +144,7 @@ export function ClientSettingsCard({
     startMeta(async () => {
       const r = await setClientGoal({
         clientId: client.id,
+        segment: client.segment,
         plannedBudget: orcamento,
         plannedResults: metaResultados,
       });
@@ -347,17 +363,22 @@ export function ClientSettingsCard({
             />
           </div>
           <div>
-            <Label htmlFor="meta-resultados">Meta de resultados</Label>
+            <Label htmlFor="meta-resultados">
+              {metrica.inputLabel}
+              {metrica.isCurrency && " (R$)"}
+            </Label>
             <Input
               id="meta-resultados"
-              inputMode="numeric"
+              inputMode="decimal"
               value={metaResultados}
               onChange={(e) => setMetaResultados(e.target.value)}
-              placeholder="120"
+              placeholder={metrica.placeholder}
               className="mt-1.5 tabular-nums"
             />
           </div>
         </div>
+
+        <p className="mt-2 text-2xs text-muted-foreground">{metrica.hint}</p>
 
         <div className="mt-3 flex justify-end">
           <Button

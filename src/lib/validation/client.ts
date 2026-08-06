@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 import { brandColorFromName } from "@/lib/brand-color";
+import { parseCurrencyToCents } from "@/lib/format";
+import { defaultGoalMetricFor, parseGoalInput } from "@/lib/metrics/goal-metric";
 
 /* =====================================================================
    Schema de cadastro de cliente
@@ -58,48 +60,10 @@ export const STATUS_LABELS: Record<(typeof CREATABLE_STATUSES)[number], string> 
     paused: "Pausado",
   };
 
-/**
- * "5.000,00" | "5000" | "R$ 5.000" → 500000 centavos. `null` = inválido.
- *
- * Aceita o que o brasileiro realmente digita: com ou sem separador de
- * milhar, vírgula ou ponto decimal, com ou sem "R$". Devolver 0 em
- * entrada inválida seria pior que falhar — o usuário acharia que
- * cadastrou a meta e ela viria zerada.
- */
-export function parseCurrencyToCents(input: string): number | null {
-  const trimmed = input.trim();
-
-  // Campo em branco = "não definir meta agora". É diferente de campo
-  // preenchido com lixo.
-  if (trimmed === "") return 0;
-
-  const cleaned = trimmed.replace(/[^\d,.]/g, "");
-
-  // O usuário digitou ALGO, mas sem nenhum dígito ("abc", "R$"). Aceitar
-  // como zero faria a meta sumir sem aviso — ele sairia da tela achando
-  // que cadastrou um orçamento.
-  if (!/\d/.test(cleaned)) return null;
-
-  // Com vírgula, ela é o separador decimal (pt-BR) e o ponto é milhar.
-  // Sem vírgula, um ponto pode ser qualquer um dos dois — tratamos como
-  // decimal só quando sobram 1 ou 2 casas ("1.5" = 1,50; "1.500" = mil
-  // e quinhentos).
-  let normalized: string;
-
-  if (cleaned.includes(",")) {
-    normalized = cleaned.replace(/\./g, "").replace(",", ".");
-  } else {
-    const parts = cleaned.split(".");
-    const isDecimalPoint =
-      parts.length === 2 && parts[1].length > 0 && parts[1].length <= 2;
-    normalized = isDecimalPoint ? cleaned : cleaned.replace(/\./g, "");
-  }
-
-  const value = Number(normalized);
-  if (!Number.isFinite(value) || value < 0) return null;
-
-  return Math.round(value * 100);
-}
+/* O parser mora em `lib/format`, junto do `formatCurrency` que o
+   espelha. Re-exportado aqui porque meia dúzia de telas e actions já o
+   importam deste caminho. */
+export { parseCurrencyToCents };
 
 /** Campo de texto opcional: string sempre, "" quando vazio. */
 const optionalText = (max: number, label: string) =>
@@ -228,8 +192,21 @@ export function toClientPayload(values: NewClientValues): ClientRpcPayload {
     p_brand_primary: brandColorFromName(values.name),
     // A validação já garantiu que converte; o `?? 0` é só para o tipo.
     p_planned_budget_cents: parseCurrencyToCents(values.plannedBudget) ?? 0,
+    /* A meta muda de UNIDADE conforme o segmento: loja e delivery a
+       definem em faturamento, e o formulário mostrou "R$" no campo. Ler
+       "50.000" como cinquenta mil pedidos gravaria uma meta 100× errada
+       e o card acusaria 0,02% de execução o mês inteiro.
+
+       A RPC não recebe a unidade — quem a grava é o trigger
+       `client_goals_default_metric`, que a deriva do mesmo segmento
+       usado aqui. As duas pontas leem a mesma regra. */
     p_planned_results:
-      values.plannedResults.trim() === "" ? 0 : Number(values.plannedResults),
+      values.plannedResults.trim() === ""
+        ? 0
+        : (parseGoalInput(
+            defaultGoalMetricFor(values.segment),
+            values.plannedResults,
+          ) ?? 0),
     // NULL faz a função usar o mês corrente.
     p_period_start: null,
     p_period_end: null,

@@ -1,13 +1,15 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ImageIcon, Loader2, Plus, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import { createClientAction, setClientLogo } from "@/app/(app)/clientes/actions";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import { defaultGoalMetricFor } from "@/lib/metrics/goal-metric";
+import { cn } from "@/lib/utils";
 import {
   AGENCY_PARTNERS,
   CLIENT_SEGMENTS,
@@ -79,6 +81,12 @@ export function NewClientSheet() {
     // segunda letra do nome é hostil.
     mode: "onBlur",
   });
+
+  /* `useWatch` e não `form.watch`: o segundo devolve uma função nova a
+     cada render, que o React Compiler não consegue memoizar — ele
+     desiste de otimizar o componente inteiro e avisa. O campo de meta
+     muda de rótulo e de unidade com o nicho, então precisa reagir. */
+  const nichoEscolhido = useWatch({ control: form.control, name: "segment" });
 
   /* Arquivo e preview no MESMO estado. Separá-los obrigaria um efeito
      para manter os dois em sincronia, e efeito que chama setState roda
@@ -613,26 +621,44 @@ export function NewClientSheet() {
                   )}
                 />
 
+                {/* O rótulo e a unidade seguem o nicho escolhido acima:
+                    numa loja a meta é faturamento, numa clínica é
+                    contagem. `watch` porque o campo precisa reagir a
+                    quem troca o nicho depois de digitar. */}
                 <FormField
                   control={form.control}
                   name="plannedResults"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Meta de resultados</FormLabel>
-                      <FormControl
-                        render={
-                          <Input
-                            inputMode="numeric"
-                            placeholder="260"
-                            className="tabular-nums"
+                  render={({ field }) => {
+                    const metrica = defaultGoalMetricFor(nichoEscolhido);
+
+                    return (
+                      <FormItem>
+                        <FormLabel>{metrica.inputLabel}</FormLabel>
+                        <div className="relative">
+                          {metrica.isCurrency && (
+                            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                              R$
+                            </span>
+                          )}
+                          <FormControl
+                            render={
+                              <Input
+                                inputMode="decimal"
+                                placeholder={metrica.placeholder}
+                                className={cn(
+                                  "tabular-nums",
+                                  metrica.isCurrency && "pl-9",
+                                )}
+                              />
+                            }
+                            {...field}
                           />
-                        }
-                        {...field}
-                      />
-                      <FormDescription>Leads ou vendas no mês.</FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                        </div>
+                        <FormDescription>{metrica.hint}</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
                 />
               </div>
 

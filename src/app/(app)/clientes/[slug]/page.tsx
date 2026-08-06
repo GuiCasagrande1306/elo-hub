@@ -17,7 +17,11 @@ import {
   computeKpi,
   splitByPlatform,
 } from "@/lib/metrics/kpi";
-import type { MetricKey } from "@/types/database";
+import {
+  defaultGoalMetricFor,
+  goalMetricFor,
+} from "@/lib/metrics/goal-metric";
+import type { ClientSegment, MetricKey } from "@/types/database";
 
 /**
  * Página do cliente.
@@ -32,8 +36,22 @@ import type { MetricKey } from "@/types/database";
 
 const PRESETS = [7, 30, 90];
 
-/** Os três KPIs do hero, na ordem de leitura de mídia paga. */
-const HERO_METRICS: MetricKey[] = ["spend", "results", "cpa"];
+/**
+ * Os três KPIs do hero, na ordem de leitura de mídia paga: quanto
+ * entrou → o que gerou → a que preço.
+ *
+ * O MEIO E O FIM MUDAM COM O NICHO. Numa loja virtual, "Resultados: 84"
+ * e "Custo por Resultado: R$ 31" descrevem a conta pior do que
+ * faturamento e ROAS — a receita está sincronizada em `revenue_cents`
+ * desde o backfill e simplesmente não estava sendo mostrada. Onde não
+ * há valor por conversão (leads, negócio local), contagem e custo
+ * unitário continuam sendo a leitura certa.
+ */
+function heroMetricsFor(segment: ClientSegment): MetricKey[] {
+  return defaultGoalMetricFor(segment).key === "revenue"
+    ? ["spend", "revenue", "roas"]
+    : ["spend", "results", "cpa"];
+}
 
 export async function generateMetadata({
   params,
@@ -83,14 +101,28 @@ export default async function ClientPage({
       getClientIntegrations(client.id),
       getCurrentGoals(),
       getMonthlyGoalStatus(client.id),
-      getGoalHistory(client.id, 12),
+      getGoalHistory(client.id, 12, client.segment),
     ]);
 
   const metaAtual = goals.get(client.id) ?? null;
 
-  const kpis = HERO_METRICS.map((key) =>
-    computeKpi(key, metrics.currentTotals, metrics.previousTotals),
-  );
+  /* O indicador desta conta. A meta gravada manda sobre o segmento —
+     ver `lib/metrics/goal-metric.ts`. */
+  const metrica = goalMetricFor(client.segment, metaAtual?.results_metric);
+
+  const kpis = heroMetricsFor(client.segment)
+    .map((key) => computeKpi(key, metrics.currentTotals, metrics.previousTotals))
+    /* "Resultados" e "Custo por Resultado" são rótulos genéricos do
+       catálogo de métricas. Aqui já sabemos o que a conta vende, então
+       o card diz "Conversas" e "Custo por conversa" em vez de obrigar
+       quem lê a lembrar de cabeça. */
+    .map((kpi) =>
+      kpi.key === "results" || kpi.key === "revenue"
+        ? { ...kpi, label: metrica.label }
+        : kpi.key === "cpa" && metrica.costLabel
+          ? { ...kpi, label: metrica.costLabel }
+          : kpi,
+    );
 
   const trend = buildTrend(metrics.current);
 
@@ -99,6 +131,11 @@ export default async function ClientPage({
     spend: trend.map((p) => p.spend),
     results: trend.map((p) => p.results),
     cpa: trend.map((p) => p.cpa),
+    revenue: trend.map((p) => p.revenue),
+    /* ROAS do dia. Dia sem gasto vira 0 e não Infinity — a sparkline
+       normaliza pelo maior valor da série, e um Infinity achataria a
+       curva inteira contra o eixo. */
+    roas: trend.map((p) => (p.spend === 0 ? 0 : p.revenue / p.spend)),
   };
 
   return (
@@ -126,6 +163,7 @@ export default async function ClientPage({
           ? {
               plannedBudgetCents: metaAtual.planned_budget_cents,
               plannedResults: metaAtual.planned_results,
+              resultsMetric: metaAtual.results_metric,
             }
           : null
       }

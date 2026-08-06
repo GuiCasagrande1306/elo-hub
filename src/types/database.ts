@@ -135,6 +135,12 @@ export interface ClientGoal {
   period_end: string;
   planned_budget_cents: number;
   planned_results: number;
+  /**
+   * Unidade de `planned_results`: `"count"` = conversões, `"revenue"` =
+   * centavos. `null` são metas anteriores à coluna, e todas eram
+   * contagem. Ver a migration 20260806000025 e `lib/metrics/goal-metric`.
+   */
+  results_metric: "count" | "revenue" | null;
   executed_budget_cents_override: number | null;
   executed_results_override: number | null;
   override_reason: string | null;

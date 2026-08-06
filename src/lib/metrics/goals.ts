@@ -1,4 +1,9 @@
-import { formatCurrency, formatNumber, formatPercent } from "@/lib/format";
+import { formatCurrency, formatPercent } from "@/lib/format";
+import {
+  formatGoalValue,
+  goalExecutedFrom,
+  type GoalMetric,
+} from "@/lib/metrics/goal-metric";
 import type { ClientGoal } from "@/types/database";
 
 /* =====================================================================
@@ -30,6 +35,24 @@ export type GoalStatus =
   | "estourou"
   | "batida";
 
+/**
+ * Ritmo: o que o período decorrido pedia até hoje, contra o que saiu.
+ *
+ * `ratio` é o PACING do mercado de mídia — executado ÷ esperado, e não
+ * a diferença em pontos percentuais entre os dois. A distinção importa
+ * nas pontas do mês: 12 pontos de desvio no dia 3 são ruído de fim de
+ * semana, e no dia 28 são verba que não vai mais ser gasta. A razão
+ * trata os dois casos na mesma escala — 0,75 é "três quartos do que
+ * deveria" em qualquer dia.
+ */
+export interface PacingInfo {
+  /** Valor ideal acumulado até hoje: planejado × período decorrido. */
+  expected: number;
+  expectedLabel: string;
+  /** Executado ÷ esperado. 1 = exatamente no ritmo. */
+  ratio: number;
+}
+
 export interface GoalProgress {
   kind: "budget" | "results";
   label: string;
@@ -41,7 +64,11 @@ export interface GoalProgress {
   barPercent: number;
   /** Fração do período já decorrida (0–1); null fora de um período. */
   elapsed: number | null;
+  /** Ritmo do dia. `null` quando não há meta ou é cedo demais para ler. */
+  pacing: PacingInfo | null;
   status: GoalStatus;
+  /** Rótulo curto do status, já ciente de orçamento vs resultado. */
+  statusLabel: string;
   tone: GoalTone;
   /** Frase curta que explica o status em uma linha. */
   message: string;
@@ -51,8 +78,23 @@ export interface GoalProgress {
   isOverride: boolean;
 }
 
-/** Tolerância de ritmo: abaixo disso, considera-se dentro do esperado. */
-const PACE_TOLERANCE = 0.12;
+/**
+ * Tolerância de ritmo: entre 90% e 110% do esperado, está no ritmo.
+ *
+ * Aplicada sobre a RAZÃO de pacing, não sobre a diferença de pontos.
+ */
+const PACE_TOLERANCE = 0.1;
+
+/**
+ * Antes disto o ritmo não é lido — fica neutro.
+ *
+ * 10% do período são ~3 dias num mês. Nos primeiros dias o esperado é
+ * pequeno o bastante para que uma pausa de fim de semana, uma conta que
+ * subiu no dia 2 ou uma entrega atrasada da plataforma joguem a razão
+ * para 0,4 sem que nada esteja errado. Um alerta que dispara todo dia 1º
+ * é um alerta que ninguém lê no dia 20.
+ */
+const MIN_ELAPSED_FOR_PACING = 0.1;
 
 const DAY_MS = 86_400_000;
 
@@ -101,6 +143,50 @@ function safeRatio(executed: number, planned: number): number {
   return planned <= 0 ? 0 : executed / planned;
 }
 
+/**
+ * O ritmo do dia, ou `null` quando não há o que ler.
+ *
+ * `null` em três casos, e todos significam "não afirme nada": sem meta,
+ * fora de um período, ou cedo demais no ciclo. Devolver 0 em vez de
+ * `null` faria a interface anunciar "gasto lento" numa conta que ainda
+ * não tinha como ter gasto.
+ */
+function buildPacing(
+  planned: number,
+  executed: number,
+  elapsed: number | null,
+  format: (value: number) => string,
+): PacingInfo | null {
+  if (planned <= 0) return null;
+  if (elapsed === null || elapsed < MIN_ELAPSED_FOR_PACING) return null;
+
+  const expected = planned * elapsed;
+
+  return {
+    expected,
+    expectedLabel: format(expected),
+    ratio: expected <= 0 ? 0 : executed / expected,
+  };
+}
+
+const BUDGET_STATUS_LABELS: Record<GoalStatus, string> = {
+  "sem-meta": "Sem orçamento",
+  "no-ritmo": "Ritmo saudável",
+  acelerado: "Gasto acelerado",
+  atrasado: "Gasto lento",
+  estourou: "Estourou",
+  batida: "Verba usada",
+};
+
+const RESULTS_STATUS_LABELS: Record<GoalStatus, string> = {
+  "sem-meta": "Sem meta",
+  "no-ritmo": "No ritmo da meta",
+  acelerado: "Adiantado",
+  atrasado: "Abaixo da meta",
+  estourou: "Estourou",
+  batida: "Meta batida",
+};
+
 /* ------------------------------------------------------------------ */
 /* Orçamento — passar de 100% é ruim                                   */
 /* ------------------------------------------------------------------ */
@@ -112,6 +198,12 @@ function budgetProgress(
   isOverride: boolean,
 ): GoalProgress {
   const ratio = safeRatio(executedCents, plannedCents);
+  const pacing = buildPacing(
+    plannedCents,
+    executedCents,
+    elapsed,
+    formatCurrency,
+  );
 
   let status: GoalStatus = "no-ritmo";
   let tone: GoalTone = "neutral";
@@ -122,21 +214,21 @@ function budgetProgress(
     tone = "neutral";
     message = "Orçamento do período não definido.";
   } else if (ratio > 1) {
+    /* Estouro é absoluto e vem ANTES do ritmo: passou da verba do mês
+       inteiro, e nenhuma leitura de pacing muda isso. */
     status = "estourou";
     tone = "negative";
     message = `Estourou o orçamento em ${formatCurrency(executedCents - plannedCents)}.`;
-  } else if (elapsed !== null) {
-    const drift = ratio - elapsed;
-
-    if (drift > PACE_TOLERANCE) {
+  } else if (pacing) {
+    if (pacing.ratio > 1 + PACE_TOLERANCE) {
       status = "acelerado";
       tone = "warning";
-      message = `Gastando acima do ritmo — ${formatPercent(ratio, 0)} da verba com ${formatPercent(elapsed, 0)} do período.`;
-    } else if (drift < -PACE_TOLERANCE) {
+      message = `${formatPercent(pacing.ratio, 0)} do previsto para hoje — a verba acaba antes do mês.`;
+    } else if (pacing.ratio < 1 - PACE_TOLERANCE) {
       // Subinvestir também é desvio: verba parada não vira resultado.
       status = "atrasado";
       tone = "warning";
-      message = `Abaixo do ritmo — sobra ${formatCurrency(plannedCents - executedCents)} para o período restante.`;
+      message = `Sobra ${formatCurrency(plannedCents - executedCents)} para o período restante.`;
     } else {
       status = "no-ritmo";
       tone = "positive";
@@ -152,7 +244,9 @@ function budgetProgress(
     ratio,
     barPercent: Math.min(ratio * 100, 100),
     elapsed,
+    pacing,
     status,
+    statusLabel: BUDGET_STATUS_LABELS[status],
     tone,
     message,
     plannedLabel: formatCurrency(plannedCents),
@@ -170,8 +264,12 @@ function resultsProgress(
   executedResults: number,
   elapsed: number | null,
   isOverride: boolean,
+  metric: GoalMetric,
 ): GoalProgress {
   const ratio = safeRatio(executedResults, plannedResults);
+  const pacing = buildPacing(plannedResults, executedResults, elapsed, (v) =>
+    formatGoalValue(metric, v),
+  );
 
   let status: GoalStatus = "no-ritmo";
   let tone: GoalTone = "neutral";
@@ -180,7 +278,7 @@ function resultsProgress(
   if (plannedResults <= 0) {
     status = "sem-meta";
     tone = "neutral";
-    message = "Meta de resultados não definida.";
+    message = `Meta de ${metric.label.toLowerCase()} não definida.`;
   } else if (ratio >= 1) {
     status = "batida";
     tone = "positive";
@@ -188,38 +286,42 @@ function resultsProgress(
       ratio > 1
         ? `Meta superada em ${formatPercent(ratio - 1, 0)}.`
         : "Meta atingida.";
-  } else if (elapsed !== null) {
-    const drift = ratio - elapsed;
-
-    if (drift > PACE_TOLERANCE) {
-      status = "acelerado";
+  } else if (pacing) {
+    /* Só DUAS faixas decidem a cor, como no orçamento invertido: a
+       partir de 90% do esperado está no ritmo, abaixo disso está
+       atrasado. "Adiantado" é um recorte do verde, não um terceiro
+       julgamento — mas vale dizer, porque quem está 40% à frente no dia
+       10 pode cortar verba e ainda bater. */
+    if (pacing.ratio >= 1 - PACE_TOLERANCE) {
+      status = pacing.ratio > 1 + PACE_TOLERANCE ? "acelerado" : "no-ritmo";
       tone = "positive";
-      message = `Adiantado — ${formatPercent(ratio, 0)} da meta com ${formatPercent(elapsed, 0)} do período.`;
-    } else if (drift < -PACE_TOLERANCE) {
+      message =
+        status === "acelerado"
+          ? `${formatPercent(pacing.ratio, 0)} do esperado para hoje.`
+          : "No ritmo para bater a meta.";
+    } else {
       status = "atrasado";
       tone = "negative";
       const faltam = plannedResults - executedResults;
-      message = `Atrasado — faltam ${formatNumber(Math.ceil(faltam))} para a meta.`;
-    } else {
-      status = "no-ritmo";
-      tone = "positive";
-      message = "No ritmo para bater a meta.";
+      message = `Faltam ${formatGoalValue(metric, faltam)} para a meta.`;
     }
   }
 
   return {
     kind: "results",
-    label: "Resultados",
+    label: metric.label,
     planned: plannedResults,
     executed: executedResults,
     ratio,
     barPercent: Math.min(ratio * 100, 100),
     elapsed,
+    pacing,
     status,
+    statusLabel: RESULTS_STATUS_LABELS[status],
     tone,
     message,
-    plannedLabel: formatNumber(Math.round(plannedResults)),
-    executedLabel: formatNumber(Math.round(executedResults)),
+    plannedLabel: formatGoalValue(metric, plannedResults),
+    executedLabel: formatGoalValue(metric, executedResults),
     isOverride,
   };
 }
@@ -232,7 +334,19 @@ export interface GoalInput {
   goal: ClientGoal | null;
   /** Somatórios reais do período, vindos de `daily_metrics`. */
   computedSpendCents: number;
-  computedResults: number;
+  /**
+   * As DUAS colunas de resultado, não a que o chamador achou que valia.
+   *
+   * A meta de uma loja é faturamento e a de uma clínica é contagem —
+   * quem escolhe é `metric.source`, aqui dentro. Receber um único
+   * `computedResults` já resolvido devolveria a decisão para cada tela,
+   * e bastaria uma delas passar `conversions` numa conta de e-commerce
+   * para a barra comparar 12 compras contra uma meta de R$ 50.000.
+   */
+  computedConversions: number;
+  computedRevenueCents: number;
+  /** O indicador desta conta — ver `lib/metrics/goal-metric.ts`. */
+  metric: GoalMetric;
   now?: Date;
 }
 
@@ -251,7 +365,9 @@ export interface GoalProgressPair {
 export function buildGoalProgress({
   goal,
   computedSpendCents,
-  computedResults,
+  computedConversions,
+  computedRevenueCents,
+  metric,
   now,
 }: GoalInput): GoalProgressPair | null {
   if (!goal) return null;
@@ -271,7 +387,17 @@ export function buildGoalProgress({
   // na migration 20260803000005.
   const executedBudget =
     goal.executed_budget_cents_override ?? computedSpendCents;
-  const executedResults = goal.executed_results_override ?? computedResults;
+
+  /* O override está na mesma unidade da meta — quem digitou "corrigir
+     para R$ 42.000" e quem digitou "corrigir para 42 leads" preenchem o
+     mesmo campo da mesma tela. Por isso ele entra depois da escolha da
+     coluna, não antes. */
+  const executedResults =
+    goal.executed_results_override ??
+    goalExecutedFrom(metric, {
+      conversions: computedConversions,
+      revenueCents: computedRevenueCents,
+    });
 
   return {
     budget: budgetProgress(
@@ -285,6 +411,7 @@ export function buildGoalProgress({
       executedResults,
       elapsed,
       goal.executed_results_override !== null,
+      metric,
     ),
     cycle: { elapsed, daysLeft, periodEnd: goal.period_end },
   };
@@ -317,11 +444,8 @@ export const GOAL_TONE_CLASSES: Record<
   },
 };
 
-export const GOAL_STATUS_LABELS: Record<GoalStatus, string> = {
-  "sem-meta": "Sem meta",
-  "no-ritmo": "No ritmo",
-  acelerado: "Acelerado",
-  atrasado: "Atrasado",
-  estourou: "Estourou",
-  batida: "Meta batida",
-};
+/* Não existe mais um mapa único de status → rótulo. O mesmo status
+   significa coisas opostas nas duas barras — "acelerado" é alerta no
+   orçamento e elogio no resultado —, então cada `GoalProgress` já sai
+   com o seu `statusLabel` resolvido. Ver BUDGET_STATUS_LABELS e
+   RESULTS_STATUS_LABELS acima. */

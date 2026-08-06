@@ -5,6 +5,12 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { buildTrend, previousPeriod, sumMetrics } from "@/lib/metrics/kpi";
 import { buildGoalProgress } from "@/lib/metrics/goals";
 import {
+  goalExecutedFrom,
+  goalMetricFor,
+  type GoalMetric,
+  type GoalMetricKey,
+} from "@/lib/metrics/goal-metric";
+import {
   dataNoBrasil,
   diaDaSemanaNoBrasil,
   inicioDoDiaBR,
@@ -16,6 +22,7 @@ import type {
   AdCreative,
   Client,
   ClientGoal,
+  ClientSegment,
   DailyMetric,
   FinancialTransaction,
   MonthlySummary,
@@ -229,7 +236,16 @@ export interface ClientWithGoal {
   client: Client;
   goal: ClientGoal | null;
   computedSpendCents: number;
+  /** Conversões contadas — sempre presente, seja qual for a meta. */
   computedResults: number;
+  computedRevenueCents: number;
+  /**
+   * O indicador desta conta. Resolvido no servidor porque depende da
+   * unidade GRAVADA na meta, não só do segmento do cliente.
+   */
+  metric: GoalMetric;
+  /** Executado já na unidade de `metric` — o que o card exibe. */
+  computedGoalValue: number;
   /** Série de gasto no período da meta, para a sparkline do card. */
   trend: number[];
   /**
@@ -278,16 +294,26 @@ export async function getClientsWithGoals(
       const rows = await getMetrics(client.id, start, end);
       const totals = sumMetrics(rows);
 
+      /* O segmento diz o padrão; a meta gravada diz a verdade. Sem meta
+         no período cai no padrão do segmento, que é o que o card sem
+         meta precisa para rotular o número que mostra. */
+      const metric = goalMetricFor(client.segment, goal?.results_metric);
+
       return {
         client,
         goal,
+        metric,
         computedSpendCents: totals.spendCents,
         computedResults: totals.conversions,
+        computedRevenueCents: totals.revenueCents,
+        computedGoalValue: goalExecutedFrom(metric, totals),
         trend: buildTrend(rows).map((p) => p.spend),
         progress: buildGoalProgress({
           goal,
+          metric,
           computedSpendCents: totals.spendCents,
-          computedResults: totals.conversions,
+          computedConversions: totals.conversions,
+          computedRevenueCents: totals.revenueCents,
         }),
       };
     }),
@@ -1009,6 +1035,14 @@ export interface GoalHistoryEntry {
   plannedResults: number;
   executedSpendCents: number;
   executedResults: number;
+  /**
+   * A unidade DAQUELE mês, não a de hoje.
+   *
+   * Uma conta que virou a meta de contagem para faturamento tem meses
+   * nas duas unidades, e formatar tudo pela regra atual imprimiria
+   * "R$ 1,20" onde foram 120 leads. Cada linha carrega a sua.
+   */
+  metricKey: GoalMetricKey;
 }
 
 /**
@@ -1022,6 +1056,7 @@ export interface GoalHistoryEntry {
 export async function getGoalHistory(
   clientId: string,
   limite = 12,
+  segment?: ClientSegment,
 ): Promise<GoalHistoryEntry[]> {
   const goals = await (async (): Promise<ClientGoal[]> => {
     if (isDemoMode) {
@@ -1044,9 +1079,11 @@ export async function getGoalHistory(
     goals.map(async (g) => {
       const rows = await getMetrics(clientId, g.period_start, g.period_end);
       const totals = sumMetrics(rows);
+      const metric = goalMetricFor(segment, g.results_metric);
 
       return {
         month: g.period_start.slice(0, 7),
+        metricKey: metric.key,
         plannedBudgetCents: g.planned_budget_cents,
         plannedResults: Number(g.planned_results),
         /* Override existe para corrigir um mês em que a plataforma
@@ -1055,7 +1092,7 @@ export async function getGoalHistory(
         executedSpendCents:
           g.executed_budget_cents_override ?? totals.spendCents,
         executedResults: Number(
-          g.executed_results_override ?? totals.conversions,
+          g.executed_results_override ?? goalExecutedFrom(metric, totals),
         ),
       };
     }),

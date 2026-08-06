@@ -10,6 +10,7 @@
  * de hidratação no React.
  */
 
+import { defaultGoalMetricFor } from "@/lib/metrics/goal-metric";
 import type {
   AdCreative,
   AdPlatform,
@@ -848,6 +849,7 @@ function cycleActuals(clientId: string) {
   return {
     spend: rows.reduce((acc, r) => acc + r.spend_cents, 0),
     results: rows.reduce((acc, r) => acc + Number(r.conversions), 0),
+    revenue: rows.reduce((acc, r) => acc + r.revenue_cents, 0),
   };
 }
 
@@ -870,13 +872,25 @@ function makeGoal(
   extra: Partial<ClientGoal> = {},
 ): ClientGoal {
   const actual = cycleActuals(clientId);
+
+  /* A unidade acompanha o segmento, como o trigger do banco faz. Sem
+     isso o demo de e-commerce guardaria uma CONTAGEM numa meta que o
+     card lê como centavos — e a demonstração passaria a mostrar
+     "R$ 1,20 de faturamento" exatamente onde o recurso deveria
+     aparecer melhor. */
+  const metric = defaultGoalMetricFor(
+    demoClients.find((c) => c.id === clientId)?.segment,
+  );
+  const base = metric.key === "revenue" ? actual.revenue : actual.results;
+
   return {
     id,
     client_id: clientId,
     period_start: cycleStart,
     period_end: cycleEnd,
     planned_budget_cents: Math.round(actual.spend * budgetMultiplier),
-    planned_results: Math.round(actual.results * resultsMultiplier),
+    planned_results: Math.round(base * resultsMultiplier),
+    results_metric: metric.key,
     executed_budget_cents_override: null,
     executed_results_override: null,
     override_reason: null,
