@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 
-import { getCurrentUser } from "@/lib/supabase/server";
+import {
+  createSupabaseServerClient,
+  getCurrentUser,
+} from "@/lib/supabase/server";
 import { fetchAllGroups } from "@/lib/whatsapp/session";
 
 /**
@@ -19,9 +22,11 @@ import { fetchAllGroups } from "@/lib/whatsapp/session";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Menos que o teto da função: a listagem pode demorar quando o WhatsApp
-// está limitando, e é melhor devolver erro tratado que ser morto.
-export const maxDuration = 30;
+/* 60s é o teto do plano. A varredura na Evolution é errática — 8,8s numa
+   medição, 110s em outra —, então o que sobra de margem vira lista
+   entregue em vez de erro. O `fetch` interno corta antes, em 45s, para
+   que a falha seja NOSSA e tratada, e não a função sendo morta. */
+export const maxDuration = 60;
 
 export async function GET() {
   const user = await getCurrentUser();
@@ -29,12 +34,37 @@ export async function GET() {
     return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
   }
 
-  /* A lista fica memoizada 10 minutos no Data Cache, por usuário — ver
-     `fetchAllGroups`. O `no-store` abaixo continua valendo e não briga
-     com isso: ele impede que a RESPOSTA seja guardada em CDN ou no
-     browser, o que é obrigatório num payload por usuário. A memoização
-     acontece um nível abaixo, no servidor, onde a instância já foi
-     resolvida a partir da sessão. */
+  /* PRIMEIRO A TABELA, e quase sempre só ela.
+
+     A varredura na Evolution leva ~110s nesta conta (231 grupos, com
+     metadados pedidos um a um à Meta) e não cabe no teto de 60s da
+     função. Enquanto ela era o caminho principal, o seletor simplesmente
+     nunca carregava — e "cole o ID manualmente" não é saída de verdade,
+     porque o JID não aparece em lugar nenhum do WhatsApp.
+
+     Quem preenche `whatsapp_groups` é `scripts/evolution.mjs
+     sincronizar`, rodado de fora da Vercel. Ver a migration 26. */
+  const supabase = await createSupabaseServerClient();
+  const { data: salvos } = await supabase
+    .from("whatsapp_groups")
+    .select("jid, name")
+    .eq("user_id", user.id)
+    .order("name");
+
+  if (salvos && salvos.length > 0) {
+    return NextResponse.json(
+      {
+        ok: true,
+        groups: salvos.map((g) => ({ id: g.jid, name: g.name })),
+        cached: true,
+      },
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  }
+
+  /* Tabela vazia: primeira vez, ou sincronização nunca rodada. Tenta ao
+     vivo — em conta com poucos grupos isso responde dentro do limite, e
+     é o que faz o recurso funcionar sem exigir o script. */
   const resultado = await fetchAllGroups(user.id);
 
   if (!resultado.ok) {

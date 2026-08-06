@@ -230,13 +230,21 @@ function buscarGrupos(userId: string, nome: string) {
         );
       }
 
-      // 20s: acima disso a rota da Vercel se aproxima do próprio limite,
-      // e um formulário travado é pior que uma lista indisponível.
+      /* 45s, não 20s. O tempo desta chamada é ERRÁTICO, não alto:
+         medimos 8,8s para 281 grupos, e 110s para 231 numa hora em que
+         a Meta estava limitando. Com o corte em 20s, boa parte das
+         chamadas que iam terminar bem virava "não foi possível listar"
+         — e o usuário ficava sem lista e sem como descobrir o JID, que
+         não aparece em canto nenhum do WhatsApp.
+
+         45s cabe no teto de 60s da função (`maxDuration` da rota) com
+         folga para a sessão e a serialização. Não resolve os 110s; para
+         esses existe a tabela `whatsapp_groups`. */
       const resposta = await evolutionFetch(
         "GET",
         `group/fetchAllGroups/${encodeURIComponent(nome)}?getParticipants=false`,
         undefined,
-        20_000,
+        45_000,
       );
 
       if (!resposta.success) {

@@ -224,17 +224,118 @@ const comandos = {
 
     console.log(`\n✓ Enviado para ${destino} (id ${dado?.key?.id ?? "?"})\n`);
   },
+  /**
+   * Espelha os grupos de um usuário na tabela `whatsapp_groups`.
+   *
+   * POR QUE ISTO NÃO É UMA ROTA. `fetchAllGroups` pede metadados grupo a
+   * grupo à Meta: medimos 110 segundos para 231 grupos. A função da
+   * Vercel morre em 60s, então a varredura não cabe em requisição
+   * nenhuma — nem a do formulário, nem um cron. Aqui não há teto, e o
+   * seletor passa a ler a tabela e responder na hora.
+   *
+   * Rode de novo quando entrar cliente novo. É trabalho de onboarding,
+   * não de tempo real.
+   */
+  async sincronizar(instancia) {
+    exigirConfig({ precisaInstancia: false });
+
+    const url = env.NEXT_PUBLIC_SUPABASE_URL;
+    const servico = env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!url || !servico) {
+      console.error(
+        "\n✗ Faltando em .env.local: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY\n",
+      );
+      process.exit(1);
+    }
+
+    if (!instancia) {
+      const { dado } = await api("GET", "/instance/fetchInstances");
+      const lista = Array.isArray(dado) ? dado : (dado?.instances ?? []);
+      const pessoais = lista
+        .map((i) => i?.name ?? i?.instance?.instanceName ?? "")
+        .filter((n) => n.startsWith("user-"));
+
+      console.log("\nInforme a instância. Pareadas hoje:\n");
+      for (const n of pessoais) console.log(`  ${n}`);
+      console.log("\n  node scripts/evolution.mjs sincronizar <instancia>\n");
+      process.exit(1);
+    }
+
+    /* O nome carrega o id do usuário — é assim que `instanceNameFor`
+       monta, e é a única ligação entre a instância e a linha da tabela. */
+    const userId = instancia.replace(/^user-/, "");
+    if (userId === instancia) {
+      console.error(
+        `\n✗ "${instancia}" não é instância de usuário (esperado user-<uuid>).\n`,
+      );
+      process.exit(1);
+    }
+
+    console.log(
+      `\nVarrendo ${instancia}… leva ~2 minutos, é a chamada mais lenta da Evolution.`,
+    );
+
+    const resposta = await fetch(
+      `${BASE}/group/fetchAllGroups/${encodeURIComponent(instancia)}?getParticipants=false`,
+      // 4 minutos: o teto aqui existe só para não pendurar o terminal
+      // para sempre. É o dobro do pior tempo medido.
+      { headers: { apikey: KEY }, signal: AbortSignal.timeout(240_000) },
+    );
+
+    const dado = await resposta.json().catch(() => ({}));
+    if (!resposta.ok) {
+      console.error(`\n✗ ${explicar(resposta.status, dado)}\n`);
+      process.exit(1);
+    }
+
+    const grupos = (Array.isArray(dado) ? dado : (dado.groups ?? []))
+      .map((g) => ({
+        user_id: userId,
+        jid: String(g.id ?? ""),
+        name: String(g.subject ?? "").trim() || "(sem nome)",
+        updated_at: new Date().toISOString(),
+      }))
+      .filter((g) => g.jid.endsWith("@g.us"));
+
+    if (grupos.length === 0) {
+      console.log("\nNenhum grupo. A instância precisa PARTICIPAR do grupo.\n");
+      return;
+    }
+
+    /* `resolution=merge-duplicates` faz UPSERT pela chave (user_id, jid):
+       grupo renomeado atualiza, grupo novo entra. Não apagamos os que
+       sumiram — sair de um grupo não pode zerar o destino já gravado no
+       cadastro de um cliente. */
+    const gravacao = await fetch(`${url}/rest/v1/whatsapp_groups`, {
+      method: "POST",
+      headers: {
+        apikey: servico,
+        Authorization: `Bearer ${servico}`,
+        "Content-Type": "application/json",
+        Prefer: "resolution=merge-duplicates",
+      },
+      body: JSON.stringify(grupos),
+    });
+
+    if (!gravacao.ok) {
+      console.error(`\n✗ Supabase recusou: ${await gravacao.text()}\n`);
+      process.exit(1);
+    }
+
+    console.log(`\n✓ ${grupos.length} grupo(s) no banco. O seletor já lista.\n`);
+  },
 };
 
 const [comando, ...args] = process.argv.slice(2);
 const executar = comandos[comando];
 
 if (!executar) {
-  console.log("\nComandos: status | criar | qr | grupos | enviar\n");
+  console.log("\nComandos: status | criar | qr | grupos | sincronizar | enviar\n");
   console.log("  node scripts/evolution.mjs status");
   console.log("  node scripts/evolution.mjs criar");
   console.log("  node scripts/evolution.mjs qr");
   console.log("  node scripts/evolution.mjs grupos");
+  console.log("  node scripts/evolution.mjs sincronizar <instancia>");
   console.log('  node scripts/evolution.mjs enviar 5548999110022 "Teste"\n');
   process.exit(comando ? 1 : 0);
 }
