@@ -6,7 +6,6 @@ import { toast } from "sonner";
 
 import { RichTextEditor } from "./rich-text-editor";
 import {
-  PRIORITY_LABELS,
   STATUS_DOT,
   STATUS_LABELS,
   TASK_COLUMNS,
@@ -27,13 +26,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { COLOR_TAG_CLASSES, COLOR_TAG_LABELS } from "./task-meta";
 import { formatDueDate, initials } from "@/lib/format";
 import type {
   RichTextDoc,
-  TaskPriority,
   TaskStatus,
   TaskWithRelations,
 } from "@/types/database";
+import { TASK_COLOR_TAGS } from "@/types/database";
 
 /**
  * Detalhe da tarefa — o "documento" no estilo Notion.
@@ -76,6 +76,10 @@ function TaskDialogBody({
   const [title, setTitle] = useState(task.title);
   const [content, setContent] = useState<RichTextDoc>(task.content);
   const [newItem, setNewItem] = useState("");
+  /* Espelho local do slider: o arraste precisa de resposta imediata, e
+     esperar o round-trip a cada pixel travaria o controle. `key` no
+     Dialog remonta ao trocar de tarefa, então não há efeito de sync. */
+  const [criticidade, setCriticidade] = useState(task.criticality);
   const [isPending, startTransition] = useTransition();
   const [saving, setSaving] = useState(false);
 
@@ -111,7 +115,8 @@ function TaskDialogBody({
 
   function commitField(patch: {
     status?: TaskStatus;
-    priority?: TaskPriority;
+    criticality?: number;
+    colorTag?: string | null;
     dueDate?: string | null;
   }) {
     startTransition(async () => {
@@ -215,26 +220,71 @@ function TaskDialogBody({
             </Select>
           </Property>
 
-          <Property label="Prioridade">
-            <Select
-              value={task.priority}
-              onValueChange={(value) =>
-                commitField({ priority: value as TaskPriority })
-              }
-            >
-              <SelectTrigger size="sm" className="w-full">
-                <SelectValue>
-                  {(value: TaskPriority) => PRIORITY_LABELS[value]}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {(Object.keys(PRIORITY_LABELS) as TaskPriority[]).map((p) => (
-                  <SelectItem key={p} value={p}>
-                    {PRIORITY_LABELS[p]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          {/* Criticidade no lugar de Prioridade: `priority` é DERIVADA
+              dela por trigger no banco, então deixar as duas editáveis
+              daria dois controles para o mesmo dado — e o que a pessoa
+              escrevesse em prioridade seria sobrescrito no salvamento. */}
+          <Property label="Criticidade">
+            <div className="flex items-center gap-2.5">
+              <input
+                type="range"
+                min={1}
+                max={10}
+                step={1}
+                value={criticidade}
+                onChange={(e) => setCriticidade(Number(e.target.value))}
+                /* `onMouseUp`/`onTouchEnd` e não `onChange`: gravar a
+                   cada pixel do arraste dispararia dez writes até o
+                   dedo parar. */
+                onMouseUp={() => commitField({ criticality: criticidade })}
+                onTouchEnd={() => commitField({ criticality: criticidade })}
+                onKeyUp={() => commitField({ criticality: criticidade })}
+                className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-muted accent-[var(--signal)]"
+                aria-label="Criticidade de 1 a 10"
+              />
+              <span
+                className={cn(
+                  "w-8 text-right text-sm font-semibold tabular-nums",
+                  criticidade >= 8
+                    ? "text-negative"
+                    : criticidade >= 4
+                      ? "text-warning"
+                      : "text-muted-foreground",
+                )}
+              >
+                {criticidade}
+              </span>
+            </div>
+          </Property>
+
+          <Property label="Cor">
+            <div className="flex flex-wrap gap-1.5">
+              {TASK_COLOR_TAGS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  title={COLOR_TAG_LABELS[c]}
+                  onClick={() => commitField({ colorTag: c })}
+                  className={cn(
+                    "grid size-7 place-items-center rounded-md transition-all hover:scale-110 hover:bg-accent",
+                    task.color_tag === c && "bg-accent ring-2 ring-foreground/60",
+                  )}
+                >
+                  <span className={cn("size-4 rounded-full", COLOR_TAG_CLASSES[c])} />
+                </button>
+              ))}
+              <button
+                type="button"
+                title="Sem cor"
+                onClick={() => commitField({ colorTag: null })}
+                className={cn(
+                  "grid size-7 place-items-center rounded-md transition-colors hover:bg-accent",
+                  task.color_tag === null && "ring-2 ring-foreground/60",
+                )}
+              >
+                <span className="size-4 rounded-full border border-dashed border-muted-foreground/60" />
+              </button>
+            </div>
           </Property>
 
           <Property label="Responsáveis">

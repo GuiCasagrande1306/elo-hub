@@ -395,6 +395,9 @@ export function TasksWorkspace({ tasks }: TasksWorkspaceProps) {
       )}
 
       <TaskDialog
+        /* Remonta ao trocar de tarefa: sem isto o estado local da gaveta
+           (slider de criticidade) manteria o valor da tarefa anterior. */
+        key={openTask?.id ?? "vazia"}
         task={openTask}
         open={Boolean(openTask)}
         onOpenChange={(open) => {
