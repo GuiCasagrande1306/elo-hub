@@ -2,11 +2,19 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CheckCircle2, KanbanSquare, List, Plus, Search } from "lucide-react";
+import {
+  CalendarDays,
+  CheckCircle2,
+  KanbanSquare,
+  List,
+  Plus,
+  Search,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { TaskBoard } from "./task-board";
 import { TaskList } from "./task-list";
+import { TaskCalendar } from "./task-calendar";
 import { TaskDialog } from "./task-dialog";
 import { createTask, moveTask } from "@/app/(app)/tarefas/actions";
 import { Button } from "@/components/ui/button";
@@ -55,16 +63,30 @@ export function TasksWorkspace({
   const searchParams = useSearchParams();
   const [, startTransition] = useTransition();
 
-  const [view, setView] = useState<"board" | "list" | "done">("board");
+  const [view, setView] = useState<
+    "board" | "list" | "calendar" | "done"
+  >("board");
   const [query, setQuery] = useState("");
   const [clientFilter, setClientFilter] = useState<string>(ALL);
   const [statusFilter, setStatusFilter] = useState<string>(ALL);
+  const [assigneeFilter, setAssigneeFilter] = useState<string>(ALL);
   /* Faixa, não valor exato: ninguém filtra por "criticidade 7". A
      pergunta real é "o que está crítico". */
   const [critFilter, setCritFilter] = useState<string>(ALL);
   /* Dia das concluídas. Vazio = todas — o padrão não pode esconder
      entrega, senão alguém conclui e acha que não salvou. */
   const [diaConcluidas, setDiaConcluidas] = useState("");
+
+  /* Colaboradores derivados das TAREFAS, não de uma lista de equipe:
+     oferecer alguém que não tem tarefa nenhuma dá um filtro que sempre
+     volta vazio. */
+  const colaboradores = useMemo(() => {
+    const mapa = new Map<string, string>();
+    for (const t of tasks) {
+      for (const p of t.assignees) mapa.set(p.id, p.full_name);
+    }
+    return [...mapa].map(([id, nome]) => ({ id, nome }));
+  }, [tasks]);
   const [creating, setCreating] = useState(false);
   const [newTitle, setNewTitle] = useState("");
 
@@ -92,6 +114,12 @@ export function TasksWorkspace({
     return tasks.filter((task) => {
       if (clientFilter !== ALL && task.client_id !== clientFilter) return false;
       if (statusFilter !== ALL && task.status !== statusFilter) return false;
+      if (
+        assigneeFilter !== ALL &&
+        !task.assignees.some((p) => p.id === assigneeFilter)
+      ) {
+        return false;
+      }
       if (critFilter === "alta" && task.criticality < 7) return false;
       if (critFilter === "critica" && task.criticality < 9) return false;
       if (!needle) return true;
@@ -100,7 +128,7 @@ export function TasksWorkspace({
         (task.client?.name.toLowerCase().includes(needle) ?? false)
       );
     });
-  }, [tasks, query, clientFilter, statusFilter, critFilter]);
+  }, [tasks, query, clientFilter, statusFilter, critFilter, assigneeFilter]);
 
 
   /* Concluída some do quadro e da lista depois de 7 dias.
@@ -202,6 +230,12 @@ export function TasksWorkspace({
             label="Lista"
           />
           <ViewButton
+            active={view === "calendar"}
+            onClick={() => setView("calendar")}
+            icon={CalendarDays}
+            label="Calendário"
+          />
+          <ViewButton
             active={view === "done"}
             onClick={() => setView("done")}
             icon={CheckCircle2}
@@ -242,6 +276,30 @@ export function TasksWorkspace({
             {clients.map((client) => (
               <SelectItem key={client.id} value={client.id}>
                 {client.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select
+          value={assigneeFilter}
+          onValueChange={(value) => setAssigneeFilter(value ?? ALL)}
+        >
+          <SelectTrigger size="sm" className="w-full sm:w-52">
+            <SelectValue>
+              {(value: string) =>
+                value === ALL
+                  ? "Todos os colaboradores"
+                  : (colaboradores.find((c) => c.id === value)?.nome ??
+                    "Todos os colaboradores")
+              }
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>Todos os colaboradores</SelectItem>
+            {colaboradores.map((c) => (
+              <SelectItem key={c.id} value={c.id}>
+                {c.nome}
               </SelectItem>
             ))}
           </SelectContent>
@@ -292,9 +350,11 @@ export function TasksWorkspace({
           </SelectContent>
         </Select>
 
+        {/* Destaque no CTA: é a única ação de escrita da barra, e no
+            meio de cinco filtros cinzas ela desaparecia. */}
         <Button
           size="sm"
-          className="ml-auto h-9"
+          className="ml-auto h-9 bg-signal text-white hover:bg-signal/90"
           onClick={() => setCreating((value) => !value)}
         >
           <Plus className="size-4" />
@@ -321,6 +381,13 @@ export function TasksWorkspace({
       )}
 
       {/* Conteúdo -------------------------------------------------- */}
+      {view === "calendar" && (
+        /* Recebe TODAS as filtradas, não só as abertas: o calendário é
+           leitura de carga, e esconder o que já foi entregue faria a
+           semana passada parecer vazia. */
+        <TaskCalendar tasks={filtered} onOpenTask={setOpenTask} />
+      )}
+
       {view === "board" && (
         <TaskBoard
           tasks={emAndamento}
