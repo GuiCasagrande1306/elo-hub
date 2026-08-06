@@ -43,6 +43,7 @@ export const secondaryNav: NavItem[] = [
   // barra de fato é o `redirect` no Server Component e, abaixo dele, a
   // policy `financial_admin_only` no Postgres.
   { href: "/gestao", label: "Gestão", icon: Landmark, adminOnly: true },
+  { href: "/configuracoes/equipe", label: "Equipe", icon: Users, adminOnly: true },
   { href: "/configuracoes", label: "Configurações", icon: Settings, adminOnly: true },
 ];
 
