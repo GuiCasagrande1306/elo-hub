@@ -66,7 +66,7 @@ export function TaskList({
   return (
     <section className="surface-card overflow-hidden">
       {/* Cabeçalho do grupo ----------------------------------------- */}
-      <header className="flex flex-wrap items-center gap-3 px-4 py-3">
+      <header className="flex flex-wrap items-center gap-3 px-3 py-2.5 md:px-4 md:py-3">
         <button
           type="button"
           onClick={() => setAberto((v) => !v)}
@@ -191,7 +191,11 @@ function TaskRow({
     <li>
       <div
         className={cn(
-          "grid grid-cols-1 items-center gap-x-3 gap-y-2 px-4 py-2 transition-colors hover:bg-accent/40 md:grid",
+          /* Mobile: flex que QUEBRA. Título ocupa o resto da primeira
+             linha ao lado do checkbox; responsável, status, criticidade
+             e prazo caem para a segunda. Antes era `grid-cols-1`, que
+             empilhava tudo numa coluna e espremia o título até sumir. */
+          "flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2.5 transition-colors hover:bg-accent/40 md:grid md:gap-y-2 md:px-4 md:py-2",
           GRID,
         )}
       >
@@ -213,7 +217,7 @@ function TaskRow({
         <button
           type="button"
           onClick={() => onOpenTask(task.id)}
-          className="flex min-w-0 items-center gap-1.5 text-left"
+          className="flex min-w-0 flex-1 items-center gap-1.5 text-left md:flex-none"
         >
           {alerta && (
             <AlertTriangle className="size-3.5 shrink-0 text-negative" />
@@ -230,8 +234,9 @@ function TaskRow({
           </span>
         </button>
 
-        {/* Cliente */}
-        <span className="min-w-0">
+        {/* Cliente — fora do mobile: o nome já está no card do
+            Kanban e aqui roubaria a linha do título. */}
+        <span className="hidden min-w-0 md:block">
           {task.client ? (
             <span className="inline-block max-w-full truncate rounded-md bg-signal-muted/60 px-1.5 py-0.5 text-2xs font-medium text-signal">
               {task.client.name}
@@ -269,11 +274,13 @@ function TaskRow({
         <StatusCell taskId={task.id} value={task.status} />
 
         {/* Tempo rastreado. Play aparece no hover; parado mostra "—". */}
+        <span className="hidden md:contents">
         <TimeCell
           taskId={task.id}
           trackedSeconds={task.tracked_seconds}
           startedAt={task.timer_started_at}
         />
+        </span>
 
         {/* Barra segmentada 1–10 no lugar da badge textual: "Alta"
             agrupa 7 e 8 no mesmo rótulo, e a diferença entre eles é
@@ -335,7 +342,9 @@ function TaskRow({
         </span>
 
         <CriticalityCell taskId={task.id} value={task.criticality} />
-        <ColorTagCell taskId={task.id} value={task.color_tag} />
+        <span className="hidden md:contents">
+          <ColorTagCell taskId={task.id} value={task.color_tag} />
+        </span>
       </div>
     </li>
   );
@@ -392,7 +401,7 @@ function GhostRow({ defaultClientId }: { defaultClientId: string | null }) {
   }
 
   return (
-    <div className="flex items-center gap-2 border-t border-hairline px-4 py-2">
+    <div className="flex items-center gap-2 border-t border-hairline px-3 py-2 md:px-4">
       <Plus className="size-3.5 shrink-0 text-muted-foreground/50" />
       <input
         value={titulo}

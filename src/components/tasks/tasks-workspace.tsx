@@ -9,6 +9,7 @@ import {
   List,
   Plus,
   Search,
+  SlidersHorizontal,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -18,6 +19,11 @@ import { TaskCalendar } from "./task-calendar";
 import { TaskDialog } from "./task-dialog";
 import { createTask, moveTask } from "@/app/(app)/tarefas/actions";
 import { Button } from "@/components/ui/button";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -209,7 +215,9 @@ export function TasksWorkspace({ tasks }: TasksWorkspaceProps) {
     <div className="flex flex-col gap-5">
       {/* Barra de ferramentas ------------------------------------- */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-0.5 rounded-lg bg-surface-2/70 p-0.5 ring-1 ring-hairline">
+        {/* Quatro abas não cabem em 375px. Rolagem horizontal em vez de
+            quebra: abas em duas linhas deixam de parecer um seletor. */}
+        <div className="-mx-1 flex max-w-full items-center gap-0.5 overflow-x-auto rounded-lg bg-surface-2/70 p-0.5 ring-1 ring-hairline [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <ViewButton
             active={view === "board"}
             onClick={() => setView("board")}
@@ -248,6 +256,10 @@ export function TasksWorkspace({ tasks }: TasksWorkspaceProps) {
 
         {/* Base UI entrega `string | null` (null = seleção limpa). */}
 
+        {/* Desktop: filtros na barra. Mobile: dentro do Popover abaixo —
+            dois selects de largura total empurravam a lista para fora da
+            primeira dobra. */}
+        <div className="hidden items-center gap-2 md:flex">
         <Select
           value={assigneeFilter}
           onValueChange={(value) => setAssigneeFilter(value ?? ALL)}
@@ -294,13 +306,72 @@ export function TasksWorkspace({ tasks }: TasksWorkspaceProps) {
             ))}
           </SelectContent>
         </Select>
+        </div>
 
+        <Popover>
+          <PopoverTrigger
+            render={
+              <Button variant="outline" size="sm" className="h-9 md:hidden">
+                <SlidersHorizontal className="size-4" />
+                Filtros
+              </Button>
+            }
+          />
+          <PopoverContent align="start" className="flex w-64 flex-col gap-2 p-3">
+        <Select
+          value={assigneeFilter}
+          onValueChange={(value) => setAssigneeFilter(value ?? ALL)}
+        >
+          <SelectTrigger size="sm" className="w-full sm:w-52">
+            <SelectValue>
+              {(value: string) =>
+                value === ALL
+                  ? "Todos os colaboradores"
+                  : (colaboradores.find((c) => c.id === value)?.nome ??
+                    "Todos os colaboradores")
+              }
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>Todos os colaboradores</SelectItem>
+            {colaboradores.map((c) => (
+              <SelectItem key={c.id} value={c.id}>
+                {c.nome}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select
+          value={statusFilter}
+          onValueChange={(value) => setStatusFilter(value ?? ALL)}
+        >
+          <SelectTrigger size="sm" className="w-full sm:w-40">
+            <SelectValue>
+              {(value: string) =>
+                value === ALL
+                  ? "Todos os status"
+                  : (STATUS_LABELS[value as TaskStatus] ?? "Todos os status")
+              }
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>Todos os status</SelectItem>
+            {TASK_COLUMNS.map(({ status }) => (
+              <SelectItem key={status} value={status}>
+                {STATUS_LABELS[status]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+          </PopoverContent>
+        </Popover>
 
         {/* Destaque no CTA: é a única ação de escrita da barra, e no
             meio de cinco filtros cinzas ela desaparecia. */}
         <Button
           size="sm"
-          className="ml-auto h-9 bg-signal text-white hover:bg-signal/90"
+          className="h-9 w-full bg-signal text-white hover:bg-signal/90 md:ml-auto md:w-auto"
           onClick={() => setCreating((value) => !value)}
         >
           <Plus className="size-4" />
