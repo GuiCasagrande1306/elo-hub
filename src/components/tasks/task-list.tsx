@@ -9,6 +9,7 @@ import {
   STATUS_LABELS,
 } from "./task-meta";
 import { cn } from "@/lib/utils";
+import { ColorTagCell, CriticalityCell } from "./task-quick-edit";
 import { formatDueDate, initials } from "@/lib/format";
 import type { TaskWithRelations } from "@/types/database";
 
@@ -61,13 +62,15 @@ export function TaskList({
 
           return (
             <li key={task.id}>
-              <button
-                type="button"
-                onClick={() => onOpenTask(task.id)}
-                className="grid w-full grid-cols-1 gap-x-4 gap-y-2 px-4 py-3 text-left transition-colors hover:bg-accent/45 md:grid-cols-[1fr_140px_120px_110px_92px] md:items-center"
-              >
-                {/* Tarefa */}
-                <div className="flex min-w-0 items-start gap-2.5">
+              <div className="grid w-full grid-cols-1 gap-x-4 gap-y-2 px-4 py-3 text-left transition-colors hover:bg-accent/45 md:grid-cols-[1fr_140px_120px_110px_92px_auto_auto] md:items-center">
+                {/* Tarefa — só o título abre a gaveta. As células de
+                    edição rápida ficam fora do alvo de clique, senão
+                    ajustar criticidade abriria a tarefa junto. */}
+                <button
+                  type="button"
+                  onClick={() => onOpenTask(task.id)}
+                  className="flex min-w-0 items-start gap-2.5 text-left"
+                >
                   <span
                     className={cn(
                       "mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide",
@@ -85,7 +88,7 @@ export function TaskList({
                       </p>
                     )}
                   </div>
-                </div>
+                </button>
 
                 {/* Cliente */}
                 <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
@@ -134,7 +137,13 @@ export function TaskList({
                     </span>
                   ))}
                 </span>
-              </button>
+
+                {/* Edição rápida: salvam no clique, sem abrir a gaveta.
+                    Quem está na lista veio ajustar vários itens em
+                    sequência. */}
+                <CriticalityCell taskId={task.id} value={task.criticality} />
+                <ColorTagCell taskId={task.id} value={task.color_tag} />
+              </div>
             </li>
           );
         })}
