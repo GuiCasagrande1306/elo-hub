@@ -21,6 +21,7 @@ import {
 import { useRealtimeRefresh } from "@/hooks/use-realtime";
 import { cn } from "@/lib/utils";
 import { STATUS_LABELS, TASK_COLUMNS } from "./task-meta";
+import { dataNoBrasil } from "@/lib/date-br";
 import type { Client, TaskStatus, TaskWithRelations } from "@/types/database";
 
 /**
@@ -61,6 +62,9 @@ export function TasksWorkspace({
   /* Faixa, não valor exato: ninguém filtra por "criticidade 7". A
      pergunta real é "o que está crítico". */
   const [critFilter, setCritFilter] = useState<string>(ALL);
+  /* Dia das concluídas. Vazio = todas — o padrão não pode esconder
+     entrega, senão alguém conclui e acha que não salvou. */
+  const [diaConcluidas, setDiaConcluidas] = useState("");
   const [creating, setCreating] = useState(false);
   const [newTitle, setNewTitle] = useState("");
 
@@ -98,6 +102,7 @@ export function TasksWorkspace({
     });
   }, [tasks, query, clientFilter, statusFilter, critFilter]);
 
+
   /* Concluída some do quadro e da lista depois de 7 dias.
 
      Não é arquivamento — a tarefa continua no banco e na aba
@@ -120,6 +125,16 @@ export function TasksWorkspace({
         ),
     [filtered],
   );
+
+  /* Concluídas filtradas pelo dia escolhido. Compara em São Paulo: o
+     `completed_at` é timestamptz, e cortar a string em UTC jogaria as
+     entregas do fim da tarde para o dia seguinte. */
+  const concluidasDoDia = useMemo(() => {
+    if (!diaConcluidas) return concluidas;
+    return concluidas.filter(
+      (t) => t.completed_at && dataNoBrasil(t.completed_at) === diaConcluidas,
+    );
+  }, [concluidas, diaConcluidas]);
 
   const emAndamento = useMemo(
     () =>
@@ -314,10 +329,33 @@ export function TasksWorkspace({
         />
       )}
 
+      {/* Um grupo por seção, os dois na MESMA visão: separar em abas
+          escondia o que acabou de ser entregue, e a pergunta "isso já
+          foi feito?" é justamente a que se faz olhando a lista. */}
       {view === "list" && (
-        <TaskList tasks={emAndamento} onOpenTask={setOpenTask} />
+        <div className="flex flex-col gap-4">
+          <TaskList
+            tasks={emAndamento}
+            onOpenTask={setOpenTask}
+            title="Demandas da semana"
+            tone="aberto"
+            defaultClientId={clientFilter === ALL ? null : clientFilter}
+          />
+
+          <TaskList
+            tasks={concluidasDoDia}
+            onOpenTask={setOpenTask}
+            title="Concluídos"
+            tone="concluido"
+            dateFilter={diaConcluidas}
+            onDateFilterChange={setDiaConcluidas}
+          />
+        </div>
       )}
 
+      {/* A aba separada de concluídas foi absorvida pelo grupo
+          "Concluídos" da lista. Mantida por enquanto para quem tem o
+          botão na memória. */}
       {view === "done" && (
         <div className="flex flex-col gap-3">
           <p className="text-xs text-muted-foreground">
@@ -334,7 +372,12 @@ export function TasksWorkspace({
               </p>
             </div>
           ) : (
-            <TaskList tasks={concluidas} onOpenTask={setOpenTask} />
+            <TaskList
+              tasks={concluidas}
+              onOpenTask={setOpenTask}
+              title="Concluídos"
+              tone="concluido"
+            />
           )}
         </div>
       )}

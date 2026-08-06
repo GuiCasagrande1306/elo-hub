@@ -91,3 +91,41 @@ export const COLOR_TAG_LABELS: Record<string, string> = {
   roxo: "Roxo",
   cinza: "Cinza",
 };
+
+/* =====================================================================
+   Badge de prioridade — DERIVADA da criticidade
+   ---------------------------------------------------------------------
+   Mesma regra do trigger `task_priority_sync` no banco. Fica aqui e não
+   lendo `task.priority` de propósito: se um dia a regra mudar, muda em
+   dois lugares que já são conhecidos, em vez de a tela silenciosamente
+   discordar do número que está ao lado dela.
+   ===================================================================== */
+
+export function criticalityBadge(nivel: number): {
+  label: string;
+  className: string;
+} {
+  if (nivel >= 9) {
+    return {
+      label: "Crítica",
+      className: "bg-negative-muted text-negative ring-negative/25",
+    };
+  }
+  if (nivel >= 7) {
+    return {
+      label: "Alta",
+      className: "bg-warning-muted text-warning ring-warning/25",
+    };
+  }
+  if (nivel >= 4) {
+    return {
+      label: "Média",
+      className:
+        "bg-[color-mix(in_oklab,var(--warning)_12%,transparent)] text-warning/85 ring-warning/15",
+    };
+  }
+  return {
+    label: "Baixa",
+    className: "bg-surface-2 text-muted-foreground ring-hairline",
+  };
+}
