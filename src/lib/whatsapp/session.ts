@@ -1,5 +1,7 @@
 import "server-only";
 
+import { unstable_cache } from "next/cache";
+
 import {
   evolutionFetch,
   evolutionMediaBody,
@@ -172,14 +174,96 @@ export type GroupsResult =
   | { ok: true; groups: WhatsAppGroup[]; cached: boolean }
   | { ok: false; error: string };
 
-/* Cache em memória por instância.
+/* =====================================================================
+   Cache da listagem de grupos
+   ---------------------------------------------------------------------
    `fetchAllGroups` pede metadados grupo a grupo à Meta, que responde
-   `rate-overlimit` quando insiste — medido: 60s sem resposta e erro no
-   log da Baileys. Abrir o formulário duas vezes não pode custar duas
-   varreduras. O TTL é curto porque grupo novo precisa aparecer sem
-   exigir redeploy. */
-const CACHE_TTL_MS = 5 * 60_000;
-const cacheDeGrupos = new Map<string, { em: number; grupos: WhatsAppGroup[] }>();
+   `rate-overlimit` quando insiste — medido: 107s numa chamada bem
+   sucedida e vários estouros de 90s. É a chamada mais cara do sistema, e
+   abrir o formulário duas vezes não pode custar duas varreduras.
+
+   DOIS NÍVEIS, porque resolvem problemas diferentes:
+
+   1. DATA CACHE do Next (`unstable_cache`), 10 minutos. É o que faltava:
+      o cache anterior era um Map de módulo, que vive dentro de UMA
+      instância da função. Num painel de quatro pessoas a instância
+      quase sempre está fria, então na prática o cache raramente
+      acertava — cada abertura do formulário pagava a varredura inteira.
+      O Data Cache é compartilhado entre instâncias e sobrevive a
+      deploy.
+
+   2. ÚLTIMA LISTA BOA em memória, sem prazo. Serve para um caso que o
+      Data Cache não cobre: quando a Evolution falha, a entrada expirada
+      dele não é acessível. Nome de grupo muda raramente e id não muda
+      nunca, então uma lista velha vale muito mais que uma tela de erro.
+
+   Falha NÃO é cacheada. A função lança em vez de devolver `ok:false`
+   justamente por isso: o Next não grava promessa rejeitada, e o "Tentar
+   de novo" volta a consultar de verdade em vez de reler o erro por dez
+   minutos.
+   ===================================================================== */
+
+const GRUPOS_TTL_S = 600;
+
+/** Última lista boa conhecida, por instância. Sem prazo de validade. */
+const ultimaListaBoa = new Map<string, WhatsAppGroup[]>();
+
+/** Tag do Data Cache, para invalidar sob demanda. */
+const tagDeGrupos = (nome: string) => `whatsapp-groups:${nome}`;
+
+/** Erro com mensagem já pronta para a tela. */
+class GruposIndisponiveis extends Error {}
+
+/**
+ * A varredura em si, memoizada no Data Cache.
+ *
+ * `userId` entra como argumento e não é lido de `cookies()` — API de
+ * requisição dentro de escopo cacheado não é suportada.
+ */
+function buscarGrupos(userId: string, nome: string) {
+  return unstable_cache(
+    async (): Promise<WhatsAppGroup[]> => {
+      const status = await getSessionStatus(userId);
+      if (status.state !== "open") {
+        throw new GruposIndisponiveis(
+          "Conecte seu WhatsApp em Configurações para listar os grupos.",
+        );
+      }
+
+      // 20s: acima disso a rota da Vercel se aproxima do próprio limite,
+      // e um formulário travado é pior que uma lista indisponível.
+      const resposta = await evolutionFetch(
+        "GET",
+        `group/fetchAllGroups/${encodeURIComponent(nome)}?getParticipants=false`,
+        undefined,
+        20_000,
+      );
+
+      if (!resposta.success) {
+        throw new GruposIndisponiveis(
+          /timeout|tempo/i.test(resposta.error ?? "")
+            ? "O WhatsApp está limitando a listagem de grupos agora. Tente de novo em alguns minutos ou cole o ID manualmente."
+            : (resposta.error ?? "Não foi possível listar os grupos."),
+        );
+      }
+
+      const bruto = resposta.data;
+      const lista = Array.isArray(bruto)
+        ? bruto
+        : ((bruto as { groups?: unknown[] })?.groups ?? []);
+
+      return (lista as Record<string, unknown>[])
+        .map((g) => ({
+          id: String(g.id ?? ""),
+          name: String(g.subject ?? g.name ?? "").trim() || "(sem nome)",
+        }))
+        .filter((g) => g.id.endsWith("@g.us"))
+        .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+    },
+    ["whatsapp-groups", nome],
+    { revalidate: GRUPOS_TTL_S, tags: [tagDeGrupos(nome)] },
+  )();
+}
 
 /**
  * Grupos de que o CELULAR DO USUÁRIO participa.
@@ -191,57 +275,39 @@ const cacheDeGrupos = new Map<string, { em: number; grupos: WhatsAppGroup[] }>()
 export async function fetchAllGroups(userId: string): Promise<GroupsResult> {
   const nome = instanceNameFor(userId);
 
-  const emCache = cacheDeGrupos.get(nome);
-  if (emCache && Date.now() - emCache.em < CACHE_TTL_MS) {
-    return { ok: true, groups: emCache.grupos, cached: true };
-  }
-
-  const status = await getSessionStatus(userId);
-  if (status.state !== "open") {
-    return {
-      ok: false,
-      error: "Conecte seu WhatsApp em Configurações para listar os grupos.",
-    };
-  }
-
-  // 20s: acima disso a rota da Vercel se aproxima do próprio limite, e
-  // um formulário travado é pior que uma lista indisponível.
-  const resposta = await evolutionFetch(
-    "GET",
-    `group/fetchAllGroups/${encodeURIComponent(nome)}?getParticipants=false`,
-    undefined,
-    20_000,
-  );
-
-  if (!resposta.success) {
-    // Se há cache vencido, ele vale mais que um erro: nomes de grupo
-    // mudam raramente, e o id não muda nunca.
-    if (emCache) return { ok: true, groups: emCache.grupos, cached: true };
+  try {
+    const grupos = await buscarGrupos(userId, nome);
+    ultimaListaBoa.set(nome, grupos);
+    return { ok: true, groups: grupos, cached: false };
+  } catch (erro) {
+    const anterior = ultimaListaBoa.get(nome);
+    if (anterior) return { ok: true, groups: anterior, cached: true };
 
     return {
       ok: false,
-      error: /timeout|tempo/i.test(resposta.error ?? "")
-        ? "O WhatsApp está limitando a listagem de grupos agora. Tente de novo em alguns minutos ou cole o ID manualmente."
-        : (resposta.error ?? "Não foi possível listar os grupos."),
+      error:
+        erro instanceof GruposIndisponiveis
+          ? erro.message
+          : "Não foi possível listar os grupos.",
     };
   }
-
-  const bruto = resposta.data;
-  const lista = Array.isArray(bruto)
-    ? bruto
-    : ((bruto as { groups?: unknown[] })?.groups ?? []);
-
-  const grupos: WhatsAppGroup[] = (lista as Record<string, unknown>[])
-    .map((g) => ({
-      id: String(g.id ?? ""),
-      name: String(g.subject ?? g.name ?? "").trim() || "(sem nome)",
-    }))
-    .filter((g) => g.id.endsWith("@g.us"))
-    .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
-
-  cacheDeGrupos.set(nome, { em: Date.now(), grupos });
-  return { ok: true, groups: grupos, cached: false };
 }
+
+/* NÃO EXISTE INVALIDAÇÃO SOB DEMANDA, e é decisão, não esquecimento.
+   O botão "Tentar de novo" do formulário só aparece depois de um ERRO,
+   e erro nunca chega ao cache — então ele já refaz a consulta de
+   verdade sem precisar invalidar nada.
+
+   Sobraria o caso "acabei de criar um grupo e quero vê-lo agora", que
+   não paga o próprio custo: medimos `revalidateTag(tag, {expire:0})`
+   provocando DUAS recomputações e não uma (a entrada gravada logo após
+   a invalidação ainda é lida como obsoleta), e aqui cada recomputação é
+   uma varredura de até 107s numa API que já está limitando. O grupo
+   novo aparece quando os 10 minutos vencem, e até lá o campo aceita o
+   JID colado à mão — que é o caminho confiável de qualquer forma.
+
+   `updateTag`, que expira de imediato sem esse efeito, só pode ser
+   chamado de Server Action; esta é uma Route Handler. */
 
 /** Desconecta o celular sem apagar a instância. */
 export async function logoutSession(

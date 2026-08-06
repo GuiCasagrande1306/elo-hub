@@ -29,6 +29,12 @@ export async function GET() {
     return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
   }
 
+  /* A lista fica memoizada 10 minutos no Data Cache, por usuário — ver
+     `fetchAllGroups`. O `no-store` abaixo continua valendo e não briga
+     com isso: ele impede que a RESPOSTA seja guardada em CDN ou no
+     browser, o que é obrigatório num payload por usuário. A memoização
+     acontece um nível abaixo, no servidor, onde a instância já foi
+     resolvida a partir da sessão. */
   const resultado = await fetchAllGroups(user.id);
 
   if (!resultado.ok) {

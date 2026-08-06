@@ -51,6 +51,10 @@ export function WhatsAppDestinationPicker({
   const [busca, setBusca] = useState("");
   const [buscou, setBuscou] = useState(false);
 
+  /* Sem parâmetro de "forçar": o servidor memoiza a lista por 10
+     minutos e NÃO memoiza falha, então este mesmo `carregar` serve para
+     a primeira abertura e para o "Tentar de novo" — depois de um erro
+     não há entrada em cache para atrapalhar. */
   const carregar = useCallback(async () => {
     setCarregando(true);
     setErro(null);
