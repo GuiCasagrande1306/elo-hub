@@ -1,6 +1,7 @@
 import type {
   FinancialTransaction,
   MonthlySummary,
+  RecurringExpense,
   TransactionCategory,
 } from "@/types/database";
 
@@ -114,6 +115,7 @@ function build(): FinancialTransaction[] {
             : iso(addDays(venc, atrasa ? 12 : Math.floor(rand() * 3))),
         provider: "asaas",
         external_id: `pay_${cliente.id}_${iso(venc)}`,
+        recurrence_key: null,
         provider_payload: null as never,
       } as Omit<FinancialTransaction, "id" | "created_at">);
     }
@@ -133,6 +135,7 @@ function build(): FinancialTransaction[] {
         paid_date: mesCorrente ? null : iso(addDays(venc, 4)),
         provider: null,
         external_id: null,
+        recurrence_key: null,
       } as Omit<FinancialTransaction, "id" | "created_at">);
     }
 
@@ -159,6 +162,7 @@ function build(): FinancialTransaction[] {
         paid_date: mesCorrente && venc > TODAY ? null : iso(venc),
         provider: null,
         external_id: null,
+        recurrence_key: null,
       } as Omit<FinancialTransaction, "id" | "created_at">);
     }
   }
@@ -176,6 +180,7 @@ function build(): FinancialTransaction[] {
     paid_date: null,
     provider: null,
     external_id: null,
+    recurrence_key: null,
   } as Omit<FinancialTransaction, "id" | "created_at">);
 
   return out.sort((a, b) => b.due_date.localeCompare(a.due_date));
@@ -218,3 +223,62 @@ export function demoMonthlySummary(months = 12): MonthlySummary[] {
     net_cents: v.income - v.expense,
   }));
 }
+
+/* ------------------------------------------------------------------ */
+/* Despesas recorrentes                                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Os moldes de saída — não lançamentos.
+ *
+ * Uma inativa de propósito: a tela precisa mostrar o estado "desligada"
+ * para que dê para conferir que ela sai do próximo mês sem sumir do
+ * histórico dos meses já materializados.
+ */
+export const demoRecurringExpenses: RecurringExpense[] = [
+  {
+    id: "re-folha",
+    description: "Folha de pagamento",
+    category: "salary",
+    amount_cents: 1_850_000,
+    billing_day: 5,
+    is_active: true,
+    created_at: iso(monthStart(-6)),
+  },
+  {
+    id: "re-impostos",
+    description: "Impostos (Simples Nacional)",
+    category: "tax",
+    amount_cents: 279_500,
+    billing_day: 20,
+    is_active: true,
+    created_at: iso(monthStart(-6)),
+  },
+  {
+    id: "re-assinaturas",
+    description: "Assinaturas e ferramentas",
+    category: "software",
+    amount_cents: 172_000,
+    billing_day: 10,
+    is_active: true,
+    created_at: iso(monthStart(-6)),
+  },
+  {
+    id: "re-contabilidade",
+    description: "Contabilidade",
+    category: "contractor",
+    amount_cents: 89_000,
+    billing_day: 15,
+    is_active: true,
+    created_at: iso(monthStart(-6)),
+  },
+  {
+    id: "re-coworking",
+    description: "Coworking (encerrado)",
+    category: "office",
+    amount_cents: 120_000,
+    billing_day: 8,
+    is_active: false,
+    created_at: iso(monthStart(-6)),
+  },
+];

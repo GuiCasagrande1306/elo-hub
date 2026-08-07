@@ -75,7 +75,15 @@ export const navGroups: NavGroup[] = [
       // `adminOnly` some com o item para colaborador — mas é cosmético.
       // Quem barra de fato é o `redirect` no Server Component e, abaixo
       // dele, a policy `financial_admin_only` no Postgres.
-      { href: "/gestao", label: "Gestão", icon: Landmark, adminOnly: true },
+      {
+        href: "/gestao",
+        label: "Gestão",
+        icon: Landmark,
+        adminOnly: true,
+        // `/gestao/recorrencia` é subpágina: sem o prefixo, o item da
+        // sidebar apagaria ao entrar nela.
+        matchPrefix: true,
+      },
       { href: "/configuracoes/equipe", label: "Equipe", icon: Users, adminOnly: true },
       { href: "/configuracoes", label: "Configurações", icon: Settings, adminOnly: true },
     ],

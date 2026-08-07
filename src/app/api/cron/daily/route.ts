@@ -3,14 +3,15 @@ import { NextResponse, type NextRequest } from "next/server";
 import { serverEnv } from "@/lib/env";
 import { syncAllClients } from "@/lib/ads/sync";
 import { dispatchScheduledReports } from "@/lib/reports/schedule";
+import { materializarMes, mesCorrente } from "@/lib/finance/recurrence";
 
 /**
  * GET /api/cron/daily
  *
- * A rodada diária inteira, em sequência: primeiro sincroniza as
- * plataformas, depois GERA os relatórios de quem tem hoje como dia
- * combinado — e para aí. O envio é manual: uma pessoa confere o PDF em
- * /relatorios e dispara pelo próprio WhatsApp.
+ * A rodada diária inteira, em sequência: emite a recorrência do mês,
+ * sincroniza as plataformas e GERA os relatórios de quem tem hoje como
+ * dia combinado — e para aí. O envio é manual: uma pessoa confere o PDF
+ * em /relatorios e dispara pelo próprio WhatsApp.
  *
  * POR QUE UMA ROTA SÓ, E NÃO DUAS
  * ---------------------------------------------------------------------
@@ -23,8 +24,10 @@ import { dispatchScheduledReports } from "@/lib/reports/schedule";
  * com os números de ontem no lugar dos de hoje — e o relatório sairia
  * assinado como "fechado". Errado e silencioso.
  *
- * Ao migrar para Pro, separar é trivial: `?etapa=sync` e `?etapa=envio`
- * já dividem o trabalho, bastando apontar dois crons.
+ * Ao migrar para Pro, separar é trivial: `?etapa=recorrencia`, `?etapa=sync`
+ * e `?etapa=envio` já dividem o trabalho, bastando apontar um cron para
+ * cada. `?etapa=recorrencia` também é o jeito de conferir a emissão do
+ * mês sem esperar a rodada completa.
  *
  * AUTENTICAÇÃO
  * Com `CRON_SECRET` definido, a Vercel envia `Authorization: Bearer` nas
@@ -63,17 +66,46 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const etapa = searchParams.get("etapa");
 
+  /* Cada etapa decide sozinha se roda, em vez de encadear `!==`. Com
+     três etapas, `etapa !== "envio"` já deixava de significar "é a vez
+     do sync" — passava a incluir qualquer nome novo que aparecesse. */
+  const rodar = (nome: string) => etapa === null || etapa === nome;
+
   const resposta: Record<string, unknown> = { etapa: etapa ?? "completa" };
 
+  /* --- 0. Recorrência ---------------------------------------------------
+     Emite os honorários e as despesas fixas do mês corrente.
+
+     RODA TODO DIA, não só no dia 1º. Não é desperdício: `recurrence_key`
+     é única no banco, então a partir do segundo dia do mês a passagem
+     não cria nada e devolve `criadas: 0`. O ganho é que um cliente
+     cadastrado no dia 12 entra no faturamento no dia 13, em vez de ficar
+     de fora do mês inteiro — e um deploy quebrado no dia 1º deixa de
+     custar a cobrança de todo mundo.
+
+     PRIMEIRO na sequência, e envolto em try/catch por isso: falha de
+     token do Meta não pode impedir a agência de faturar, e uma falha
+     aqui não pode impedir o relatório do cliente de sair. As três etapas
+     são independentes de propósito. */
+  if (rodar("recorrencia")) {
+    try {
+      resposta.recorrencia = await materializarMes(mesCorrente());
+    } catch (error) {
+      resposta.recorrencia = {
+        erro: error instanceof Error ? error.message : "falha desconhecida",
+      };
+    }
+  }
+
   /* --- 1. Sincronização ------------------------------------------- */
-  if (etapa !== "envio") {
+  if (rodar("sync")) {
     // `mode=month` porque a rodada diária também precisa capturar
     // reatribuições retroativas das plataformas.
     resposta.sync = await syncAllClients({ mode: "month" });
   }
 
   /* --- 2. Preparo dos PDFs -------------------------------------------------- */
-  if (etapa !== "sync") {
+  if (rodar("envio")) {
     // `?dia=N` permite conferir o preparo de um cliente sem esperar
     // chegar a data combinada. Protegido pelo mesmo CRON_SECRET, e a
     // trava de duplicidade continua valendo: conferir hoje não impede

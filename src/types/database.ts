@@ -93,6 +93,13 @@ export interface ClientFinancials {
   client_id: string;
   monthly_fee_cents: number;
   tax_id: string | null;
+  /**
+   * Dia do vencimento do honorário, 1–28. Limitado a 28 pelo mesmo
+   * motivo do `report_day`: fevereiro existe, e vencimento no dia 30
+   * nunca chegaria. `null` = cliente sem cobrança recorrente, e o job
+   * mensal o ignora.
+   */
+  billing_day: number | null;
 }
 
 /** Uma rodada da esteira de otimização. */
@@ -179,6 +186,33 @@ export interface FinancialTransaction {
   paid_date: string | null;
   provider: string | null;
   external_id: string | null;
+  /**
+   * Origem + mês do lançamento gerado pelo job de recorrência
+   * (`cliente:<uuid>:2026-09`). Único no banco: é o que impede o job de
+   * cobrar duas vezes ao rodar de novo. `null` em lançamento avulso.
+   */
+  recurrence_key: string | null;
+  created_at: string;
+}
+
+/**
+ * Despesa que se repete todo mês: folha, assinaturas, impostos.
+ *
+ * Não é lançamento — é o MOLDE do lançamento. Quem vira linha em
+ * `financial_transactions` é o que o job materializa a partir daqui.
+ */
+export interface RecurringExpense {
+  id: string;
+  description: string;
+  category: TransactionCategory;
+  /** Sempre positivo, como em `financial_transactions`. */
+  amount_cents: number;
+  billing_day: number;
+  /**
+   * Desligada em vez de apagada: assinatura cancelada em março não pode
+   * sumir do fluxo de caixa de janeiro.
+   */
+  is_active: boolean;
   created_at: string;
 }
 

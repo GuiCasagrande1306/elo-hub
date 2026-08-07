@@ -246,11 +246,14 @@ export const demoClients: Client[] = [
 ];
 
 
+/* `billing_day` variado de propósito, e um `null`: a tela de recorrência
+   precisa mostrar tanto contrato pronto para o job quanto contrato que
+   ele vai pular por falta de dia. */
 export const demoClientFinancials: ClientFinancials[] = [
-  { client_id: "c-verdi", monthly_fee_cents: 450000, tax_id: null },
-  { client_id: "c-atlas", monthly_fee_cents: 380000, tax_id: null },
-  { client_id: "c-nord", monthly_fee_cents: 620000, tax_id: null },
-  { client_id: "c-lumen", monthly_fee_cents: 290000, tax_id: null },
+  { client_id: "c-verdi", monthly_fee_cents: 450000, tax_id: null, billing_day: 5 },
+  { client_id: "c-atlas", monthly_fee_cents: 380000, tax_id: null, billing_day: 10 },
+  { client_id: "c-nord", monthly_fee_cents: 620000, tax_id: null, billing_day: 1 },
+  { client_id: "c-lumen", monthly_fee_cents: 290000, tax_id: null, billing_day: null },
 ];
 
 /* ------------------------------------------------------------------ */

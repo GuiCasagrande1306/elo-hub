@@ -21,6 +21,7 @@ import {
 import type {
   AdCreative,
   Client,
+  ClientFinancials,
   ClientGoal,
   ClientSegment,
   DailyMetric,
@@ -28,6 +29,7 @@ import type {
   MonthlySummary,
   OptimizationEntry,
   Profile,
+  RecurringExpense,
   ReportHistory,
   ReportTemplate,
   TaskWithRelations,
@@ -548,6 +550,55 @@ export async function getClientFees(): Promise<Map<string, number>> {
   return new Map(
     (data ?? []).map((f) => [f.client_id as string, f.monthly_fee_cents as number]),
   );
+}
+
+/**
+ * Contrato completo por cliente: honorário E dia de vencimento.
+ *
+ * Separado de `getClientFees` porque os consumidores são diferentes — o
+ * KPI de MRR só quer o valor, a tela de recorrência precisa do dia para
+ * saber quais contratos o job consegue materializar.
+ */
+export async function getClientFinancials(): Promise<
+  Map<string, ClientFinancials>
+> {
+  if (isDemoMode) {
+    const { demoClientFinancials } = await import("@/lib/mock/data");
+    return new Map(demoClientFinancials.map((f) => [f.client_id, f]));
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data } = await supabase
+    .from("client_financials")
+    .select("client_id, monthly_fee_cents, tax_id, billing_day");
+
+  return new Map(
+    (data ?? []).map((f) => [f.client_id as string, f as ClientFinancials]),
+  );
+}
+
+/**
+ * Despesas que se repetem todo mês. Admin apenas, via RLS.
+ *
+ * Inclui as inativas: a tela precisa mostrar o que foi desligado para
+ * que dê para religar, e esconder isso faria a assinatura cancelada
+ * parecer apagada.
+ */
+export async function getRecurringExpenses(): Promise<RecurringExpense[]> {
+  if (isDemoMode) {
+    const { demoRecurringExpenses } = await import("@/lib/mock/finance");
+    return demoRecurringExpenses;
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("recurring_expenses")
+    .select("*")
+    .order("is_active", { ascending: false })
+    .order("amount_cents", { ascending: false });
+
+  if (error) throw error;
+  return (data ?? []) as RecurringExpense[];
 }
 
 export async function getFinancialData(months = 12): Promise<{

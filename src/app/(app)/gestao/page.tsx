@@ -1,8 +1,16 @@
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
-import { AlertTriangle, Landmark, TrendingUp, Wallet } from "lucide-react";
+import Link from "next/link";
+import {
+  AlertTriangle,
+  Landmark,
+  Repeat,
+  TrendingUp,
+  Wallet,
+} from "lucide-react";
 
 import { PageContainer, PageHeader } from "@/components/layout/page-header";
+import { Button } from "@/components/ui/button";
 import { CashflowChart, GrowthChart } from "@/components/finance/finance-charts";
 import { TransactionsTable } from "@/components/finance/transactions-table";
 import { getClientFees, getClients, getFinancialData } from "@/lib/data";
@@ -52,6 +60,12 @@ export default async function GestaoPage() {
       <PageHeader
         title="Gestão"
         description="Fluxo de caixa, recorrência e inadimplência da agência."
+        actions={
+          <Button variant="outline" render={<Link href="/gestao/recorrencia" />}>
+            <Repeat className="size-4" />
+            Recorrência
+          </Button>
+        }
       />
 
       {/* ---------------------------- KPIs ---------------------------- */}
