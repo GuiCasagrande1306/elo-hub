@@ -376,8 +376,14 @@ async function syncCreatives(
        atalho, e seria mentira: a Meta distribui verba de forma desigual
        dentro do conjunto, e um número plausível-e-errado num card de
        criativo leva alguém a pausar o anúncio certo. */
-    const janela = rows.length
-      ? { since: rows[0].metricDate, until: rows[rows.length - 1].metricDate }
+    /* MÍNIMO e MÁXIMO, não primeiro e último. As linhas vêm agrupadas
+       por campanha, não ordenadas por data — pegar as pontas do array
+       produzia `since` maior que `until` em boa parte das contas, e a
+       Graph API recusa a janela invertida devolvendo lista vazia. Foi
+       por isso que o gasto por anúncio não chegou na primeira tentativa. */
+    const datas = rows.map((r) => r.metricDate).filter(Boolean).sort();
+    const janela = datas.length
+      ? { since: datas[0], until: datas[datas.length - 1] }
       : null;
 
     const insights = janela
