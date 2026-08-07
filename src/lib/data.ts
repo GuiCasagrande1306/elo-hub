@@ -3,7 +3,7 @@ import "server-only";
 import { isDemoMode } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { buildTrend, previousPeriod, sumMetrics } from "@/lib/metrics/kpi";
-import { buildGoalProgress } from "@/lib/metrics/goals";
+import { buildGoalProgress, periodElapsed } from "@/lib/metrics/goals";
 import {
   goalExecutedFrom,
   goalMetricFor,
@@ -1116,4 +1116,116 @@ export async function getGoalHistory(
       };
     }),
   );
+}
+
+
+/* ------------------------------------------------------------------ */
+/* Torre de controle — números da agência inteira                      */
+/* ------------------------------------------------------------------ */
+
+export interface AgencyOverview {
+  /** Soma do gasto de todas as contas ativas no mês corrente. */
+  spendCents: number;
+  /** Soma das conversões contadas no mês. */
+  results: number;
+  /** Receita atribuída, para o retorno global. */
+  revenueCents: number;
+  /** Contas com meta definida e o veredito de ritmo de cada uma. */
+  noRitmo: number;
+  atrasadas: number;
+  semMeta: number;
+  /** Série diária somada — investimento contra retorno. */
+  trend: { date: string; spend: number; revenue: number }[];
+}
+
+/**
+ * Os números que o dono da agência olha primeiro.
+ *
+ * SOMADO DE `daily_metrics`, não de coluna guardada. Não existe
+ * `actual_spent` nem `actual_result` em lugar nenhum deste sistema, e
+ * isso é decisão: a Meta reatribui conversão retroativamente, então um
+ * total congelado passa a contradizer o dashboard do cliente sem avisar.
+ *
+ * O ritmo usa a MESMA razão de `lib/metrics/goals.ts` — executado ÷
+ * esperado para hoje, tolerância de 10%. Duplicar a regra aqui faria a
+ * torre de controle e o card do cliente discordarem sobre a mesma conta.
+ */
+export async function getAgencyOverview(): Promise<AgencyOverview> {
+  const linhas = await getClientsWithGoals();
+  const { start, end } = mesCorrenteBR();
+
+  const decorrido = periodElapsed(start, end);
+
+  let spendCents = 0;
+  let results = 0;
+  let revenueCents = 0;
+  let noRitmo = 0;
+  let atrasadas = 0;
+  let semMeta = 0;
+
+  for (const linha of linhas) {
+    spendCents += linha.computedSpendCents;
+    results += linha.computedResults;
+    revenueCents += linha.computedRevenueCents;
+
+    const meta = linha.goal?.planned_results ?? 0;
+    if (meta <= 0) {
+      semMeta += 1;
+      continue;
+    }
+
+    /* Mesmo critério da barra do card: 90% do esperado para hoje. */
+    const esperado = meta * decorrido;
+    const razao = esperado > 0 ? linha.computedGoalValue / esperado : 0;
+    if (razao >= 0.9) noRitmo += 1;
+    else atrasadas += 1;
+  }
+
+  /* Série diária: UMA consulta somando tudo, não uma por cliente. Com 46
+     contas, o laço faria 46 idas ao banco só para desenhar um gráfico. */
+  const trend = await getAgencyTrend(start, end);
+
+  return { spendCents, results, revenueCents, noRitmo, atrasadas, semMeta, trend };
+}
+
+async function getAgencyTrend(
+  start: string,
+  end: string,
+): Promise<{ date: string; spend: number; revenue: number }[]> {
+  const linhas = await (async (): Promise<DailyMetric[]> => {
+    if (isDemoMode) {
+      const { demoMetrics } = await import("@/lib/mock/data");
+      return demoMetrics.filter(
+        (m) => m.metric_date >= start && m.metric_date <= end,
+      );
+    }
+
+    const supabase = await createSupabaseServerClient();
+    const { data } = await supabase
+      .from("daily_metrics")
+      .select("metric_date, spend_cents, revenue_cents")
+      .gte("metric_date", start)
+      .lte("metric_date", end);
+
+    return (data ?? []) as DailyMetric[];
+  })();
+
+  const porDia = new Map<string, { spend: number; revenue: number }>();
+
+  for (const linha of linhas) {
+    const atual = porDia.get(linha.metric_date) ?? { spend: 0, revenue: 0 };
+    atual.spend += linha.spend_cents;
+    atual.revenue += linha.revenue_cents;
+    porDia.set(linha.metric_date, atual);
+  }
+
+  return [...porDia.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    /* Reais, não centavos: o gráfico é apresentação, e o eixo em
+       centavos marcaria "5.000.000" para R$ 50 mil. */
+    .map(([date, v]) => ({
+      date,
+      spend: v.spend / 100,
+      revenue: v.revenue / 100,
+    }));
 }

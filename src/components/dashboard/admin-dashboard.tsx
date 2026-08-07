@@ -1,11 +1,20 @@
 import Link from "next/link";
-import { AlertTriangle, CalendarClock, ListChecks, Users } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  CalendarClock,
+  CircleDollarSign,
+  Target,
+  Users,
+} from "lucide-react";
 
 import { GoalHealthChart } from "./goal-health-chart";
 import { StatCard } from "./stat-card";
+import { AgencyTrendChart } from "./agency-trend-chart";
 import { SyncButton } from "@/components/admin/sync-button";
 import { PageContainer, PageHeader } from "@/components/layout/page-header";
-import { getAgencyDashboard } from "@/lib/data";
+import { getAgencyDashboard, getAgencyOverview } from "@/lib/data";
+import { formatCurrency, formatNumber } from "@/lib/format";
 import { formatDueDate, initials } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { Profile } from "@/types/database";
@@ -26,7 +35,10 @@ import type { Profile } from "@/types/database";
 const TAREFAS_DEMAIS = 8;
 
 export async function AdminDashboard({ user }: { user: Profile }) {
-  const painel = await getAgencyDashboard();
+  const [painel, agencia] = await Promise.all([
+    getAgencyDashboard(),
+    getAgencyOverview(),
+  ]);
   const primeiroNome = user.full_name.split(" ")[0];
 
   return (
@@ -38,7 +50,35 @@ export async function AdminDashboard({ user }: { user: Profile }) {
       />
 
       {/* KPIs ---------------------------------------------------------- */}
-      <div className="mt-7 grid gap-3 sm:grid-cols-3 lg:gap-4">
+      <div className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:gap-4">
+        {/* Dinheiro primeiro: é a pergunta que o dono faz ao abrir. Os
+            dois vêm somados de `daily_metrics`, não de coluna guardada —
+            não existe `actual_spent` neste sistema, e um total congelado
+            passaria a contradizer o painel do cliente assim que a Meta
+            reatribuísse uma conversão. */}
+        <StatCard
+          icon={CircleDollarSign}
+          label="Investimento gerenciado"
+          value={formatCurrency(agencia.spendCents)}
+          hint="somado no mês corrente"
+        />
+        <StatCard
+          icon={Target}
+          label="Resultados gerados"
+          value={formatNumber(Math.round(agencia.results))}
+          hint="conversões de todas as contas"
+        />
+        <StatCard
+          icon={Activity}
+          label="Ritmo das metas"
+          value={`${agencia.noRitmo} no ritmo · ${agencia.atrasadas} abaixo`}
+          hint={
+            agencia.semMeta > 0
+              ? `${agencia.semMeta} ${agencia.semMeta === 1 ? "conta sem meta" : "contas sem meta"} definida`
+              : "todas as contas com meta"
+          }
+          tone={agencia.atrasadas > 0 ? "alerta" : "neutro"}
+        />
         <StatCard
           icon={Users}
           label="Clientes ativos"
@@ -55,13 +95,28 @@ export async function AdminDashboard({ user }: { user: Profile }) {
              vermelho ensinaria a ignorar a cor. */
           tone={painel.tasksToday > TAREFAS_DEMAIS ? "alerta" : "neutro"}
         />
-        <StatCard
-          icon={ListChecks}
-          label="Próximos 7 dias"
-          value={painel.tasksWeek}
-          hint="carga da equipe na semana"
-        />
       </div>
+
+      {/* Investimento contra retorno, agência inteira ------------------
+          Dado REAL, somado por dia de `daily_metrics`. Gráfico com série
+          inventada é a armadilha que este projeto já pagou três vezes —
+          e aqui seria pior, porque é a tela que decide onde mexer. */}
+      <section className="surface-card mt-8 p-5">
+        <h2 className="text-sm font-semibold">Investimento contra retorno</h2>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          Todas as contas somadas, dia a dia no mês corrente.
+        </p>
+
+        {agencia.trend.length === 0 ? (
+          <p className="mt-6 rounded-xl border border-dashed border-hairline px-4 py-10 text-center text-xs text-muted-foreground">
+            Sem métrica sincronizada neste mês.
+          </p>
+        ) : (
+          <div className="mt-5">
+            <AgencyTrendChart data={agencia.trend} />
+          </div>
+        )}
+      </section>
 
       {/* Bloco principal ----------------------------------------------- */}
       <div className="mt-8 grid gap-6 lg:grid-cols-3">

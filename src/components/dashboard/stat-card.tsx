@@ -18,7 +18,11 @@ export function StatCard({
 }: {
   icon: typeof Users;
   label: string;
-  value: number;
+  /* Aceita string além de número: os cartões de dinheiro chegam já
+     formatados em R$, e o de ritmo é uma frase ("8 no ritmo · 3
+     abaixo"). Formatar aqui dentro obrigaria o componente a saber se o
+     número é moeda, contagem ou percentual. */
+  value: number | string;
   hint: string;
   tone?: "neutro" | "alerta";
 }) {
@@ -42,7 +46,15 @@ export function StatCard({
 
       <div className="min-w-0">
         <p className="eyebrow">{label}</p>
-        <p className="mt-0.5 text-2xl font-semibold tabular-nums leading-none tracking-[-0.02em]">
+        {/* Frase longa não cabe em text-2xl — "8 no ritmo · 3 abaixo"
+            quebraria em duas linhas e desalinharia o card do vizinho.
+            O corte em 12 caracteres separa número de sentença. */}
+        <p
+          className={cn(
+            "mt-0.5 font-semibold tabular-nums leading-none tracking-[-0.02em]",
+            String(value).length > 12 ? "text-base" : "text-2xl",
+          )}
+        >
           {value}
         </p>
         <p className="mt-1 text-2xs text-muted-foreground">{hint}</p>
