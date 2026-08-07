@@ -41,6 +41,18 @@ export const metadata: Metadata = { title: "Alertas de saldo" };
  */
 export const dynamic = "force-dynamic";
 
+/**
+ * A página fala com DUAS APIs externas antes de renderizar — Graph API
+ * e Google Ads, uma chamada por conta pré-paga. O padrão da Vercel é
+ * curto demais para isso e o usuário veria timeout em vez de alerta.
+ *
+ * 60s é o teto do plano Hobby. Não é um orçamento a gastar: cada chamada
+ * tem timeout próprio de 8s e uma repetição, então o pior caso real fica
+ * na casa dos 17s. O valor aqui existe para o teto da plataforma não
+ * cortar antes disso.
+ */
+export const maxDuration = 60;
+
 const PLATAFORMA: Record<string, string> = {
   meta_ads: "Meta Ads",
   google_ads: "Google Ads",

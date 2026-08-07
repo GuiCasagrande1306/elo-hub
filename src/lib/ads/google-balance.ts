@@ -172,7 +172,11 @@ async function consultarOrcamento(
             "Content-Type": "application/json",
           },
           body: JSON.stringify({ query: QUERY }),
-          signal: AbortSignal.timeout(15_000),
+          /* 8s como na Meta, não 15s. Com a repetição abaixo, 15s daria
+             pior caso de 30s numa página que o usuário está olhando —
+             melhor mostrar a conta sem saldo do que segurar a tela
+             inteira esperando uma que não vai responder. */
+          signal: AbortSignal.timeout(8_000),
           cache: "no-store",
         },
       );
