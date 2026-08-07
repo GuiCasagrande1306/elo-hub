@@ -36,7 +36,12 @@ import { useRealtimeRefresh } from "@/hooks/use-realtime";
 import { cn } from "@/lib/utils";
 import { STATUS_LABELS, TASK_COLUMNS } from "./task-meta";
 import { dataNoBrasil } from "@/lib/date-br";
-import type { Client, TaskStatus, TaskWithRelations } from "@/types/database";
+import type {
+  Client,
+  Profile,
+  TaskStatus,
+  TaskWithRelations,
+} from "@/types/database";
 
 /**
  * Área de trabalho do módulo de tarefas.
@@ -56,6 +61,8 @@ const ALL = "__all__";
 interface TasksWorkspaceProps {
   tasks: TaskWithRelations[];
   clients: Client[];
+  /** Equipe, para o seletor de responsáveis do popup. */
+  team: Profile[];
   /** Data ISO (YYYY-MM-DD) do corte de tarefas concluídas recentes. */
   corteConcluidas: string;
 }
@@ -64,7 +71,7 @@ interface TasksWorkspaceProps {
    janela de 7 dias deixou de existir quando o agrupamento virou
    estrito. `clients` voltou a ser usado — não pelo filtro da barra, que
    saiu, mas pelo seletor de cliente dentro de cada linha da lista. */
-export function TasksWorkspace({ tasks, clients }: TasksWorkspaceProps) {
+export function TasksWorkspace({ tasks, clients, team }: TasksWorkspaceProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [, startTransition] = useTransition();
@@ -471,6 +478,7 @@ export function TasksWorkspace({ tasks, clients }: TasksWorkspaceProps) {
 
       <TaskDialog
         clients={clients}
+        team={team}
         /* Remonta ao trocar de tarefa: sem isto o estado local da gaveta
            (slider de criticidade) manteria o valor da tarefa anterior. */
         key={openTask?.id ?? "vazia"}

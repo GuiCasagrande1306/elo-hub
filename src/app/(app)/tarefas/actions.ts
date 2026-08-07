@@ -413,3 +413,87 @@ export async function stopTaskTimer(
   revalidatePath("/tarefas");
   return { ok: true };
 }
+
+/* ------------------------------------------------------------------ */
+/* Responsáveis                                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Põe ou tira uma pessoa da tarefa.
+ *
+ * A tabela `task_assignees` sempre foi de MUITOS — chave composta
+ * `(task_id, profile_id)` —, e a lista já desenhava três avatares e um
+ * contador. O que nunca existiu foi o caminho de escrita: dava para ver
+ * vários responsáveis e não dava para pôr o segundo.
+ *
+ * QUEM PODE. A policy `task_assignees_insert` exige `app.is_admin()`, e
+ * a de delete permite que um colaborador se remova de uma tarefa que já
+ * enxerga. Não há checagem de papel aqui: quem decide é o banco, e o
+ * `.select()` transforma a recusa em mensagem em vez de um "salvo" sobre
+ * nada.
+ *
+ * ⚠️ REMOVER A SI MESMO PODE FAZER A TAREFA SUMIR. Para colaborador, a
+ * visibilidade vem de estar em `task_assignees` — sair da última tarefa
+ * que o inclui a tira da tela dele. É consequência do modelo de acesso,
+ * não bug, mas a interface avisa antes.
+ */
+export async function toggleTaskAssignee(input: {
+  taskId: string;
+  profileId: string;
+  assign: boolean;
+}): Promise<ActionResult> {
+  const parsed = z
+    .object({
+      taskId: z.string().min(1),
+      profileId: z.string().min(1),
+      assign: z.boolean(),
+    })
+    .safeParse(input);
+
+  if (!parsed.success) return { ok: false, error: "Dados inválidos." };
+  const { taskId, profileId, assign } = parsed.data;
+
+  if (isDemoMode) {
+    const { demoTasks, demoProfiles } = await import("@/lib/mock/data");
+    const task = demoTasks.find((t) => t.id === taskId);
+    const pessoa = demoProfiles.find((p) => p.id === profileId);
+    if (task && pessoa) {
+      task.assignees = assign
+        ? [...task.assignees.filter((p) => p.id !== profileId), pessoa]
+        : task.assignees.filter((p) => p.id !== profileId);
+    }
+    revalidatePath("/tarefas");
+    return { ok: true };
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  const { data, error } = assign
+    ? await supabase
+        .from("task_assignees")
+        .upsert({ task_id: taskId, profile_id: profileId })
+        .select("task_id")
+    : await supabase
+        .from("task_assignees")
+        .delete()
+        .eq("task_id", taskId)
+        .eq("profile_id", profileId)
+        .select("task_id");
+
+  if (error) return { ok: false, error: error.message };
+
+  /* Zero linhas = a policy recusou. Distribuir trabalho para terceiros é
+     ato de admin; sem isto a tela diria "atribuído" e nada teria
+     mudado. */
+  if (!data || data.length === 0) {
+    return {
+      ok: false,
+      error: assign
+        ? "Atribuir tarefa a outra pessoa é restrito a administradores."
+        : "Você não pode remover esta pessoa da tarefa.",
+    };
+  }
+
+  revalidatePath("/tarefas");
+  return { ok: true };
+}

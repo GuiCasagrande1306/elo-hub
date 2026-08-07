@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { RichTextEditor } from "./rich-text-editor";
 import { ClientCell } from "./task-quick-edit";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   STATUS_DOT,
   STATUS_LABELS,
@@ -14,6 +15,7 @@ import {
 import {
   addChecklistItem,
   toggleChecklistItem,
+  toggleTaskAssignee,
   updateTask,
 } from "@/app/(app)/tarefas/actions";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -32,6 +34,7 @@ import { formatDueDate, initials } from "@/lib/format";
 import type {
   RichTextDoc,
   TaskStatus,
+  Profile,
   TaskWithRelations,
 } from "@/types/database";
 import { TASK_COLOR_TAGS } from "@/types/database";
@@ -47,6 +50,8 @@ import { TASK_COLOR_TAGS } from "@/types/database";
 
 interface TaskDialogProps {
   task: TaskWithRelations | null;
+  /** Equipe, para o seletor de responsáveis. */
+  team: Profile[];
   /** Carteira para o seletor de cliente. */
   clients: { id: string; name: string }[];
   open: boolean;
@@ -56,6 +61,7 @@ interface TaskDialogProps {
 export function TaskDialog({
   task,
   clients,
+  team,
   open,
   onOpenChange,
 }: TaskDialogProps) {
@@ -72,6 +78,7 @@ export function TaskDialog({
           key={task.id}
           task={task}
           clients={clients}
+          team={team}
           onClose={() => onOpenChange(false)}
         />
       </DialogContent>
@@ -82,10 +89,12 @@ export function TaskDialog({
 function TaskDialogBody({
   task,
   clients,
+  team,
   onClose,
 }: {
   task: TaskWithRelations;
   clients: { id: string; name: string }[];
+  team: Profile[];
   onClose: () => void;
 }) {
   const [title, setTitle] = useState(task.title);
@@ -100,6 +109,33 @@ function TaskDialogBody({
   const [cliente, setCliente] = useState<{ id: string; name: string } | null>(
     task.client ? { id: task.client.id, name: task.client.name } : null,
   );
+  /* Responsáveis em estado local: a lista é otimista e reverte se o
+     banco recusar. `task_assignees_insert` exige admin, então um
+     colaborador recebe recusa explícita em vez de um chip que aparece e
+     some no próximo revalidate. */
+  const [responsaveis, setResponsaveis] = useState(task.assignees);
+  const [escolhendo, setEscolhendo] = useState(false);
+
+  function alternar(profileId: string, assign: boolean) {
+    const anterior = responsaveis;
+    const pessoa = team.find((p) => p.id === profileId);
+    if (assign && !pessoa) return;
+
+    setResponsaveis(
+      assign
+        ? [...responsaveis, pessoa!]
+        : responsaveis.filter((p) => p.id !== profileId),
+    );
+    setEscolhendo(false);
+
+    startTransition(async () => {
+      const r = await toggleTaskAssignee({ taskId: task.id, profileId, assign });
+      if (!r.ok) {
+        setResponsaveis(anterior);
+        toast.error(r.error);
+      }
+    });
+  }
   const [isPending, startTransition] = useTransition();
   const [saving, setSaving] = useState(false);
 
@@ -323,11 +359,11 @@ function TaskDialogBody({
           </Property>
 
           <Property label="Responsáveis">
-            <div className="flex items-center gap-1.5">
-              {task.assignees.length === 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {responsaveis.length === 0 && (
                 <span className="text-sm text-muted-foreground">Ninguém</span>
               )}
-              {task.assignees.map((person) => (
+              {responsaveis.map((person) => (
                 <span
                   key={person.id}
                   title={person.full_name}
@@ -339,8 +375,59 @@ function TaskDialogBody({
                   <span className="max-w-24 truncate">
                     {person.full_name.split(" ")[0]}
                   </span>
+                  <button
+                    type="button"
+                    onClick={() => alternar(person.id, false)}
+                    aria-label={`Remover ${person.full_name}`}
+                    className="-mr-1 grid size-4 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-negative-muted hover:text-negative"
+                  >
+                    <X className="size-3" />
+                  </button>
                 </span>
               ))}
+
+              {/* Só quem não está na tarefa aparece para adicionar. */}
+              {team.length > 0 && (
+                <Popover open={escolhendo} onOpenChange={setEscolhendo}>
+                  <PopoverTrigger
+                    render={
+                      <button
+                        type="button"
+                        className="flex items-center gap-1 rounded-full border border-dashed border-hairline px-2 py-1 text-2xs text-muted-foreground transition-colors hover:border-signal hover:text-foreground"
+                      />
+                    }
+                  >
+                    <Plus className="size-3" />
+                    Adicionar
+                  </PopoverTrigger>
+
+                  <PopoverContent className="w-52 p-1" align="start">
+                    {team
+                      .filter((p) => !responsaveis.some((r) => r.id === p.id))
+                      .map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => alternar(p.id, true)}
+                          className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors hover:bg-accent"
+                        >
+                          <span className="grid size-5 shrink-0 place-items-center rounded-full bg-surface-2 text-[9px] font-semibold">
+                            {initials(p.full_name)}
+                          </span>
+                          <span className="truncate">{p.full_name}</span>
+                        </button>
+                      ))}
+
+                    {team.every((p) =>
+                      responsaveis.some((r) => r.id === p.id),
+                    ) && (
+                      <p className="px-2 py-3 text-center text-2xs text-muted-foreground">
+                        Todo mundo já está nesta tarefa.
+                      </p>
+                    )}
+                  </PopoverContent>
+                </Popover>
+              )}
             </div>
           </Property>
 

@@ -3,15 +3,19 @@ import type { Metadata } from "next";
 
 import { PageContainer, PageHeader } from "@/components/layout/page-header";
 import { TasksWorkspace } from "@/components/tasks/tasks-workspace";
-import { getClients, getTasks } from "@/lib/data";
+import { getClients, getTasks, getTeam } from "@/lib/data";
 import { getCurrentUser } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Tarefas" };
 
 export default async function TasksPage() {
-  const [tasks, clients, user] = await Promise.all([
+  const [tasks, clients, team, user] = await Promise.all([
     getTasks(),
     getClients(),
+    /* A equipe vem de `profiles`, e não dos responsáveis já existentes:
+       derivar de quem já está atribuído impediria atribuir a primeira
+       tarefa de alguém — a pessoa nunca apareceria na lista. */
+    getTeam(),
     getCurrentUser(),
   ]);
 
@@ -34,6 +38,7 @@ export default async function TasksPage() {
           <TasksWorkspace
             tasks={tasks}
             clients={clients}
+          team={team}
             corteConcluidas={corteConcluidas()}
           />
         </Suspense>
