@@ -5,6 +5,7 @@ import { CalendarDays, Loader2, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { RichTextEditor } from "./rich-text-editor";
+import { ClientCell } from "./task-quick-edit";
 import {
   STATUS_DOT,
   STATUS_LABELS,
@@ -46,11 +47,18 @@ import { TASK_COLOR_TAGS } from "@/types/database";
 
 interface TaskDialogProps {
   task: TaskWithRelations | null;
+  /** Carteira para o seletor de cliente. */
+  clients: { id: string; name: string }[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-export function TaskDialog({ task, open, onOpenChange }: TaskDialogProps) {
+export function TaskDialog({
+  task,
+  clients,
+  open,
+  onOpenChange,
+}: TaskDialogProps) {
   if (!task) return null;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -60,7 +68,12 @@ export function TaskDialog({ task, open, onOpenChange }: TaskDialogProps) {
       >
         {/* `key` força remontagem ao trocar de tarefa, zerando os
             estados locais de rascunho. */}
-        <TaskDialogBody key={task.id} task={task} onClose={() => onOpenChange(false)} />
+        <TaskDialogBody
+          key={task.id}
+          task={task}
+          clients={clients}
+          onClose={() => onOpenChange(false)}
+        />
       </DialogContent>
     </Dialog>
   );
@@ -68,9 +81,11 @@ export function TaskDialog({ task, open, onOpenChange }: TaskDialogProps) {
 
 function TaskDialogBody({
   task,
+  clients,
   onClose,
 }: {
   task: TaskWithRelations;
+  clients: { id: string; name: string }[];
   onClose: () => void;
 }) {
   const [title, setTitle] = useState(task.title);
@@ -80,6 +95,11 @@ function TaskDialogBody({
      esperar o round-trip a cada pixel travaria o controle. `key` no
      Dialog remonta ao trocar de tarefa, então não há efeito de sync. */
   const [criticidade, setCriticidade] = useState(task.criticality);
+  /* Cliente local: o cabeçalho e a propriedade leem daqui, então trocar
+     a conta atualiza os dois na hora — sem esperar o revalidate. */
+  const [cliente, setCliente] = useState<{ id: string; name: string } | null>(
+    task.client ? { id: task.client.id, name: task.client.name } : null,
+  );
   const [isPending, startTransition] = useTransition();
   const [saving, setSaving] = useState(false);
 
@@ -131,14 +151,16 @@ function TaskDialogBody({
       <header className="flex items-start gap-3 border-b border-hairline px-5 py-4 sm:px-6">
         <div className="min-w-0 flex-1">
           <div className="mb-2 flex flex-wrap items-center gap-2 text-2xs text-muted-foreground">
-            {task.client && (
+            {cliente && (
               <span className="flex items-center gap-1.5">
                 <span
                   aria-hidden
                   className="size-2 rounded-full"
-                  style={{ backgroundColor: task.client.brand_primary ?? "#8a8a8a" }}
+                  style={{
+                    backgroundColor: task.client?.brand_primary ?? "#8a8a8a",
+                  }}
                 />
-                {task.client.name}
+                {cliente.name}
               </span>
             )}
             {task.project && (
@@ -285,6 +307,19 @@ function TaskDialogBody({
                 <span className="size-4 rounded-full border border-dashed border-muted-foreground/60" />
               </button>
             </div>
+          </Property>
+
+          {/* Cliente ANTES dos responsáveis: numa tarefa recém-criada
+              pelo Enter da lista, é o campo que mais falta — e sem ele o
+              popup obrigava a fechar, achar a linha e usar a célula da
+              tabela. */}
+          <Property label="Cliente">
+            <ClientCell
+              taskId={task.id}
+              value={cliente}
+              clients={clients}
+              onChange={setCliente}
+            />
           </Property>
 
           <Property label="Responsáveis">

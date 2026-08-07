@@ -10,6 +10,7 @@ import {
 } from "@/lib/data";
 import { buildTrend, computeKpi, deriveMetric } from "@/lib/metrics/kpi";
 import { formatCurrency, formatDelta, formatNumber } from "@/lib/format";
+import { ClientAvatar } from "@/components/clients/client-avatar";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Performance" };
@@ -80,10 +81,10 @@ export default async function PerformancePage() {
                     href={`/clientes/${client.slug}`}
                     className="flex items-center gap-2.5"
                   >
-                    <span
-                      aria-hidden
-                      className="size-5 shrink-0 rounded-md ring-1 ring-inset ring-black/10 dark:ring-white/10"
-                      style={{ backgroundColor: client.brand_primary ?? "#8a8a8a" }}
+                    <ClientAvatar
+                      name={client.name}
+                      logoUrl={client.logo_url}
+                      brandPrimary={client.brand_primary}
                     />
                     <span className="font-medium">{client.name}</span>
                   </Link>

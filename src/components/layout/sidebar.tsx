@@ -18,6 +18,7 @@ import { UserProfileDialog } from "./user-profile-dialog";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { initials } from "@/lib/format";
+import { ClientAvatar } from "@/components/clients/client-avatar";
 import { isNavActive, primaryNav, secondaryNav } from "./nav-config";
 import type { Client, Profile } from "@/types/database";
 
@@ -161,10 +162,11 @@ export function Sidebar({ user, clients, onNavigate }: SidebarProps) {
                           : "text-muted-foreground hover:bg-sidebar-accent/55 hover:text-foreground",
                       )}
                     >
-                      <span
-                        aria-hidden
-                        className="size-4 shrink-0 rounded-[5px] ring-1 ring-inset ring-black/10 dark:ring-white/10"
-                        style={{ backgroundColor: client.brand_primary ?? "#8a8a8a" }}
+                      <ClientAvatar
+                        name={client.name}
+                        logoUrl={client.logo_url}
+                        brandPrimary={client.brand_primary}
+                        className="size-4 rounded-[5px]"
                       />
                       <span className="truncate">{client.name}</span>
                       <ChevronRight className="ml-auto size-3.5 shrink-0 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground/70" />
