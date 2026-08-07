@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Database } from "lucide-react";
 
 import { PageContainer, PageHeader } from "@/components/layout/page-header";
 import { ContractsTable } from "@/components/finance/contracts-table";
 import { MaterializeButton } from "@/components/finance/materialize-button";
 import { RecurringExpensesPanel } from "@/components/finance/recurring-expenses-panel";
 import {
+  SchemaPendenteError,
   getClientFinancials,
   getClients,
   getRecurringExpenses,
@@ -35,11 +36,24 @@ export default async function RecorrenciaPage() {
   if (!user) redirect("/login");
   if (user.role !== "admin") redirect("/");
 
-  const [clients, financials, expenses] = await Promise.all([
-    getClients(),
-    getClientFinancials(),
-    getRecurringExpenses(),
-  ]);
+  /* O deploy sobe o código; a migration é rodada à mão no Supabase.
+     Entre um e outro, esta tela pede colunas que ainda não existem — e
+     um 500 numa página que o menu de Gestão já linka é pior que uma
+     instrução. Ver `SchemaPendenteError`. */
+  let clients: Awaited<ReturnType<typeof getClients>>;
+  let financials: Awaited<ReturnType<typeof getClientFinancials>>;
+  let expenses: Awaited<ReturnType<typeof getRecurringExpenses>>;
+
+  try {
+    [clients, financials, expenses] = await Promise.all([
+      getClients(),
+      getClientFinancials(),
+      getRecurringExpenses(),
+    ]);
+  } catch (error) {
+    if (error instanceof SchemaPendenteError) return <MigrationPendente />;
+    throw error;
+  }
 
   /* Só cliente ativo aparece: pausado e churn não geram cobrança, e
      deixá-los na lista faria alguém preencher um dia de vencimento que
@@ -191,5 +205,58 @@ function Resumo({
       </p>
       <p className="mt-2.5 text-xs text-muted-foreground">{hint}</p>
     </article>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+
+/**
+ * A migration 29 ainda não foi aplicada.
+ *
+ * Estado transitório de propósito visível: some sozinho assim que o SQL
+ * roda, e enquanto está aqui diz exatamente o que falta — em vez de
+ * "column does not exist" no log da Vercel.
+ */
+function MigrationPendente() {
+  return (
+    <PageContainer>
+      <Link
+        href="/gestao"
+        className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <ArrowLeft className="size-4" />
+        Gestão
+      </Link>
+
+      <PageHeader
+        title="Recorrência"
+        description="O banco ainda não tem as tabelas desta tela."
+      />
+
+      <div className="surface-card mt-7 flex flex-col items-start gap-3 p-6">
+        <Database className="size-7 text-warning" strokeWidth={1.7} />
+
+        <p className="text-sm font-medium">Falta rodar a migration</p>
+
+        <p className="max-w-prose text-sm text-muted-foreground">
+          O código desta tela já está no ar, mas as colunas que ela usa
+          (dia de cobrança do cliente e a tabela de despesas recorrentes)
+          ainda não existem no banco.
+        </p>
+
+        <p className="max-w-prose text-xs text-muted-foreground">
+          No Supabase, abra o <strong>SQL Editor</strong> e cole o conteúdo de{" "}
+          <code className="rounded bg-surface-2 px-1 py-0.5">
+            supabase/migrations/20260807000029_financeiro_recorrente.sql
+          </code>
+          . Depois recarregue esta página.
+        </p>
+
+        <p className="max-w-prose text-2xs text-muted-foreground">
+          Nada mais do sistema depende dessa migration — Gestão, Performance e
+          os alertas de saldo seguem funcionando normalmente.
+        </p>
+      </div>
+    </PageContainer>
   );
 }

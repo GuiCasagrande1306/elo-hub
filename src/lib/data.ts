@@ -552,6 +552,40 @@ export async function getClientFees(): Promise<Map<string, number>> {
   );
 }
 
+/* ---------------------------------------------------------------------
+   Schema que ainda não foi aplicado
+
+   O código sobe pelo deploy; a migration é rodada à mão no Supabase. Nos
+   minutos (ou dias) entre um e outro, a tela pediria uma coluna que não
+   existe.
+
+   Sem tratamento isso vira 500 numa página de produção que o menu já
+   linka — e o erro no console diz `column client_financials.billing_day
+   does not exist`, que só significa alguma coisa para quem escreveu a
+   migration. Virar erro TIPADO deixa a tela explicar o que fazer.
+   ------------------------------------------------------------------ */
+
+/** 42P01 = tabela não existe. 42703 = coluna não existe. */
+const CODIGOS_SCHEMA_PENDENTE = new Set(["42P01", "42703"]);
+
+export class SchemaPendenteError extends Error {
+  constructor(detalhe: string) {
+    super(detalhe);
+    this.name = "SchemaPendenteError";
+  }
+}
+
+function lancarSeSchemaPendente(error: {
+  code?: string;
+  message: string;
+} | null): void {
+  if (!error) return;
+  if (CODIGOS_SCHEMA_PENDENTE.has(error.code ?? "")) {
+    throw new SchemaPendenteError(error.message);
+  }
+  throw error;
+}
+
 /**
  * Contrato completo por cliente: honorário E dia de vencimento.
  *
@@ -568,9 +602,15 @@ export async function getClientFinancials(): Promise<
   }
 
   const supabase = await createSupabaseServerClient();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("client_financials")
     .select("client_id, monthly_fee_cents, tax_id, billing_day");
+
+  /* Diferente de `getClientFees`, que engole o erro de propósito (um
+     colaborador vê MRR zerado em vez de a página quebrar): aqui a tela é
+     de admin e existe PARA editar estes campos. Lista vazia por falta de
+     coluna seria indistinguível de carteira sem contrato. */
+  lancarSeSchemaPendente(error);
 
   return new Map(
     (data ?? []).map((f) => [f.client_id as string, f as ClientFinancials]),
@@ -597,7 +637,7 @@ export async function getRecurringExpenses(): Promise<RecurringExpense[]> {
     .order("is_active", { ascending: false })
     .order("amount_cents", { ascending: false });
 
-  if (error) throw error;
+  lancarSeSchemaPendente(error);
   return (data ?? []) as RecurringExpense[];
 }
 
