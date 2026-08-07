@@ -19,7 +19,7 @@ import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { initials } from "@/lib/format";
 import { ClientAvatar } from "@/components/clients/client-avatar";
-import { isNavActive, primaryNav, secondaryNav } from "./nav-config";
+import { isNavActive, navGroups } from "./nav-config";
 import type { Client, Profile } from "@/types/database";
 
 interface SidebarProps {
@@ -50,8 +50,15 @@ export function Sidebar({ user, clients, onNavigate }: SidebarProps) {
     router.replace("/login");
     router.refresh();
   }
-  const visibleSecondary = secondaryNav.filter(
-    (item) => !item.adminOnly || user.role === "admin",
+  const isAdmin = user.role === "admin";
+
+  /* "Sistema" sai do laço principal e é desenhado DEPOIS das contas —
+     é a ordem do pedido, e faz sentido: configuração fica no fim, longe
+     do que se usa todo dia. */
+  const gruposDoTopo = navGroups.filter((g) => g.label !== "Sistema");
+  const grupoSistema = navGroups.find((g) => g.label === "Sistema");
+  const itensSistema = (grupoSistema?.items ?? []).filter(
+    (item) => !item.adminOnly || isAdmin,
   );
 
   return (
@@ -95,42 +102,60 @@ export function Sidebar({ user, clients, onNavigate }: SidebarProps) {
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 pb-4">
-        <ul className="flex flex-col gap-0.5">
-          {primaryNav.map((item) => {
-            const active = isNavActive(item, pathname);
-            return (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  onClick={onNavigate}
-                  aria-current={active ? "page" : undefined}
-                  className={cn(
-                    "group relative flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors",
-                    active
-                      ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-                      : "text-muted-foreground hover:bg-sidebar-accent/55 hover:text-foreground",
-                  )}
-                >
-                  {active && (
-                    <motion.span
-                      layoutId="sidebar-active"
-                      className="absolute left-0 top-1/2 h-5 w-[2px] -translate-y-1/2 rounded-full bg-signal"
-                      transition={{ type: "spring", stiffness: 520, damping: 38 }}
-                    />
-                  )}
-                  <item.icon
-                    className={cn(
-                      "size-4 shrink-0 transition-colors",
-                      active ? "text-signal" : "text-muted-foreground/80",
-                    )}
-                    strokeWidth={active ? 2.2 : 1.9}
-                  />
-                  {item.label}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+        {gruposDoTopo.map((group) => {
+          /* Grupo cujos itens são todos adminOnly some inteiro para
+             colaborador — título órfão sobre lista vazia é pior que a
+             ausência da seção. */
+          const itens = group.items.filter((i) => !i.adminOnly || isAdmin);
+          if (itens.length === 0) return null;
+
+          return (
+            <div key={group.label ?? "principal"} className="mt-5 first:mt-0">
+              {group.label && (
+                <span className="mb-1.5 block px-2.5 eyebrow">
+                  {group.label}
+                </span>
+              )}
+
+              <ul className="flex flex-col gap-0.5">
+                {itens.map((item) => {
+                  const active = isNavActive(item, pathname);
+                  return (
+                    <li key={item.href}>
+                      <Link
+                        href={item.href}
+                        onClick={onNavigate}
+                        aria-current={active ? "page" : undefined}
+                        className={cn(
+                          "group relative flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors",
+                          active
+                            ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+                            : "text-muted-foreground hover:bg-sidebar-accent/55 hover:text-foreground",
+                        )}
+                      >
+                        {active && (
+                          <motion.span
+                            layoutId="sidebar-active"
+                            className="absolute left-0 top-1/2 h-5 w-[2px] -translate-y-1/2 rounded-full bg-signal"
+                            transition={{ type: "spring", stiffness: 520, damping: 38 }}
+                          />
+                        )}
+                        <item.icon
+                          className={cn(
+                            "size-4 shrink-0 transition-colors",
+                            active ? "text-signal" : "text-muted-foreground/80",
+                          )}
+                          strokeWidth={active ? 2.2 : 1.9}
+                        />
+                        {item.label}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          );
+        })}
 
         {/* Atalho para as contas -------------------------------------
             Colaborador só vê aqui o que o RLS já devolveu — a lista
@@ -178,29 +203,35 @@ export function Sidebar({ user, clients, onNavigate }: SidebarProps) {
           </div>
         )}
 
-        {visibleSecondary.length > 0 && (
-          <ul className="mt-7 flex flex-col gap-0.5 border-t border-sidebar-border pt-4">
-            {visibleSecondary.map((item) => {
-              const active = isNavActive(item, pathname);
-              return (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    onClick={onNavigate}
-                    className={cn(
-                      "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors",
-                      active
-                        ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-                        : "text-muted-foreground hover:bg-sidebar-accent/55 hover:text-foreground",
-                    )}
-                  >
-                    <item.icon className="size-4 shrink-0" strokeWidth={1.9} />
-                    {item.label}
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
+        {itensSistema.length > 0 && (
+          <div className="mt-7 border-t border-sidebar-border pt-4">
+            <span className="mb-1.5 block px-2.5 eyebrow">
+              {grupoSistema?.label}
+            </span>
+            <ul className="flex flex-col gap-0.5">
+              {itensSistema.map((item) => {
+                const active = isNavActive(item, pathname);
+                return (
+                  <li key={item.href}>
+                    <Link
+                      href={item.href}
+                      onClick={onNavigate}
+                      aria-current={active ? "page" : undefined}
+                      className={cn(
+                        "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors",
+                        active
+                          ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+                          : "text-muted-foreground hover:bg-sidebar-accent/55 hover:text-foreground",
+                      )}
+                    >
+                      <item.icon className="size-4 shrink-0" strokeWidth={1.9} />
+                      {item.label}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
         )}
       </nav>
 
