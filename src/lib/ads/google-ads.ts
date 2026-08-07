@@ -40,7 +40,7 @@ import type { AdsProvider, NormalizedMetricRow, ProviderResult } from "./types";
    \"<!DOCTYPE\"" na tela — erro de parse disfarçando um endpoint que
    deixou de existir. Medido em 07/08/2026: v18 e v19 dão 404; v20 e v21
    respondem. */
-const API_VERSION = "v21";
+export const API_VERSION = "v21";
 
 /** GAQL: uma linha por campanha por dia. */
 export const DAILY_METRICS_QUERY = `
@@ -284,7 +284,10 @@ type TokenResult =
   | { ok: true; accessToken: string }
   | { ok: false; code: "auth_expired" | "network_error"; message: string };
 
-async function exchangeRefreshToken(refreshToken: string): Promise<TokenResult> {
+/** Exportada para `google-balance`, que precisa do mesmo access token. */
+export async function exchangeRefreshToken(
+  refreshToken: string,
+): Promise<TokenResult> {
   try {
     const response = await fetch("https://oauth2.googleapis.com/token", {
       method: "POST",

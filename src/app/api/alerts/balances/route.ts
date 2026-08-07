@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/supabase/server";
-import { DIAS_DE_ALERTA, getBalanceAlerts } from "@/lib/ads/balances";
+import {
+  DIAS_DE_ALERTA,
+  DIAS_DE_ATENCAO,
+  getBalanceAlerts,
+} from "@/lib/ads/balances";
 
 /**
  * GET /api/alerts/balances
@@ -28,10 +32,10 @@ export async function GET() {
   return NextResponse.json(
     {
       alerts,
-      threshold: DIAS_DE_ALERTA,
-      // Explícito na resposta, não só na tela: quem consumir esta API
-      // de fora precisa saber que o saldo ainda é simulado.
-      balanceSource: "mock",
+      thresholds: { critical: DIAS_DE_ALERTA, warning: DIAS_DE_ATENCAO },
+      /* A origem agora é POR CONTA, em `alerts[].balanceSource`: Meta vem
+         de leitura manual e Google da API, e um campo único no topo
+         mentiria sobre metade das linhas. */
       generatedAt: new Date().toISOString(),
     },
     { headers: { "Cache-Control": "no-store" } },
