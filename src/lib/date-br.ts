@@ -161,3 +161,80 @@ export function ultimosMeses(quantidade = 12, quando: Date = new Date()) {
     return { value: ref, label: mesCurto(ref), atual: i === 0 };
   });
 }
+
+/* =====================================================================
+   Presets de período
+   ---------------------------------------------------------------------
+   Um lugar só resolvendo rótulo → datas. Espalhar isso pelas telas faria
+   "últimos 30 dias" significar coisas diferentes em duas páginas — que é
+   como um relatório passa a discordar do painel.
+
+   TODOS terminam ONTEM, nunca hoje. O dia corrente ainda está sendo
+   veiculado: incluí-lo mostra uma queda no último ponto do gráfico que
+   não existe, e some sozinha no dia seguinte. A exceção é "hoje", onde a
+   pergunta é justamente o parcial.
+   ===================================================================== */
+
+export const PERIOD_PRESETS = [
+  { value: "hoje", label: "Hoje" },
+  { value: "7d", label: "Últimos 7 dias" },
+  { value: "30d", label: "Últimos 30 dias" },
+  { value: "mes", label: "Este mês" },
+  { value: "mes_passado", label: "Mês passado" },
+] as const;
+
+export type PeriodPreset = (typeof PERIOD_PRESETS)[number]["value"];
+
+export function isPeriodPreset(v: string | undefined): v is PeriodPreset {
+  return PERIOD_PRESETS.some((p) => p.value === v);
+}
+
+/** Rótulo do preset, para o cabeçalho da página dizer o que está vendo. */
+export function periodLabel(preset: PeriodPreset): string {
+  return PERIOD_PRESETS.find((p) => p.value === preset)?.label ?? "";
+}
+
+/**
+ * Preset → intervalo real, no fuso de São Paulo.
+ *
+ * Ancorado em `dataNoBrasil()` e não em `new Date()`: o servidor da
+ * Vercel roda em UTC, e das 21h à meia-noite "ontem" lá já é hoje aqui —
+ * o que desloca a janela inteira em um dia por três horas por noite.
+ */
+export function resolvePeriod(preset: PeriodPreset): {
+  start: string;
+  end: string;
+} {
+  const hoje = dataNoBrasil();
+
+  if (preset === "hoje") return { start: hoje, end: hoje };
+
+  if (preset === "mes") {
+    const { start, end } = mesCorrenteBR();
+    /* Corta em ontem: o fim do mês civil é futuro na maior parte dos
+       dias, e pedir dado até lá devolve dias vazios que achatam o
+       gráfico. */
+    return { start, end: menorData(end, ontemBR()) };
+  }
+
+  if (preset === "mes_passado") {
+    const [ano, mes] = hoje.split("-").map(Number);
+    const alvo = mes === 1 ? `${ano - 1}-12` : `${ano}-${String(mes - 1).padStart(2, "0")}`;
+    return intervaloDoMes(alvo);
+  }
+
+  const dias = preset === "7d" ? 7 : 30;
+  const fim = ontemBR();
+  const inicio = new Date(`${fim}T12:00:00-03:00`);
+  inicio.setUTCDate(inicio.getUTCDate() - (dias - 1));
+
+  return { start: inicio.toISOString().slice(0, 10), end: fim };
+}
+
+function ontemBR(): string {
+  const d = new Date(`${dataNoBrasil()}T12:00:00-03:00`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+const menorData = (a: string, b: string) => (a < b ? a : b);

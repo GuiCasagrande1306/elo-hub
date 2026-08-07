@@ -63,15 +63,15 @@ import type {
  */
 export async function getClients(
   agency?: string,
-  opts?: { onlyChurned?: boolean },
+  opts?: { onlyChurned?: boolean; search?: string; segment?: ClientSegment },
 ): Promise<Client[]> {
   const churn = opts?.onlyChurned ?? false;
+  const busca = opts?.search?.trim() ?? "";
+  const segmento = opts?.segment;
 
   if (isDemoMode) {
-    const { demoClients } = await import("@/lib/mock/data");
-    return demoClients
-      .filter((c) => (churn ? c.status === "churned" : c.status !== "churned"))
-      .filter((c) => !agency || c.agency_partner === agency);
+    const termo = busca.toLowerCase();
+    return demoFiltrados(churn, agency, termo, segmento);
   }
 
   const supabase = await createSupabaseServerClient();
@@ -86,10 +86,38 @@ export async function getClients(
      carteira e o resumo somar outra. */
   if (agency) query = query.eq("agency_partner", agency);
 
+  /* Busca no BANCO. Filtrar em memória traria as 46 linhas para depois
+     jogar 45 fora, e — pior — os totais somados sobre a lista completa
+     discordariam do que a tela mostra.
+
+     `%` escapado: um nome com `%` viraria curinga e devolveria a
+     carteira inteira. */
+  if (busca) {
+    const termo = busca.replace(/[%_]/g, (c) => `\\${c}`);
+    query = query.ilike("name", `%${termo}%`);
+  }
+
+  if (segmento) query = query.eq("segment", segmento);
+
   const { data, error } = await query;
 
   if (error) throw error;
   return (data ?? []) as Client[];
+}
+
+/** Espelha em memória o filtro que o Postgres faz, para o modo demo. */
+async function demoFiltrados(
+  churn: boolean,
+  agency: string | undefined,
+  termo: string,
+  segmento: ClientSegment | undefined,
+): Promise<Client[]> {
+  const { demoClients } = await import("@/lib/mock/data");
+  return demoClients
+    .filter((c) => (churn ? c.status === "churned" : c.status !== "churned"))
+    .filter((c) => !agency || c.agency_partner === agency)
+    .filter((c) => !termo || c.name.toLowerCase().includes(termo))
+    .filter((c) => !segmento || c.segment === segmento);
 }
 
 export async function getClientBySlug(slug: string): Promise<Client | null> {

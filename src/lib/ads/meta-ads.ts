@@ -329,3 +329,101 @@ export async function fetchActiveAds(
     return [];
   }
 }
+
+/* =====================================================================
+   Insights por ANÚNCIO
+   ---------------------------------------------------------------------
+   Mesmo endpoint de sempre, `level=ad` em vez de `level=campaign`, e sem
+   `time_increment` — aqui a pergunta é "quanto este criativo consumiu no
+   período", não a série diária.
+
+   É a chamada que faltava para a galeria. Ela já desenhava Investido,
+   Resultados e CPA, e os três vinham zerados porque nada os alimentava.
+
+   RATEAR O GASTO DA CAMPANHA ENTRE OS ANÚNCIOS SERIA MENTIRA — foi por
+   isso que os campos ficaram vazios em vez de preenchidos por divisão. A
+   Meta distribui verba de forma desigual dentro do conjunto, e um número
+   plausível-e-errado num card de criativo levaria alguém a pausar o
+   anúncio certo.
+   ===================================================================== */
+
+export interface AdInsight {
+  spendCents: number;
+  conversions: number;
+  impressions: number;
+  clicks: number;
+}
+
+interface MetaAdInsightRow {
+  ad_id?: string;
+  spend?: string;
+  impressions?: string;
+  clicks?: string;
+  actions?: MetaAction[];
+}
+
+/**
+ * Gasto e conversão de cada anúncio no período, indexado por `ad_id`.
+ *
+ * Devolve mapa vazio — nunca lança — quando a conta não responde. A
+ * galeria é complemento; falhar aqui não pode derrubar a sincronização
+ * de métricas, que é o dado que importa.
+ */
+export async function fetchAdInsights(
+  accessToken: string,
+  externalAccountId: string,
+  since: string,
+  until: string,
+  conversionActionTypes: string[],
+): Promise<Map<string, AdInsight>> {
+  const accountId = externalAccountId.startsWith("act_")
+    ? externalAccountId
+    : `act_${externalAccountId}`;
+
+  const url = new URL(
+    `https://graph.facebook.com/${serverEnv.metaApiVersion}/${accountId}/insights`,
+  );
+  url.searchParams.set("level", "ad");
+  url.searchParams.set("fields", "ad_id,spend,impressions,clicks,actions");
+  url.searchParams.set("time_range", JSON.stringify({ since, until }));
+  url.searchParams.set("limit", "300");
+
+  const mapa = new Map<string, AdInsight>();
+
+  try {
+    const response = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+      signal: AbortSignal.timeout(25_000),
+    });
+
+    if (!response.ok) return mapa;
+
+    const payload = (await response.json()) as { data?: MetaAdInsightRow[] };
+
+    for (const row of payload.data ?? []) {
+      if (!row.ad_id) continue;
+
+      /* Mesma soma sobre o CONJUNTO de action_types usada nas métricas
+         diárias. Se o card do criativo contasse um evento e o painel
+         outro, os dois discordariam sobre a mesma conta. */
+      const conversions = conversionActionTypes.reduce(
+        (acc, tipo) =>
+          acc +
+          toDecimal(row.actions?.find((a) => a.action_type === tipo)?.value ?? 0),
+        0,
+      );
+
+      mapa.set(row.ad_id, {
+        spendCents: decimalToCents(row.spend),
+        conversions,
+        impressions: toInt(row.impressions),
+        clicks: toInt(row.clicks),
+      });
+    }
+  } catch {
+    // Silencioso de propósito — ver a nota no cabeçalho.
+  }
+
+  return mapa;
+}

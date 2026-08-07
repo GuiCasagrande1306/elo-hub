@@ -2,7 +2,7 @@ import "server-only";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { googleAdsProvider } from "./google-ads";
-import { fetchActiveAds, metaAdsProvider } from "./meta-ads";
+import { fetchActiveAds, fetchAdInsights, metaAdsProvider } from "./meta-ads";
 import { currentMonthRange, lookbackRange } from "./normalize";
 import { conversionActionFor } from "./conversion-action";
 import type {
@@ -368,6 +368,31 @@ async function syncCreatives(
     const ads = await fetchActiveAds(token, integration.external_account_id);
     if (ads.length === 0) return;
 
+    /* Gasto e conversão POR ANÚNCIO. A galeria já desenhava Investido,
+       Resultados e CPA — vinham zerados porque o provider de insights
+       agrega por CAMPANHA e nada preenchia esses campos.
+
+       Ratear o gasto da campanha entre seus anúncios teria sido o
+       atalho, e seria mentira: a Meta distribui verba de forma desigual
+       dentro do conjunto, e um número plausível-e-errado num card de
+       criativo leva alguém a pausar o anúncio certo. */
+    const janela = rows.length
+      ? { since: rows[0].metricDate, until: rows[rows.length - 1].metricDate }
+      : null;
+
+    const insights = janela
+      ? await fetchAdInsights(
+          token,
+          integration.external_account_id,
+          janela.since,
+          janela.until,
+          conversionActionFor(
+            integration.clients?.segment,
+            integration.conversion_action_type,
+          ),
+        )
+      : new Map();
+
     await admin
       .from("ad_creatives")
       .update({ is_active: false })
@@ -391,6 +416,12 @@ async function syncCreatives(
         primary_text: ad.body,
         headline: ad.headline,
         is_active: true,
+        /* Zero quando o anúncio não teve entrega na janela — é verdade,
+           não ausência de dado: criativo no ar sem gasto existe. */
+        spend_cents: insights.get(ad.externalAdId)?.spendCents ?? 0,
+        conversions: insights.get(ad.externalAdId)?.conversions ?? 0,
+        impressions: insights.get(ad.externalAdId)?.impressions ?? 0,
+        clicks: insights.get(ad.externalAdId)?.clicks ?? 0,
         period_start: periodo.start,
         period_end: periodo.end,
       })),

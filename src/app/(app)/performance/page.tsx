@@ -3,11 +3,16 @@ import type { Metadata } from "next";
 
 import { PageContainer, PageHeader } from "@/components/layout/page-header";
 import { Sparkline } from "@/components/dashboard/sparkline";
+import { getClients, getMetricsWithComparison } from "@/lib/data";
 import {
-  getClients,
-  getMetricsWithComparison,
-  lastNDays,
-} from "@/lib/data";
+  isPeriodPreset,
+  periodLabel,
+  resolvePeriod,
+  type PeriodPreset,
+} from "@/lib/date-br";
+import { PerformanceToolbar } from "@/components/dashboard/performance-toolbar";
+import { CLIENT_SEGMENTS, SEGMENT_LABELS } from "@/lib/validation/client";
+import type { ClientSegment } from "@/types/database";
 import { buildTrend, computeKpi, deriveMetric } from "@/lib/metrics/kpi";
 import { formatCurrency, formatDelta, formatNumber } from "@/lib/format";
 import { ClientAvatar } from "@/components/clients/client-avatar";
@@ -21,9 +26,32 @@ export const metadata: Metadata = { title: "Performance" };
  * Ordenada por investimento decrescente: a conta que consome mais verba é
  * a que mais custa quando o CPA escapa, então ela abre a lista.
  */
-export default async function PerformancePage() {
-  const clients = await getClients();
-  const { start, end } = lastNDays(30);
+export default async function PerformancePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; period?: string; niche?: string }>;
+}) {
+  const { q, period, niche } = await searchParams;
+
+  /* Entrada do usuário: preset desconhecido cai em 30 dias em vez de
+     virar erro. Filtro quebrado não pode derrubar a página. */
+  const preset: PeriodPreset = isPeriodPreset(period) ? period : "30d";
+  const busca = (q ?? "").slice(0, 80);
+
+  /* Só valores conhecidos chegam à query. Um `niche` arbitrário da URL
+     não causaria dano — a RLS já limita o que é visível —, mas
+     devolveria lista vazia com cara de carteira sem clientes. */
+  const segmento = CLIENT_SEGMENTS.includes(
+    niche as (typeof CLIENT_SEGMENTS)[number],
+  )
+    ? (niche as ClientSegment)
+    : undefined;
+
+  const { start, end } = resolvePeriod(preset);
+  const clients = await getClients(undefined, {
+    search: busca,
+    segment: segmento,
+  });
 
   const rows = (
     await Promise.all(
@@ -45,7 +73,21 @@ export default async function PerformancePage() {
     <PageContainer>
       <PageHeader
         title="Performance"
-        description="Todas as contas nos últimos 30 dias, ordenadas por investimento."
+        description={
+          /* O rótulo acompanha o filtro: dizer "últimos 30 dias" com a
+             tela mostrando o mês passado é pior que não dizer nada. */
+          busca
+            ? `${rows.length} ${rows.length === 1 ? "conta" : "contas"} para “${busca}”${segmento ? ` em ${SEGMENT_LABELS[segmento]}` : ""} · ${periodLabel(preset).toLowerCase()}`
+            : segmento
+              ? `${SEGMENT_LABELS[segmento]} · ${periodLabel(preset).toLowerCase()}, ordenadas por investimento.`
+              : `Todas as contas · ${periodLabel(preset).toLowerCase()}, ordenadas por investimento.`
+        }
+      />
+
+      <PerformanceToolbar
+        query={busca}
+        period={preset}
+        niche={segmento ?? ""}
       />
 
       <div className="surface-card mt-7 overflow-x-auto">
@@ -74,6 +116,23 @@ export default async function PerformancePage() {
           </thead>
 
           <tbody className="divide-y divide-hairline">
+            {/* Busca sem resultado é estado NORMAL, não erro. Tabela
+                vazia sem explicação parece falha de carregamento. */}
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={7} className="px-4 py-12 text-center">
+                  <p className="text-sm font-medium">Nenhuma conta encontrada</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {busca
+                      ? `Nada corresponde a “${busca}”${segmento ? ` em ${SEGMENT_LABELS[segmento]}` : ""}.`
+                      : segmento
+                        ? `Nenhuma conta em ${SEGMENT_LABELS[segmento]}.`
+                        : "Nenhuma conta na carteira."}
+                  </p>
+                </td>
+              </tr>
+            )}
+
             {rows.map(({ client, trend, spend, results, cpa, roas }) => (
               <tr key={client.id} className="transition-colors hover:bg-accent/40">
                 <td className="px-4 py-3">
