@@ -22,41 +22,34 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { WhatsAppDestinationPicker } from "./whatsapp-destination-picker";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   deleteClient,
   setClientChurned,
   setClientGoal,
   setClientLogo,
-  updateClientSettings,
 } from "@/app/(app)/clientes/actions";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { goalInputValue, goalMetricFor } from "@/lib/metrics/goal-metric";
-import {
-  CLIENT_SEGMENTS,
-  OPTIMIZATION_DAYS,
-  SEGMENT_LABELS,
-} from "@/lib/validation/client";
-import type { Client, ClientSegment } from "@/types/database";
+import type { Client } from "@/types/database";
 
 /* =====================================================================
-   Ajustes do cliente
+   Marca, meta e fim do contrato
    ---------------------------------------------------------------------
-   Só o que muda o que o cliente RECEBE. Nome e slug ficam de fora: eles
-   aparecem em URL e em PDF já entregue, e trocá-los quebra referência.
+   O que sobrou depois que nicho, WhatsApp e os dias foram para o
+   `ClientForm`: três coisas que NÃO cabem naquele formulário, cada uma
+   por um motivo diferente.
 
-   O nicho é o campo mais consequente da tela — é ele que escolhe o
-   template, e portanto se o relatório vai falar de "Vendas", "Pedidos",
-   "Leads" ou "Contatos". Por isso vem primeiro e com a explicação
-   junto, em vez de ser um dropdown solto.
+   LOGO grava sozinha — o upload vai direto ao Storage e a URL é
+   persistida na hora, sem passar por "salvar". Enfiá-la num formulário
+   com botão exigiria segurar o arquivo em memória até o submit.
+
+   META vive em outra tabela (`client_goals`), é por período e muda de
+   unidade conforme o segmento. Salvá-la junto do cadastro faria uma
+   correção de nome reescrever a meta do mês.
+
+   FIM DO CONTRATO é decisão comercial, não edição de campo. Ver a nota
+   em `ZonaDeRisco`.
    ===================================================================== */
 
 export function ClientSettingsCard({
@@ -70,22 +63,13 @@ export function ClientSettingsCard({
     resultsMetric: "count" | "revenue" | null;
   } | null;
 }) {
-  const [segment, setSegment] = useState<ClientSegment>(client.segment);
-  const [whatsapp, setWhatsapp] = useState(client.whatsapp_phone ?? "");
-  const [enabled, setEnabled] = useState(client.report_enabled);
-  const [day, setDay] = useState<string>(
-    client.report_day ? String(client.report_day) : "",
-  );
-  const [diaEsteira, setDiaEsteira] = useState<string>(
-    client.optimization_day ? String(client.optimization_day) : "",
-  );
   const [pendente, startTransition] = useTransition();
 
-  /* A unidade da meta segue o segmento SALVO, não o `segment` que está
-     no dropdown acima. São dois botões de salvar independentes: quem
-     troca o nicho e mexe na meta sem salvar o nicho gravaria centavos
-     numa conta que o banco ainda considera de leads. Depois de salvar
-     os ajustes a página revalida e o campo volta na unidade nova.
+  /* A unidade da meta segue o segmento SALVO. Trocar o nicho agora é
+     outro formulário, com outro botão de salvar — e enquanto ele não
+     for salvo, a meta continua sendo escrita na unidade que o banco
+     ainda considera correta. Depois do salvamento a página revalida e o
+     campo reaparece na unidade nova.
 
      Metas antigas trazem `resultsMetric` própria e ela vence — ver a
      migration 20260806000025. */
@@ -175,27 +159,11 @@ export function ClientSettingsCard({
     });
   }
 
-  function salvar() {
-    startTransition(async () => {
-      const r = await updateClientSettings({
-        clientId: client.id,
-        segment,
-        whatsappPhone: whatsapp,
-        reportEnabled: enabled,
-        reportDay: day ? Number(day) : null,
-        optimizationDay: diaEsteira ? Number(diaEsteira) : null,
-      });
-
-      if (r.ok) toast.success("Ajustes salvos.");
-      else toast.error(r.error);
-    });
-  }
-
   return (
     <section className="surface-card p-5">
-      <h2 className="text-sm font-semibold">Ajustes do relatório</h2>
+      <h2 className="text-sm font-semibold">Marca e meta</h2>
       <p className="mt-0.5 text-xs text-muted-foreground">
-        Definem o que este cliente recebe e quando.
+        A identidade visual da conta e o alvo do mês.
       </p>
 
       {/* Logo ------------------------------------------------------
@@ -258,111 +226,6 @@ export function ClientSettingsCard({
         </div>
       </div>
 
-      <div className="mt-5 grid gap-5 sm:grid-cols-2">
-        <div>
-          <Label htmlFor="segmento">Nicho</Label>
-          <Select
-            value={segment}
-            onValueChange={(v) => setSegment(v as ClientSegment)}
-          >
-            <SelectTrigger id="segmento" className="mt-1.5 w-full">
-              {/* Sem a função de render, o Base UI mostra o valor cru
-                  ("local_business") em vez do rótulo. */}
-              <SelectValue>
-                {(v) => SEGMENT_LABELS[v as ClientSegment] ?? "Selecione"}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {CLIENT_SEGMENTS.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {SEGMENT_LABELS[s]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <p className="mt-1.5 text-2xs text-muted-foreground">
-            Escolhe o template do PDF e como o resultado é chamado.
-          </p>
-        </div>
-
-        <div>
-          <Label htmlFor="dia-esteira">Dia de otimização</Label>
-          <Select
-            value={diaEsteira}
-            onValueChange={(v) => setDiaEsteira(v ?? "")}
-          >
-            <SelectTrigger id="dia-esteira" className="mt-1.5 w-full">
-              <SelectValue>
-                {(v: string) =>
-                  OPTIMIZATION_DAYS.find((d) => d.value === v)?.label ??
-                  "Sem rotina"
-                }
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="">Sem rotina</SelectItem>
-              {OPTIMIZATION_DAYS.map((d) => (
-                <SelectItem key={d.value} value={d.value}>
-                  {d.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <p className="mt-1.5 text-2xs text-muted-foreground">
-            Dia da semana em que esta conta entra na esteira.
-          </p>
-        </div>
-
-        <div>
-          <Label htmlFor="whatsapp">WhatsApp de destino</Label>
-          <div className="mt-1.5">
-            <WhatsAppDestinationPicker value={whatsapp} onChange={setWhatsapp} />
-          </div>
-          <p className="mt-1.5 text-2xs text-muted-foreground">
-            Escolha o grupo pelo nome — o ID é gravado automaticamente.
-          </p>
-        </div>
-      </div>
-
-      <div className="mt-5 border-t border-hairline pt-5">
-        <label className="flex items-start gap-2.5">
-          <input
-            type="checkbox"
-            checked={enabled}
-            onChange={(e) => setEnabled(e.target.checked)}
-            className="mt-0.5 size-4 accent-[var(--primary)]"
-          />
-          <span>
-            <span className="text-sm font-medium">
-              Preparar relatório automaticamente
-            </span>
-            <span className="mt-0.5 block text-2xs text-muted-foreground">
-              O robô gera o PDF no dia escolhido. O envio continua manual —
-              alguém confere e dispara pelo próprio WhatsApp.
-            </span>
-          </span>
-        </label>
-
-        {enabled && (
-          <div className="mt-4 max-w-[200px]">
-            <Label htmlFor="dia">Dia do mês</Label>
-            <Input
-              id="dia"
-              type="number"
-              min={1}
-              max={28}
-              value={day}
-              onChange={(e) => setDay(e.target.value)}
-              className="mt-1.5"
-            />
-            <p className="mt-1.5 text-2xs text-muted-foreground">
-              De 1 a 28 — fevereiro não tem dia 30, e um cliente agendado
-              nele nunca receberia nada.
-            </p>
-          </div>
-        )}
-      </div>
-
       {/* Meta do período ------------------------------------------
           Âncora `#metas`: o card do cliente na listagem aponta para
           cá quando a conta ainda não tem meta. */}
@@ -417,17 +280,6 @@ export function ClientSettingsCard({
             Salvar meta
           </Button>
         </div>
-      </div>
-
-      <div className="mt-5 flex justify-end border-t border-hairline pt-4">
-        <Button size="sm" onClick={salvar} disabled={pendente}>
-          {pendente ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : (
-            <Check className="size-3.5" />
-          )}
-          Salvar
-        </Button>
       </div>
 
       <ZonaDeRisco client={client} />

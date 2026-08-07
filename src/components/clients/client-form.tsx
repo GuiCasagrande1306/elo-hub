@@ -1,0 +1,518 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useRouter } from "next/navigation";
+import { AlertCircle, Check, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+
+import { saveClientProfile } from "@/app/(app)/clientes/actions";
+import { Button } from "@/components/ui/button";
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { WhatsAppDestinationPicker } from "./whatsapp-destination-picker";
+import {
+  AGENCY_PARTNERS,
+  CLIENT_SEGMENTS,
+  EDITABLE_STATUSES,
+  FIELD_TAB,
+  OPTIMIZATION_DAYS,
+  SEGMENT_LABELS,
+  STATUS_LABELS,
+  clientFormSchema,
+  type ClientFormValues,
+} from "@/lib/validation/client";
+import { cn } from "@/lib/utils";
+import type { Client } from "@/types/database";
+
+/* =====================================================================
+   Cadastro completo da conta
+   ---------------------------------------------------------------------
+   Um formulário, um schema, um botão de salvar. Antes os campos estavam
+   espalhados em blocos com salvamentos independentes, e dois deles —
+   `status` e `agency_partner` — não tinham tela nenhuma: dava para
+   filtrar a listagem por eles e não dava para mudá-los.
+
+   ABAS SÃO ORGANIZAÇÃO, NÃO FRONTEIRA. A validação é do cadastro
+   inteiro, e o erro de um campo escondido precisa aparecer mesmo com
+   outra aba aberta — senão o botão recusa salvar e nada na tela explica
+   por quê. Daí o ponto vermelho no gatilho da aba, alimentado por
+   `FIELD_TAB`.
+
+   O SLUG NÃO ESTÁ AQUI. É a URL da conta, já saiu em link e em PDF
+   entregue. O nome, sim: corrigir um nome digitado errado é necessidade
+   real e não quebra referência nenhuma.
+   ===================================================================== */
+
+const NENHUM = "__nenhum__";
+
+export function ClientForm({ client }: { client: Client }) {
+  const router = useRouter();
+  const [aba, setAba] = useState<"perfil" | "operacional">("perfil");
+  const [enviando, startTransition] = useTransition();
+
+  const form = useForm<ClientFormValues>({
+    resolver: zodResolver(clientFormSchema),
+    mode: "onBlur",
+    defaultValues: {
+      clientId: client.id,
+      name: client.name,
+      legalName: client.legal_name ?? "",
+      segment: client.segment,
+      /* Conta encerrada abre como "Pausado": `churned` não é opção do
+         formulário, e cair num valor fora da lista deixaria o select
+         vazio. Reabrir de verdade é o botão em Fim do contrato. */
+      status:
+        client.status === "churned"
+          ? "paused"
+          : (client.status as ClientFormValues["status"]),
+      agencyPartner: AGENCY_PARTNERS.includes(
+        client.agency_partner as (typeof AGENCY_PARTNERS)[number],
+      )
+        ? (client.agency_partner as ClientFormValues["agencyPartner"])
+        : "Elo Marketing",
+      website: client.website ?? "",
+      contactName: client.contact_name ?? "",
+      contactEmail: client.contact_email ?? "",
+      whatsappPhone: client.whatsapp_phone ?? "",
+      reportEnabled: client.report_enabled,
+      reportDay: client.report_day,
+      optimizationDay: client.optimization_day,
+    },
+  });
+
+  /* Quais abas têm erro agora. Lido do estado do RHF a cada render, e
+     não guardado em state próprio — duplicar isso daria um marcador que
+     descola da validação assim que um campo é corrigido. */
+  const abasComErro = new Set(
+    Object.keys(form.formState.errors).map(
+      (campo) => FIELD_TAB[campo as keyof ClientFormValues],
+    ),
+  );
+
+  function enviar(values: ClientFormValues) {
+    startTransition(async () => {
+      const r = await saveClientProfile(values);
+
+      if (!r.ok) {
+        toast.error(r.error);
+        for (const [campo, mensagens] of Object.entries(r.fieldErrors ?? {})) {
+          form.setError(campo as keyof ClientFormValues, {
+            message: mensagens[0],
+          });
+        }
+        /* Leva à aba do primeiro erro devolvido pelo servidor. Sem isto
+           o toast acusaria um problema que a pessoa não consegue ver. */
+        const primeiro = Object.keys(r.fieldErrors ?? {})[0];
+        if (primeiro) setAba(FIELD_TAB[primeiro as keyof ClientFormValues]);
+        return;
+      }
+
+      toast.success("Cadastro salvo.");
+      form.reset(values);
+      router.refresh();
+    });
+  }
+
+  return (
+    <Form {...form}>
+      {/* O segundo callback do `handleSubmit` roda quando a validação do
+          NAVEGADOR reprova, antes de qualquer ida ao servidor. Sem ele o
+          ponto vermelho aparecia na aba certa mas ninguém era levado até
+          lá: quem estava em Operacional via o salvamento recusado e o
+          campo culpado escondido atrás de outra aba. */}
+      <form
+        onSubmit={form.handleSubmit(enviar, (erros) => {
+          const primeiro = Object.keys(erros)[0] as
+            | keyof ClientFormValues
+            | undefined;
+          if (primeiro) setAba(FIELD_TAB[primeiro]);
+        })}
+        className="surface-card p-5"
+      >
+        <h2 className="text-sm font-semibold">Cadastro da conta</h2>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          Tudo que define o cliente e o que ele recebe.
+        </p>
+
+        <Tabs
+          value={aba}
+          onValueChange={(v) => setAba(v as "perfil" | "operacional")}
+          className="mt-4"
+        >
+          <TabsList>
+            <GatilhoAba valor="perfil" temErro={abasComErro.has("perfil")}>
+              Perfil
+            </GatilhoAba>
+            <GatilhoAba
+              valor="operacional"
+              temErro={abasComErro.has("operacional")}
+            >
+              Operacional
+            </GatilhoAba>
+          </TabsList>
+
+          {/* ---------------------------- PERFIL ------------------- */}
+          <TabsContent value="perfil" className="mt-5">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nome do cliente</FormLabel>
+                    <FormControl render={<Input />} {...field} />
+                    <FormDescription>
+                      Aparece nos painéis e na capa do PDF. O endereço da
+                      conta não muda junto.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="legalName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Razão social</FormLabel>
+                    <FormControl
+                      render={<Input placeholder="Opcional" />}
+                      {...field}
+                    />
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="segment"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nicho</FormLabel>
+                    <Select
+                      value={field.value}
+                      onValueChange={(v) => v && field.onChange(v)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue>
+                          {(v: string) =>
+                            SEGMENT_LABELS[v as keyof typeof SEGMENT_LABELS]
+                          }
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CLIENT_SEGMENTS.map((s) => (
+                          <SelectItem key={s} value={s}>
+                            {SEGMENT_LABELS[s]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      Decide o template do PDF, como o resultado é chamado e
+                      qual evento conta como conversão.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="status"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Status</FormLabel>
+                    <Select
+                      value={field.value}
+                      onValueChange={(v) => v && field.onChange(v)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue>
+                          {(v: string) =>
+                            STATUS_LABELS[v as keyof typeof STATUS_LABELS]
+                          }
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {EDITABLE_STATUSES.map((s) => (
+                          <SelectItem key={s} value={s}>
+                            {STATUS_LABELS[s]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      Contrato encerrado não é status: use Fim do contrato,
+                      abaixo.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="agencyPartner"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Agência responsável</FormLabel>
+                    <Select
+                      value={field.value}
+                      onValueChange={(v) => v && field.onChange(v)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue>{(v: string) => v}</SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {AGENCY_PARTNERS.map((a) => (
+                          <SelectItem key={a} value={a}>
+                            {a}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      &quot;Elo Marketing&quot; é conta própria; as demais são
+                      terceirização.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="website"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Site</FormLabel>
+                    <FormControl
+                      render={<Input placeholder="https://" />}
+                      {...field}
+                    />
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="contactName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Pessoa de contato</FormLabel>
+                    <FormControl render={<Input />} {...field} />
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="contactEmail"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>E-mail do contato</FormLabel>
+                    <FormControl
+                      render={<Input inputMode="email" />}
+                      {...field}
+                    />
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          </TabsContent>
+
+          {/* -------------------------- OPERACIONAL ---------------- */}
+          <TabsContent value="operacional" className="mt-5">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="optimizationDay"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Dia de otimização</FormLabel>
+                    <Select
+                      value={field.value ? String(field.value) : NENHUM}
+                      onValueChange={(v) =>
+                        field.onChange(v === NENHUM ? null : Number(v))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue>
+                          {(v: string) =>
+                            v === NENHUM
+                              ? "Sem rotina"
+                              : (OPTIMIZATION_DAYS.find((d) => d.value === v)
+                                  ?.label ?? "Sem rotina")
+                          }
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NENHUM}>Sem rotina</SelectItem>
+                        {OPTIMIZATION_DAYS.map((d) => (
+                          <SelectItem key={d.value} value={d.value}>
+                            {d.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      Dia da semana em que esta conta entra na esteira.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="reportDay"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Dia do relatório</FormLabel>
+                    <FormControl
+                      render={
+                        <Input
+                          inputMode="numeric"
+                          placeholder="1 a 28"
+                          className="tabular-nums"
+                        />
+                      }
+                      value={field.value === null ? "" : String(field.value)}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                        const t = e.target.value.trim();
+                        field.onChange(t === "" ? null : Number(t));
+                      }}
+                      onBlur={field.onBlur}
+                      name={field.name}
+                    />
+                    <FormDescription>
+                      1 a 28, e não 1 a 31: fevereiro existe, e conta agendada
+                      no dia 30 nunca receberia nada.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="whatsappPhone"
+                render={({ field }) => (
+                  <FormItem className="sm:col-span-2">
+                    <FormLabel>WhatsApp de destino</FormLabel>
+                    <WhatsAppDestinationPicker
+                      value={field.value}
+                      onChange={field.onChange}
+                    />
+                    <FormDescription>
+                      Escolha o grupo pelo nome — o ID é gravado
+                      automaticamente.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="reportEnabled"
+                render={({ field }) => (
+                  <FormItem className="sm:col-span-2">
+                    <label className="flex items-start gap-2.5">
+                      <input
+                        type="checkbox"
+                        checked={field.value}
+                        onChange={(e) => field.onChange(e.target.checked)}
+                        className="mt-0.5 size-4 shrink-0 rounded border-hairline accent-signal"
+                      />
+                      <span className="min-w-0">
+                        <span className="block text-sm">
+                          Preparar relatório automaticamente
+                        </span>
+                        <span className="block text-2xs text-muted-foreground">
+                          O robô gera o PDF no dia escolhido. O envio continua
+                          manual — alguém confere e dispara pelo próprio
+                          WhatsApp.
+                        </span>
+                      </span>
+                    </label>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          </TabsContent>
+        </Tabs>
+
+        <div className="mt-6 flex items-center justify-end gap-3 border-t border-hairline pt-4">
+          {form.formState.isDirty && !enviando && (
+            <span className="text-2xs text-muted-foreground">
+              Alterações não salvas.
+            </span>
+          )}
+          <Button type="submit" size="sm" disabled={enviando}>
+            {enviando ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Check className="size-3.5" />
+            )}
+            {enviando ? "Salvando…" : "Salvar cadastro"}
+          </Button>
+        </div>
+      </form>
+    </Form>
+  );
+}
+
+/**
+ * Gatilho de aba com marcador de erro.
+ *
+ * O ponto é redundante com a cor por decisão: cor sozinha não chega a
+ * quem não distingue vermelho, e a aba fechada é justamente onde o erro
+ * fica invisível.
+ */
+function GatilhoAba({
+  valor,
+  temErro,
+  children,
+}: {
+  valor: string;
+  temErro: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <TabsTrigger value={valor} className={cn(temErro && "text-negative")}>
+      {children}
+      {temErro && (
+        <AlertCircle
+          className="size-3 text-negative"
+          aria-label="Esta aba tem campos com erro"
+        />
+      )}
+    </TabsTrigger>
+  );
+}

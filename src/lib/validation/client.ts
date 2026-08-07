@@ -53,11 +53,28 @@ export const SEGMENT_LABELS: Record<(typeof CLIENT_SEGMENTS)[number], string> = 
   local_business: "Negócio local",
 };
 
-export const STATUS_LABELS: Record<(typeof CREATABLE_STATUSES)[number], string> =
+/**
+ * Status que se troca no formulário de edição.
+ *
+ * Mais amplo que `CREATABLE_STATUSES` porque `lead` é estado para onde
+ * uma conta VOLTA (proposta reaberta), não estado em que ela nasce pelo
+ * cadastro. E `churned` fica de fora dos dois: encerrar contrato tem
+ * ação própria, com aviso e página de destino — devolvê-lo a um
+ * `<select>` faria um salvamento distraído tirar a conta da carteira.
+ */
+export const EDITABLE_STATUSES = [
+  "active",
+  "onboarding",
+  "paused",
+  "lead",
+] as const;
+
+export const STATUS_LABELS: Record<(typeof EDITABLE_STATUSES)[number], string> =
   {
     active: "Ativo",
     onboarding: "Onboarding",
     paused: "Pausado",
+    lead: "Lead",
   };
 
 /* O parser mora em `lib/format`, junto do `formatCurrency` que o
@@ -215,29 +232,56 @@ export function toClientPayload(values: NewClientValues): ClientRpcPayload {
   };
 }
 
+
 /* =====================================================================
-   Ajustes operacionais — o que dá para corrigir depois do cadastro
+   Edição completa da conta
    ---------------------------------------------------------------------
-   As regras espelham as constraints do banco de propósito. O Postgres
-   continua sendo a autoridade (`clients_report_day_valid` e
-   `clients_report_needs_day`); aqui é só para o usuário ver o erro no
-   formulário em vez de receber uma violação crua.
+   Um schema só para o formulário inteiro, em vez de um por seção. As
+   abas são organização visual; a validação é do cadastro como um todo,
+   e é isso que permite ao formulário apontar em QUAL aba está o erro.
+
+   `churned` NÃO entra na lista de status. Encerrar contrato tem ação
+   própria, com aviso e página de destino — ver `setClientChurned`.
+   Devolvê-lo a um `<select>` faria um salvamento distraído tirar a conta
+   da carteira sem que ninguém percebesse, que é exatamente o que aquela
+   separação evita.
    ===================================================================== */
-export const clientSettingsSchema = z
+
+export const clientFormSchema = z
   .object({
     clientId: z.string().min(1),
+
+    /* Editável, ao contrário do SLUG. O nome aparece em PDF já
+       entregue, mas corrigir "Brazo" para "Brazzo" é necessidade real e
+       não quebra nada. O slug está em URL e em link já compartilhado —
+       esse continua congelado e nem chega ao formulário. */
+    name: z.string().trim().min(2, "Nome: mínimo de 2 caracteres.").max(120),
+    legalName: optionalText(160, "Razão social"),
+
     segment: z.enum(CLIENT_SEGMENTS, { message: "Selecione o nicho." }),
-    whatsappPhone: optionalText(30, "WhatsApp"),
+    status: z.enum(EDITABLE_STATUSES, { message: "Selecione o status." }),
+    agencyPartner: z.enum(AGENCY_PARTNERS, { message: "Selecione a agência." }),
+
+    website: optionalText(200, "Site"),
+    contactName: optionalText(120, "Contato"),
+    contactEmail: z.union([
+      z.literal(""),
+      z.string().email("E-mail do contato inválido."),
+    ]),
+
+    /* 60 e não 30. Um JID de grupo tem ~23 caracteres, mas os antigos
+       (`5547999...-1612345678@g.us`) chegam a 28 e o limite anterior
+       deixava margem de dois caracteres para um campo que o usuário
+       cola. Apertado o bastante para falhar em algum grupo real. */
+    whatsappPhone: optionalText(60, "WhatsApp"),
+
     reportEnabled: z.boolean(),
-    // 1 a 28, não 1 a 31: fevereiro existe, e um cliente agendado no dia
-    // 30 nunca receberia nada — falha silenciosa.
     reportDay: z
       .number()
       .int()
       .min(1, "O dia vai de 1 a 28.")
       .max(28, "O dia vai de 1 a 28.")
       .nullable(),
-    /** Dia útil da esteira, 1 a 5. null = conta sem rotina. */
     optimizationDay: z.number().int().min(1).max(5).nullable(),
   })
   .refine((v) => !v.reportEnabled || v.reportDay !== null, {
@@ -249,7 +293,31 @@ export const clientSettingsSchema = z
     path: ["whatsappPhone"],
   });
 
-export type ClientSettingsValues = z.infer<typeof clientSettingsSchema>;
+export type ClientFormValues = z.infer<typeof clientFormSchema>;
+
+/**
+ * Em qual aba mora cada campo.
+ *
+ * Serve para o formulário marcar a aba que contém erro. Fica aqui, ao
+ * lado do schema, porque um campo novo precisa ganhar aba junto com a
+ * regra — separados, o campo entra e o erro passa a ser invisível.
+ */
+export const FIELD_TAB: Record<keyof ClientFormValues, "perfil" | "operacional"> =
+  {
+    clientId: "perfil",
+    name: "perfil",
+    legalName: "perfil",
+    segment: "perfil",
+    status: "perfil",
+    agencyPartner: "perfil",
+    website: "perfil",
+    contactName: "perfil",
+    contactEmail: "perfil",
+    whatsappPhone: "operacional",
+    reportEnabled: "operacional",
+    reportDay: "operacional",
+    optimizationDay: "operacional",
+  };
 
 /** Dias úteis da esteira. Fim de semana fica fora: otimização é
     trabalho de dia útil, e uma coluna que ninguém atende é ruído. */

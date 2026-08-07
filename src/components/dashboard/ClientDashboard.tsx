@@ -8,6 +8,7 @@ import { KpiCard } from "./kpi-card";
 import { TrendChart } from "./trend-chart";
 import { PlatformSplitList } from "./platform-split";
 import { AdGallery } from "./ad-gallery";
+import { ClientForm } from "@/components/clients/client-form";
 import { ClientSettingsCard } from "@/components/clients/client-settings-card";
 import { IntegrationsCard } from "@/components/clients/integrations-card";
 import { Button } from "@/components/ui/button";
@@ -253,6 +254,9 @@ export function ClientDashboard({
           segment={client.segment}
           integrations={integrations}
         />
+        {/* Cadastro primeiro: é onde o nicho é definido, e o nicho
+            decide o rótulo da meta que aparece no card seguinte. */}
+        <ClientForm client={client} />
         <ClientSettingsCard client={client} goal={goal} />
       </div>
     </div>

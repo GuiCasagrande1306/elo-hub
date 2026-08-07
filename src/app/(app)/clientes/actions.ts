@@ -12,8 +12,8 @@ import {
   parseGoalInput,
 } from "@/lib/metrics/goal-metric";
 import {
-  CLIENT_SEGMENTS,
-  clientSettingsSchema,
+  clientFormSchema,
+
   parseCurrencyToCents,
   newClientSchema,
   toClientPayload,
@@ -179,15 +179,6 @@ export async function createClientAction(
 
 /* ------------------------------------------------------------------ */
 
-function z_flatten(error: ZodError): Record<string, string[]> {
-  const result: Record<string, string[]> = {};
-  for (const issue of error.issues) {
-    const key = String(issue.path[0] ?? "_");
-    (result[key] ??= []).push(issue.message);
-  }
-  return result;
-}
-
 /** Espelha a geração de slug da RPC, para o modo demo. */
 function slugify(name: string, taken: string[]): string {
   const base =
@@ -207,82 +198,13 @@ function slugify(name: string, taken: string[]): string {
   return slug;
 }
 
-/* =====================================================================
-   Ajustes operacionais do cliente
-   ---------------------------------------------------------------------
-   O cadastro grava o cliente e nunca mais deixava mudá-lo. Três campos
-   precisam ser corrigíveis, e os três decidem o que o cliente recebe:
-
-   • `segment` escolhe o TEMPLATE do relatório. Um delivery cadastrado
-     como negócio local recebe um PDF falando de "Contatos" em vez de
-     "Pedidos". Antes disto, o único conserto era pelo banco.
-   • `whatsapp_phone` é o destino do envio.
-   • `report_day` / `report_enabled` decidem se o robô prepara o
-     relatório e em que dia — sem tela, o cron nunca dispararia.
-
-   O resto do cadastro continua imutável de propósito: nome e slug
-   aparecem em URL e em PDF já entregue, e trocá-los quebra referência.
-   ===================================================================== */
-
-export type UpdateClientSettingsResult =
-  | { ok: true }
-  | { ok: false; error: string };
-
-export async function updateClientSettings(input: {
-  clientId: string;
-  segment: (typeof CLIENT_SEGMENTS)[number];
-  whatsappPhone: string;
-  reportEnabled: boolean;
-  reportDay: number | null;
-  optimizationDay: number | null;
-}): Promise<UpdateClientSettingsResult> {
-  const parsed = clientSettingsSchema.safeParse(input);
-
-  if (!parsed.success) {
-    return {
-      ok: false,
-      error: parsed.error.issues[0]?.message ?? "Dados inválidos.",
-    };
+function z_flatten(error: ZodError): Record<string, string[]> {
+  const result: Record<string, string[]> = {};
+  for (const issue of error.issues) {
+    const key = String(issue.path[0] ?? "_");
+    (result[key] ??= []).push(issue.message);
   }
-
-  const values = parsed.data;
-
-  if (isDemoMode) {
-    const { demoClients } = await import("@/lib/mock/data");
-    const alvo = demoClients.find((c) => c.id === values.clientId);
-    if (!alvo) return { ok: false, error: "Cliente não encontrado." };
-
-    alvo.segment = values.segment;
-    alvo.whatsapp_phone = values.whatsappPhone || null;
-    alvo.report_enabled = values.reportEnabled;
-    alvo.report_day = values.reportDay;
-    alvo.optimization_day = values.optimizationDay;
-
-    revalidatePath("/clientes");
-    return { ok: true };
-  }
-
-  const supabase = await createSupabaseServerClient();
-
-  // Sem checagem de papel aqui: a policy `clients_update` exige
-  // can_write_client(), então um colaborador só-leitura falha no banco.
-  const { error } = await supabase
-    .from("clients")
-    .update({
-      segment: values.segment,
-      whatsapp_phone: values.whatsappPhone || null,
-      report_enabled: values.reportEnabled,
-      report_day: values.reportDay,
-      optimization_day: values.optimizationDay,
-    })
-    .eq("id", values.clientId);
-
-  if (error) return { ok: false, error: error.message };
-
-  revalidatePath("/clientes");
-  revalidatePath("/relatorios");
-  revalidatePath("/esteira");
-  return { ok: true };
+  return result;
 }
 
 /**
@@ -488,6 +410,92 @@ export async function setClientGoal(input: {
   if (error) return { ok: false, error: error.message };
 
   revalidatePath("/clientes");
+  revalidatePath("/");
+  return { ok: true };
+}
+
+/**
+ * Grava o cadastro inteiro da conta, de uma vez.
+ *
+ * Substitui `updateClientSettings`, que cobria só um punhado de campos e
+ * deixava `status` e `agency_partner` sem nenhuma tela — dava para
+ * filtrar por eles na listagem e não dava para mudá-los em lugar nenhum.
+ *
+ * O `slug` NÃO está aqui e não deve entrar: ele é a URL da conta e já
+ * saiu em link compartilhado e em PDF entregue. `name` mudou de ideia e
+ * agora é editável — corrigir um nome digitado errado no cadastro é
+ * necessidade real, e o nome não é chave de nada.
+ *
+ * `status` não aceita `churned`: o schema restringe a lista, e encerrar
+ * contrato continua sendo `setClientChurned`, com aviso próprio.
+ *
+ * Sem checagem de papel aqui, como no resto do módulo: quem decide é a
+ * policy `clients_update`. O `.select()` existe para transformar em
+ * recusa explícita o update que a RLS barrou — sem ele voltaria "salvo"
+ * sobre uma conta intacta.
+ */
+export type SaveClientResult =
+  | { ok: true }
+  | { ok: false; error: string; fieldErrors?: Record<string, string[]> };
+
+export async function saveClientProfile(
+  input: unknown,
+): Promise<SaveClientResult> {
+  const parsed = clientFormSchema.safeParse(input);
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Dados inválidos.",
+      fieldErrors: z_flatten(parsed.error),
+    };
+  }
+
+  const v = parsed.data;
+
+  const campos = {
+    name: v.name.trim(),
+    legal_name: v.legalName.trim() || null,
+    segment: v.segment,
+    status: v.status,
+    agency_partner: v.agencyPartner,
+    website: v.website.trim() || null,
+    contact_name: v.contactName.trim() || null,
+    contact_email: v.contactEmail.trim() || null,
+    whatsapp_phone: v.whatsappPhone.trim() || null,
+    report_enabled: v.reportEnabled,
+    report_day: v.reportDay,
+    optimization_day: v.optimizationDay,
+  };
+
+  if (isDemoMode) {
+    const { demoClients } = await import("@/lib/mock/data");
+    const alvo = demoClients.find((c) => c.id === v.clientId);
+    if (!alvo) return { ok: false, error: "Cliente não encontrado." };
+    Object.assign(alvo, campos);
+    revalidatePath("/clientes");
+    return { ok: true };
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  const { data, error } = await supabase
+    .from("clients")
+    .update(campos)
+    .eq("id", v.clientId)
+    .select("id");
+
+  if (error) return { ok: false, error: error.message };
+  if (!data || data.length === 0) {
+    return {
+      ok: false,
+      error: "Você não tem permissão para editar esta conta.",
+    };
+  }
+
+  revalidatePath("/clientes");
+  revalidatePath("/relatorios");
+  revalidatePath("/esteira");
   revalidatePath("/");
   return { ok: true };
 }
