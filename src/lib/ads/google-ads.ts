@@ -114,73 +114,167 @@ export const googleAdsProvider: AdsProvider = {
     if (!token.ok) return token;
 
     const customerId = normalizeCustomerId(request.externalAccountId);
-    const query = DAILY_METRICS_QUERY.replace("{since}", request.since).replace(
-      "{until}",
-      request.until,
-    );
 
-    try {
-      const response = await fetch(
-        `https://googleads.googleapis.com/${API_VERSION}/customers/${customerId}/googleAds:searchStream`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token.accessToken}`,
-            "developer-token": serverEnv.googleAdsDeveloperToken,
-            ...(serverEnv.googleAdsLoginCustomerId
-              ? {
-                  "login-customer-id": normalizeCustomerId(
-                    serverEnv.googleAdsLoginCustomerId,
-                  ),
-                }
-              : {}),
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ query }),
-          signal: AbortSignal.timeout(45_000),
-          cache: "no-store",
-        },
+    /* UMA REQUISIÇÃO POR MÊS, não uma pelo intervalo inteiro.
+
+       O `searchStream` recusa janelas grandes com "Request contains an
+       invalid argument" — mensagem genérica que não menciona volume.
+       Medido: 01/07 a 30/11 de 2025 falha; os mesmos meses passam
+       separados. É limite de resposta, não query inválida, e é por isso
+       que o erro só aparecia no backfill e nunca na sincronização
+       diária. */
+    const janelas = chunkDatesByMonth(request.since, request.until);
+    const rows: NormalizedMetricRow[] = [];
+
+    for (const [i, janela] of janelas.entries()) {
+      /* Meio segundo entre chamadas. O limite do Google é por segundo, e
+         doze meses disparados em sequência fechada batem nele — trocar
+         um erro de volume por um de rate limit não seria progresso. */
+      if (i > 0) await new Promise((r) => setTimeout(r, 500));
+
+      const parcial = await buscarJanela(
+        customerId,
+        token.accessToken,
+        janela.since,
+        janela.until,
       );
 
-      // searchStream devolve um ARRAY de chunks, não um objeto único.
-      const payload = (await response.json()) as SearchStreamChunk[] | SearchStreamChunk;
+      /* Falha de UMA janela aborta tudo. Devolver as outras daria um
+         histórico com buraco silencioso — o gráfico mostraria queda de
+         investimento onde houve só falha de rede. */
+      if (!parcial.ok) return parcial;
 
-      if (!response.ok) {
-        const error = Array.isArray(payload) ? payload[0]?.error : payload.error;
-        return {
-          ok: false,
-          code:
-            response.status === 401 || response.status === 403
-              ? "auth_expired"
-              : response.status === 429
-                ? "rate_limited"
-                : "platform_error",
-          message: error?.message ?? `Google Ads respondeu ${response.status}.`,
-        };
-      }
-
-      const chunks = Array.isArray(payload) ? payload : [payload];
-      const rows: NormalizedMetricRow[] = [];
-
-      for (const chunk of chunks) {
-        for (const row of chunk.results ?? []) {
-          rows.push(toNormalizedRow(row));
-        }
-      }
-
-      return { ok: true, rows };
-    } catch (error) {
-      return {
-        ok: false,
-        code: "network_error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Falha de rede ao chamar o Google Ads.",
-      };
+      rows.push(...parcial.rows);
     }
+
+    return { ok: true, rows };
   },
 };
+
+/* ------------------------------------------------------------------ */
+/* Fatiamento de datas                                                 */
+/* ------------------------------------------------------------------ */
+
+export interface DateWindow {
+  since: string;
+  until: string;
+}
+
+/**
+ * Quebra um intervalo em janelas que nunca cruzam a virada do mês.
+ *
+ * Mês civil, e não blocos fixos de 30 dias, por dois motivos: o corte
+ * fica estável entre execuções (a mesma janela sempre produz as mesmas
+ * fatias, então repetir o backfill é idempotente), e é a unidade em que
+ * se conversa sobre verba de mídia.
+ *
+ * Datas em ISO puro, sem `Date`: construir `new Date("2025-07-01")` e
+ * formatar de volta passa pelo fuso do servidor, e na Vercel (UTC) isso
+ * desloca o primeiro dia para 30/06 no horário de Brasília.
+ */
+export function chunkDatesByMonth(since: string, until: string): DateWindow[] {
+  if (since > until) return [];
+
+  const janelas: DateWindow[] = [];
+  let cursor = since;
+
+  while (cursor <= until) {
+    const [ano, mes] = cursor.split("-").map(Number);
+    const ultimoDia = new Date(Date.UTC(ano, mes, 0)).getUTCDate();
+    const fimDoMes = `${ano}-${String(mes).padStart(2, "0")}-${String(ultimoDia).padStart(2, "0")}`;
+
+    janelas.push({ since: cursor, until: fimDoMes < until ? fimDoMes : until });
+
+    // Primeiro dia do mês seguinte, virando o ano em dezembro.
+    cursor =
+      mes === 12
+        ? `${ano + 1}-01-01`
+        : `${ano}-${String(mes + 1).padStart(2, "0")}-01`;
+  }
+
+  return janelas;
+}
+
+/* ------------------------------------------------------------------ */
+
+/** Uma chamada ao `searchStream`, já normalizada. */
+async function buscarJanela(
+  customerId: string,
+  accessToken: string,
+  since: string,
+  until: string,
+): Promise<ProviderResult> {
+  const query = DAILY_METRICS_QUERY.replace("{since}", since).replace(
+    "{until}",
+    until,
+  );
+
+  try {
+    const response = await fetch(
+      `https://googleads.googleapis.com/${API_VERSION}/customers/${customerId}/googleAds:searchStream`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "developer-token": serverEnv.googleAdsDeveloperToken,
+          ...(serverEnv.googleAdsLoginCustomerId
+            ? {
+                "login-customer-id": normalizeCustomerId(
+                  serverEnv.googleAdsLoginCustomerId,
+                ),
+              }
+            : {}),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ query }),
+        signal: AbortSignal.timeout(45_000),
+        cache: "no-store",
+      },
+    );
+
+    // searchStream devolve um ARRAY de chunks, não um objeto único.
+    const payload = (await response.json()) as
+      | SearchStreamChunk[]
+      | SearchStreamChunk;
+
+    if (!response.ok) {
+      const error = Array.isArray(payload) ? payload[0]?.error : payload.error;
+      return {
+        ok: false,
+        code:
+          response.status === 401 || response.status === 403
+            ? "auth_expired"
+            : response.status === 429
+              ? "rate_limited"
+              : "platform_error",
+        /* A janela entra na mensagem: sem ela, "invalid argument" num
+           backfill de doze meses não diz qual mês recusou. */
+        message: `${error?.message ?? `Google Ads respondeu ${response.status}.`} (${since} a ${until})`,
+      };
+    }
+
+    const chunks = Array.isArray(payload) ? payload : [payload];
+    const rows: NormalizedMetricRow[] = [];
+
+    for (const chunk of chunks) {
+      for (const row of chunk.results ?? []) {
+        rows.push(toNormalizedRow(row));
+      }
+    }
+
+    return { ok: true, rows };
+  } catch (error) {
+    return {
+      ok: false,
+      code: "network_error",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Falha de rede ao chamar o Google Ads.",
+    };
+  }
+}
+
 
 /* ------------------------------------------------------------------ */
 /* OAuth                                                               */
