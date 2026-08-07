@@ -180,15 +180,38 @@ export const metaAdsProvider: AdsProvider = {
  */
 export function toNormalizedRow(
   row: MetaInsightRow,
-  conversionActionType: string,
+  conversionActionTypes: string | string[],
 ): NormalizedMetricRow {
-  const conversions = toDecimal(
-    row.actions?.find((a) => a.action_type === conversionActionType)?.value ?? 0,
+  /* Aceita string por compatibilidade: `conversion_action_type` no banco
+     continua sendo uma coluna de texto, e chamador antigo não quebra. */
+  const tipos = Array.isArray(conversionActionTypes)
+    ? conversionActionTypes
+    : [conversionActionTypes];
+
+  /* SOMA sobre o conjunto, e o conjunto só contém eventos disjuntos —
+     ver a análise em `conversion-action.ts`. Somar tipos que se contêm
+     multiplicaria a mesma pessoa. */
+  const conversions = tipos.reduce(
+    (acc, tipo) =>
+      acc +
+      toDecimal(
+        row.actions?.find((a) => a.action_type === tipo)?.value ?? 0,
+      ),
+    0,
   );
 
-  const revenue = row.action_values?.find(
-    (a) => a.action_type === conversionActionType,
-  )?.value;
+  /* Receita pelos MESMOS tipos. Conversa de WhatsApp não carrega
+     `value`, então na prática só o evento de compra contribui — mas
+     percorrer o conjunto mantém as duas contas alinhadas quando uma
+     conta de e-commerce ganhar um segundo evento com valor. */
+  const revenueTotal = tipos.reduce(
+    (acc, tipo) =>
+      acc +
+      decimalToCents(
+        row.action_values?.find((a) => a.action_type === tipo)?.value,
+      ),
+    0,
+  );
 
   return {
     metricDate: row.date_start,
@@ -198,7 +221,7 @@ export function toNormalizedRow(
     impressions: toInt(row.impressions),
     clicks: toInt(row.clicks),
     conversions,
-    revenueCents: decimalToCents(revenue),
+    revenueCents: revenueTotal,
   };
 }
 

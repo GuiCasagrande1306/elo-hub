@@ -50,7 +50,9 @@ export interface ProviderRequest {
   since: string;
   until: string;
   /** Qual `action_type` da Meta representa a conversão desta conta. */
-  conversionActionType?: string | null;
+  /** Conjunto de action_types que contam como conversão. Ver
+   *  `conversion-action.ts` — soma só eventos disjuntos. */
+  conversionActionType?: string | string[] | null;
 }
 
 export interface AdsProvider {
