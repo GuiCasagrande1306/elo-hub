@@ -11,9 +11,9 @@ import {
 import type { AdsProvider, NormalizedMetricRow, ProviderResult } from "./types";
 
 /* =====================================================================
-   Google Ads — searchStream (API v18)
+   Google Ads — searchStream (API v21)
    ---------------------------------------------------------------------
-   POST /v18/customers/{customerId}/googleAds:searchStream
+   POST /v21/customers/{customerId}/googleAds:searchStream
    Headers: Authorization, developer-token, login-customer-id
 
    Três armadilhas específicas desta API:
@@ -34,7 +34,13 @@ import type { AdsProvider, NormalizedMetricRow, ProviderResult } from "./types";
    token vencido em cache.
    ===================================================================== */
 
-const API_VERSION = "v18";
+/* A Google aposenta versão da API a cada poucos meses, e a resposta de
+   uma versão morta NÃO é um JSON de erro: é a página HTML 404 do
+   gateway. Foi assim que apareceu "[network_error] Unexpected token '<',
+   \"<!DOCTYPE\"" na tela — erro de parse disfarçando um endpoint que
+   deixou de existir. Medido em 07/08/2026: v18 e v19 dão 404; v20 e v21
+   respondem. */
+const API_VERSION = "v21";
 
 /** GAQL: uma linha por campanha por dia. */
 export const DAILY_METRICS_QUERY = `

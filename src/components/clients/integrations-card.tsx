@@ -6,6 +6,7 @@ import { Check, ExternalLink, Loader2, TriangleAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { GoogleAccountPicker } from "./google-account-picker";
 import { MetaAccountPicker } from "./meta-account-picker";
 import {
   Select,
@@ -263,26 +264,26 @@ function LinhaIntegracao({
                   : `ID da conta (${meta.exemplo})`}
               </label>
 
-              {/* Só o Meta tem listagem: a Graph API devolve as contas
-                  do token. No Google o Customer ID vem da conta de
-                  gerência e não há rota equivalente — segue digitado. */}
-              {status.platform === "meta_ads" ? (
-                <div className="mt-1">
+              {/* As duas plataformas listam agora. Cada uma com o seu
+                  picker: os identificadores têm formatos diferentes
+                  (`act_<n>` contra `123-456-7890`) e as rotas também. */}
+              <div className="mt-1">
+                {status.platform === "meta_ads" ? (
                   <MetaAccountPicker
                     clientId={clientId}
                     value={conta}
                     onChange={setConta}
                     disabled={salvando}
                   />
-                </div>
-              ) : (
-                <Input
-                  value={conta}
-                  onChange={(e) => setConta(e.target.value)}
-                  placeholder={meta.exemplo}
-                  className="mt-1 font-mono text-xs"
-                />
-              )}
+                ) : (
+                  <GoogleAccountPicker
+                    clientId={clientId}
+                    value={conta}
+                    onChange={setConta}
+                    disabled={salvando}
+                  />
+                )}
+              </div>
             </div>
             <Button size="sm" onClick={salvarConta} disabled={salvando}>
               {salvando ? (
@@ -293,11 +294,7 @@ function LinhaIntegracao({
               Vincular
             </Button>
           </div>
-          {status.platform !== "meta_ads" && (
-            <p className="mt-1.5 text-2xs text-muted-foreground">
-              Encontre em: {meta.onde}
-            </p>
-          )}
+
 
           {/* O alerta de saldo só se aplica a conta pré-paga: em
               pós-paga não há crédito a esgotar, e o `balance` da Meta
