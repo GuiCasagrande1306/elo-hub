@@ -201,3 +201,108 @@ export function toNormalizedRow(
     revenueCents: decimalToCents(revenue),
   };
 }
+
+/* =====================================================================
+   Anúncios ativos
+   ---------------------------------------------------------------------
+   Endpoint diferente do de insights: `act_<id>/ads`, não `/insights`.
+   Aqui a pergunta é "o que está no ar agora e com que cara", não "quanto
+   gastou em cada dia".
+
+   NÃO É CHAMADA DE RENDERIZAÇÃO. O resultado é gravado em
+   `ad_creatives` pelo mesmo job que sincroniza as métricas, e a tela lê
+   do banco. Buscar na Graph API a cada abertura da página repetiria o
+   erro que a listagem de grupos do WhatsApp já nos custou: chamada
+   lenta, limitada pela plataforma e no caminho crítico de quem só quer
+   ver o painel.
+
+   `thumbnail_url` vem SEMPRE, inclusive em vídeo — é o frame de capa.
+   `image_url` só existe em criativo de imagem e é maior. Preferimos o
+   segundo quando há, com o primeiro como base: uma miniatura de 64px
+   esticada num card de 160 fica borrada.
+   ===================================================================== */
+
+const AD_FIELDS = [
+  "name",
+  "effective_status",
+  "creative{thumbnail_url,image_url,body,title}",
+].join(",");
+
+export interface MetaActiveAd {
+  externalAdId: string;
+  name: string;
+  /** `image_url` quando existe; `thumbnail_url` como base. */
+  imageUrl: string | null;
+  /** Copy principal do anúncio. */
+  body: string | null;
+  headline: string | null;
+}
+
+interface MetaAdNode {
+  id: string;
+  name?: string;
+  effective_status?: string;
+  creative?: {
+    thumbnail_url?: string;
+    image_url?: string;
+    body?: string;
+    title?: string;
+  };
+}
+
+/**
+ * Anúncios no ar de uma conta.
+ *
+ * O filtro de status vai na API e não em memória: uma conta antiga tem
+ * centenas de anúncios pausados, e paginar todos para descartar 95%
+ * gasta cota da Graph API sem necessidade.
+ *
+ * Devolve lista vazia — nunca lança — quando a conta não responde. A
+ * galeria de criativos é complemento do painel; falhar aqui não pode
+ * derrubar a sincronização de métricas, que é o dado que importa.
+ */
+export async function fetchActiveAds(
+  accessToken: string,
+  externalAccountId: string,
+): Promise<MetaActiveAd[]> {
+  const accountId = externalAccountId.startsWith("act_")
+    ? externalAccountId
+    : `act_${externalAccountId}`;
+
+  const url = new URL(
+    `https://graph.facebook.com/${serverEnv.metaApiVersion}/${accountId}/ads`,
+  );
+  url.searchParams.set("fields", AD_FIELDS);
+  url.searchParams.set(
+    "filtering",
+    JSON.stringify([
+      { field: "effective_status", operator: "IN", value: ["ACTIVE"] },
+    ]),
+  );
+  url.searchParams.set("limit", "100");
+
+  try {
+    const response = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+      signal: AbortSignal.timeout(20_000),
+    });
+
+    if (!response.ok) return [];
+
+    const payload = (await response.json()) as { data?: MetaAdNode[] };
+
+    return (payload.data ?? [])
+      .filter((ad) => ad.id)
+      .map((ad) => ({
+        externalAdId: ad.id,
+        name: ad.name?.trim() || "(sem nome)",
+        imageUrl:
+          ad.creative?.image_url ?? ad.creative?.thumbnail_url ?? null,
+        body: ad.creative?.body?.trim() || null,
+        headline: ad.creative?.title?.trim() || null,
+      }));
+  } catch {
+    return [];
+  }
+}

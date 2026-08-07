@@ -102,6 +102,11 @@ const updateSchema = z.object({
     .enum(["rosa", "laranja", "ambar", "verde", "azul", "roxo", "cinza"])
     .nullable()
     .optional(),
+  /* Vincular a conta depois da criação. Antes o cliente só entrava no
+     momento em que a tarefa nascia, e herdado do filtro ativo — quem
+     criava sem filtro ficava com a tarefa órfã e sem conserto na
+     lista. */
+  clientId: z.string().min(1).nullable().optional(),
 });
 
 export async function updateTask(input: {
@@ -114,11 +119,12 @@ export async function updateTask(input: {
   /** 1–10. `priority` é derivada disto por trigger no banco. */
   criticality?: number;
   colorTag?: string | null;
+  clientId?: string | null;
 }): Promise<ActionResult> {
   const parsed = updateSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Dados inválidos." };
 
-  const { taskId, dueDate, colorTag, ...rest } = parsed.data;
+  const { taskId, dueDate, colorTag, clientId, ...rest } = parsed.data;
 
   if (isDemoMode) {
     const { demoTasks } = await import("@/lib/mock/data");
@@ -135,6 +141,14 @@ export async function updateTask(input: {
       if (dueDate !== undefined) task.due_date = dueDate;
       if (rest.criticality !== undefined) task.criticality = rest.criticality;
       if (colorTag !== undefined) task.color_tag = colorTag;
+      if (clientId !== undefined) {
+        const { demoClients } = await import("@/lib/mock/data");
+        const c = demoClients.find((x) => x.id === clientId) ?? null;
+        task.client_id = clientId;
+        task.client = c
+          ? { id: c.id, name: c.name, brand_primary: c.brand_primary }
+          : null;
+      }
       task.updated_at = new Date().toISOString();
     }
     revalidatePath("/tarefas");
@@ -148,6 +162,7 @@ export async function updateTask(input: {
       ...rest,
       ...(dueDate !== undefined ? { due_date: dueDate } : {}),
       ...(colorTag !== undefined ? { color_tag: colorTag } : {}),
+      ...(clientId !== undefined ? { client_id: clientId } : {}),
     })
     .eq("id", taskId);
 
@@ -269,7 +284,10 @@ export async function createTask(input: {
   clientId: string | null;
   status?: TaskStatus;
   priority?: TaskPriority;
-}): Promise<ActionResult> {
+  /* Devolve o id da tarefa criada: a lista abre o popup de edição em
+     seguida, e sem o id ela teria que adivinhar qual das linhas é a
+     nova — depois de um revalidate que pode reordenar tudo. */
+}): Promise<{ ok: true; taskId: string } | { ok: false; error: string }> {
   const parsed = createSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Dados inválidos." };
 
@@ -312,7 +330,7 @@ export async function createTask(input: {
     });
 
     revalidatePath("/tarefas");
-    return { ok: true };
+    return { ok: true, taskId: demoTasks[0].id };
   }
 
   const supabase = await createSupabaseServerClient();
@@ -322,7 +340,7 @@ export async function createTask(input: {
 
   if (!user) return { ok: false, error: "Sessão expirada." };
 
-  const { error } = await supabase.from("tasks").insert({
+  const { data, error } = await supabase.from("tasks").insert({
     title,
     client_id: clientId,
     status,
@@ -333,12 +351,14 @@ export async function createTask(input: {
     // pode ser forjado para atribuir a tarefa a outra pessoa.
     created_by: user.id,
     position: Date.now(),
-  });
+  })
+    .select("id")
+    .single();
 
   if (error) return { ok: false, error: error.message };
 
   revalidatePath("/tarefas");
-  return { ok: true };
+  return { ok: true, taskId: (data as { id: string }).id };
 }
 
 /* ------------------------------------------------------------------ */

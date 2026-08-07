@@ -2,7 +2,7 @@ import "server-only";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { googleAdsProvider } from "./google-ads";
-import { metaAdsProvider } from "./meta-ads";
+import { fetchActiveAds, metaAdsProvider } from "./meta-ads";
 import { currentMonthRange, lookbackRange } from "./normalize";
 import { conversionActionFor } from "./conversion-action";
 import type {
@@ -213,6 +213,13 @@ async function syncIntegration(
     const rows = result.rows.filter((r) => r.metricDate);
     const upserted = await upsertMetrics(admin, integration, rows);
 
+    /* Criativos DEPOIS das métricas, e sem poder derrubá-las.
+       `syncCreatives` engole o próprio erro: a galeria de anúncios é
+       complemento do painel, e uma conta que recuse o endpoint `/ads`
+       não pode fazer a sincronização de gasto e conversão contar como
+       falha. É por isso que não está dentro do mesmo `try` de negócio. */
+    await syncCreatives(admin, integration, rows);
+
     await admin
       .from("client_integrations")
       .update({ last_synced_at: new Date().toISOString(), sync_error: null })
@@ -324,4 +331,72 @@ function emptyReport(
     totals: { spendCents: 0, conversions: 0 },
     results: [],
   };
+}
+
+/* ------------------------------------------------------------------ */
+
+/**
+ * Espelha os anúncios no ar em `ad_creatives`.
+ *
+ * A tabela existia e era LIDA pela galeria desde o começo, mas nada
+ * nunca escreveu nela — daí o "Nenhum criativo ativo sincronizado"
+ * permanente. Mesmo padrão de campo legível e nunca gravável que já
+ * apareceu em `conversion_action_type` e `logo_url`.
+ *
+ * O gasto por anúncio NÃO vem daqui. O provider de insights agrega por
+ * CAMPANHA, e inventar um rateio (dividir o gasto da campanha entre seus
+ * anúncios) produziria número plausível e falso — exatamente o defeito
+ * que este projeto vem caçando. Os criativos entram com métrica zerada
+ * até existir uma chamada `level=ad`, e a galeria mostra imagem e copy,
+ * que é informação verdadeira.
+ *
+ * `is_active` é reescrito para todos antes do upsert: anúncio que saiu
+ * do ar some da lista da API, e sem esse passo ficaria marcado como
+ * ativo para sempre.
+ */
+async function syncCreatives(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  integration: IntegrationRow,
+  rows: NormalizedMetricRow[],
+): Promise<void> {
+  if (integration.platform !== "meta_ads") return;
+
+  const token = integration.integration_secrets?.access_token;
+  if (!token || !integration.external_account_id) return;
+
+  try {
+    const ads = await fetchActiveAds(token, integration.external_account_id);
+    if (ads.length === 0) return;
+
+    await admin
+      .from("ad_creatives")
+      .update({ is_active: false })
+      .eq("client_id", integration.client_id)
+      .eq("platform", "meta_ads");
+
+    const periodo = rows.length
+      ? {
+          start: rows[0].metricDate,
+          end: rows[rows.length - 1].metricDate,
+        }
+      : { start: null, end: null };
+
+    await admin.from("ad_creatives").upsert(
+      ads.map((ad) => ({
+        client_id: integration.client_id,
+        platform: "meta_ads" as const,
+        external_ad_id: ad.externalAdId,
+        ad_name: ad.name,
+        thumbnail_url: ad.imageUrl,
+        primary_text: ad.body,
+        headline: ad.headline,
+        is_active: true,
+        period_start: periodo.start,
+        period_end: periodo.end,
+      })),
+      { onConflict: "client_id,platform,external_ad_id" },
+    );
+  } catch {
+    // Silencioso de propósito — ver a nota no chamador.
+  }
 }

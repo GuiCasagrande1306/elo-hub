@@ -60,10 +60,11 @@ interface TasksWorkspaceProps {
   corteConcluidas: string;
 }
 
-/* `clients` e `corteConcluidas` seguem aceitos pela página mas não são
-   mais lidos aqui: o filtro de cliente saiu da barra, e a janela de 7
-   dias deixou de existir quando o agrupamento virou estrito. */
-export function TasksWorkspace({ tasks }: TasksWorkspaceProps) {
+/* `corteConcluidas` segue aceito pela página mas não é mais lido: a
+   janela de 7 dias deixou de existir quando o agrupamento virou
+   estrito. `clients` voltou a ser usado — não pelo filtro da barra, que
+   saiu, mas pelo seletor de cliente dentro de cada linha da lista. */
+export function TasksWorkspace({ tasks, clients }: TasksWorkspaceProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [, startTransition] = useTransition();
@@ -420,6 +421,7 @@ export function TasksWorkspace({ tasks }: TasksWorkspaceProps) {
         <div className="flex flex-col gap-4">
           <TaskList
             tasks={emAndamento}
+            clients={clients}
             onOpenTask={setOpenTask}
             title="Demandas da semana"
             tone="aberto"
@@ -427,6 +429,7 @@ export function TasksWorkspace({ tasks }: TasksWorkspaceProps) {
 
           <TaskList
             tasks={concluidasDoDia}
+            clients={clients}
             onOpenTask={setOpenTask}
             title="Concluídos"
             tone="concluido"
@@ -457,6 +460,7 @@ export function TasksWorkspace({ tasks }: TasksWorkspaceProps) {
           ) : (
             <TaskList
               tasks={concluidas}
+              clients={clients}
               onOpenTask={setOpenTask}
               title="Concluídos"
               tone="concluido"

@@ -126,26 +126,40 @@ export function CriticalityCell({
   );
 }
 
+/**
+ * Seletor de cor da tarefa.
+ *
+ * CONTROLADO PELA LINHA, não dono do próprio estado. A cor deixou de
+ * pintar só a bolinha e passou a lavar a linha inteira — então quem
+ * precisa saber a cor atual é a linha, e um estado local aqui dentro
+ * criaria duas verdades: a bolinha trocaria na hora e o fundo só depois
+ * do revalidate do servidor.
+ *
+ * O otimismo e a reversão em caso de erro vivem no mesmo lugar do
+ * estado, no `TaskRow`.
+ */
 export function ColorTagCell({
   taskId,
   value,
+  onChange,
 }: {
   taskId: string;
   value: TaskColorTag | null;
+  onChange: (nova: TaskColorTag | null) => void;
 }) {
-  const [cor, setCor] = useState<TaskColorTag | null>(value);
+  const cor = value;
   const [aberto, setAberto] = useState(false);
   const [, startTransition] = useTransition();
 
   function escolher(nova: TaskColorTag | null) {
     const anterior = cor;
-    setCor(nova);
+    onChange(nova);
     setAberto(false);
 
     startTransition(async () => {
       const r = await updateTask({ taskId, colorTag: nova });
       if (!r.ok) {
-        setCor(anterior);
+        onChange(anterior);
         toast.error(r.error);
       }
     });
@@ -271,6 +285,117 @@ export function StatusCell({
             {STATUS_LABELS[s]}
           </button>
         ))}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+
+/**
+ * Cliente da tarefa, editável na própria linha.
+ *
+ * Antes o vínculo só existia no momento da criação, e só através do
+ * filtro que estivesse ativo — quem criava a tarefa sem filtro ficava
+ * com ela órfã e sem caminho de conserto na lista. Trocar o cliente
+ * exigia abrir a gaveta.
+ *
+ * BUSCA POR NOME, não `<select>`: a carteira passou de quarenta contas,
+ * e uma lista rolável desse tamanho é pior que um campo de digitar.
+ */
+export function ClientCell({
+  taskId,
+  value,
+  clients,
+  onChange,
+}: {
+  taskId: string;
+  value: { id: string; name: string } | null;
+  clients: { id: string; name: string }[];
+  onChange: (novo: { id: string; name: string } | null) => void;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const [busca, setBusca] = useState("");
+  const [, startTransition] = useTransition();
+
+  function escolher(novo: { id: string; name: string } | null) {
+    const anterior = value;
+    onChange(novo);
+    setAberto(false);
+    setBusca("");
+
+    startTransition(async () => {
+      const r = await updateTask({ taskId, clientId: novo?.id ?? null });
+      if (!r.ok) {
+        onChange(anterior);
+        toast.error(r.error);
+      }
+    });
+  }
+
+  const termo = busca.trim().toLowerCase();
+  const filtrados = termo
+    ? clients.filter((c) => c.name.toLowerCase().includes(termo))
+    : clients;
+
+  return (
+    <Popover open={aberto} onOpenChange={setAberto}>
+      <PopoverTrigger
+        render={
+          <button
+            type="button"
+            aria-label={value ? `Cliente: ${value.name}` : "Definir cliente"}
+            className="inline-block max-w-full truncate rounded-md px-1.5 py-0.5 text-left text-2xs transition-colors hover:bg-accent"
+          />
+        }
+      >
+        {value ? (
+          <span className="font-medium text-signal">{value.name}</span>
+        ) : (
+          <span className="text-muted-foreground/60">—</span>
+        )}
+      </PopoverTrigger>
+
+      <PopoverContent className="w-60 p-0" align="start">
+        <input
+          autoFocus
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          placeholder="Buscar cliente…"
+          className="w-full border-b border-hairline bg-transparent px-3 py-2 text-xs outline-none placeholder:text-muted-foreground/50"
+        />
+
+        <div className="max-h-56 overflow-y-auto p-1">
+          {/* Desvincular é escolha legítima: tarefa interna da agência
+              não pertence a cliente nenhum. */}
+          <button
+            type="button"
+            onClick={() => escolher(null)}
+            className="w-full rounded px-2 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-accent"
+          >
+            Sem cliente
+          </button>
+
+          {filtrados.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => escolher({ id: c.id, name: c.name })}
+              className={cn(
+                "w-full truncate rounded px-2 py-1.5 text-left text-xs transition-colors hover:bg-accent",
+                c.id === value?.id && "bg-accent font-medium",
+              )}
+            >
+              {c.name}
+            </button>
+          ))}
+
+          {filtrados.length === 0 && (
+            <p className="px-2 py-3 text-center text-2xs text-muted-foreground">
+              Nenhum cliente com esse nome.
+            </p>
+          )}
+        </div>
       </PopoverContent>
     </Popover>
   );

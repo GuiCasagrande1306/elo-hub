@@ -82,6 +82,30 @@ export const COLOR_TAG_CLASSES: Record<string, string> = {
   cinza: "bg-slate-400",
 };
 
+/**
+ * A cor aplicada à LINHA inteira, não só à bolinha.
+ *
+ * Lavagem de 8% mais uma barra sólida à esquerda, e não o tom cheio: a
+ * linha carrega texto, avatares e badges de status que já têm cor
+ * própria. Fundo saturado brigaria com todos eles e destruiria o
+ * contraste do título — que é o que se lê primeiro.
+ *
+ * A barra é quem dá a leitura à distância; a lavagem só agrupa.
+ * Funciona nos dois temas porque a opacidade compõe sobre o fundo
+ * vigente, em vez de fixar um claro.
+ */
+export const COLOR_TAG_ROW: Record<string, string> = {
+  rosa: "bg-pink-500/[.08] shadow-[inset_3px_0_0_0_var(--color-pink-500)]",
+  laranja:
+    "bg-orange-500/[.08] shadow-[inset_3px_0_0_0_var(--color-orange-500)]",
+  ambar: "bg-amber-500/[.08] shadow-[inset_3px_0_0_0_var(--color-amber-500)]",
+  verde:
+    "bg-emerald-500/[.08] shadow-[inset_3px_0_0_0_var(--color-emerald-500)]",
+  azul: "bg-sky-500/[.08] shadow-[inset_3px_0_0_0_var(--color-sky-500)]",
+  roxo: "bg-violet-500/[.08] shadow-[inset_3px_0_0_0_var(--color-violet-500)]",
+  cinza: "bg-slate-400/[.10] shadow-[inset_3px_0_0_0_var(--color-slate-400)]",
+};
+
 export const COLOR_TAG_LABELS: Record<string, string> = {
   rosa: "Rosa",
   laranja: "Laranja",

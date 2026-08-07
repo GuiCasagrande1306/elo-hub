@@ -4,9 +4,15 @@ import { useState, useTransition } from "react";
 import { AlertTriangle, ChevronDown, Circle, CheckCircle2, Plus } from "lucide-react";
 import { toast } from "sonner";
 
-import { criticalityBadge } from "./task-meta";
+import { COLOR_TAG_ROW, criticalityBadge } from "./task-meta";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { ColorTagCell, CriticalityCell, StatusCell } from "./task-quick-edit";
+import {
+  ClientCell,
+  ColorTagCell,
+  CriticalityCell,
+  StatusCell,
+} from "./task-quick-edit";
 import { TimeCell } from "./task-timer";
 import { createTask, updateTask } from "@/app/(app)/tarefas/actions";
 import { formatDueDate, initials } from "@/lib/format";
@@ -38,6 +44,7 @@ function isAlerta(title: string): boolean {
 
 export function TaskList({
   tasks,
+  clients,
   onOpenTask,
   title,
   tone,
@@ -47,6 +54,8 @@ export function TaskList({
   defaultClientId = null,
 }: {
   tasks: TaskWithRelations[];
+  /** Carteira para o seletor de cliente da linha e da criação. */
+  clients: { id: string; name: string }[];
   onOpenTask: (id: string) => void;
   title: string;
   tone: "aberto" | "concluido";
@@ -132,6 +141,7 @@ export function TaskList({
               <TaskRow
                 key={task.id}
                 task={task}
+                clients={clients}
                 concluido={concluido}
                 onOpenTask={onOpenTask}
               />
@@ -140,7 +150,13 @@ export function TaskList({
 
           {/* Linha fantasma: criar sem sair da tabela. Só nos grupos
               abertos — criar uma tarefa já concluída não faz sentido. */}
-          {!concluido && <GhostRow defaultClientId={defaultClientId} />}
+          {!concluido && (
+            <GhostRow
+              defaultClientId={defaultClientId}
+              clients={clients}
+              onCreated={onOpenTask}
+            />
+          )}
 
           {ordenadas.length === 0 && concluido && (
             <p className="px-4 py-6 text-center text-xs text-muted-foreground">
@@ -156,15 +172,26 @@ export function TaskList({
 /* ------------------------------------------------------------------ */
 
 function TaskRow({
+  clients,
   task,
   concluido,
   onOpenTask,
 }: {
   task: TaskWithRelations;
+  clients: { id: string; name: string }[];
   concluido: boolean;
   onOpenTask: (id: string) => void;
 }) {
   const [feito, setFeito] = useState(concluido);
+  /* Cor e cliente vivem AQUI, não dentro das células. A cor pinta a
+     linha toda e o cliente aparece na coluna — nos dois casos quem
+     precisa saber o valor é a linha, e um estado por célula faria o
+     seletor mudar na hora enquanto o resto só acompanharia depois do
+     revalidate. */
+  const [cor, setCor] = useState(task.color_tag);
+  const [cliente, setCliente] = useState<{ id: string; name: string } | null>(
+    task.client ? { id: task.client.id, name: task.client.name } : null,
+  );
   const [, startTransition] = useTransition();
 
   const due = formatDueDate(task.due_date);
@@ -195,7 +222,13 @@ function TaskRow({
              linha ao lado do checkbox; responsável, status, criticidade
              e prazo caem para a segunda. Antes era `grid-cols-1`, que
              empilhava tudo numa coluna e espremia o título até sumir. */
-          "flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2.5 transition-colors hover:bg-accent/40 md:grid md:gap-y-2 md:px-4 md:py-2",
+          "flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2.5 transition-colors md:grid md:gap-y-2 md:px-4 md:py-2",
+          /* Sem cor, o hover é o cinza padrão. Com cor, a lavagem já
+             ocupa o fundo e um hover por cima dela viraria lama —
+             então o realce passa a ser o próprio tom, mais forte. */
+          cor
+            ? COLOR_TAG_ROW[cor]
+            : "hover:bg-accent/40",
           GRID,
         )}
       >
@@ -237,13 +270,12 @@ function TaskRow({
         {/* Cliente — fora do mobile: o nome já está no card do
             Kanban e aqui roubaria a linha do título. */}
         <span className="hidden min-w-0 md:block">
-          {task.client ? (
-            <span className="inline-block max-w-full truncate rounded-md bg-signal-muted/60 px-1.5 py-0.5 text-2xs font-medium text-signal">
-              {task.client.name}
-            </span>
-          ) : (
-            <span className="text-2xs text-muted-foreground/60">—</span>
-          )}
+          <ClientCell
+            taskId={task.id}
+            value={cliente}
+            clients={clients}
+            onChange={setCliente}
+          />
         </span>
 
         {/* Avatares sobrepostos. Três e um contador: quatro cabeças
@@ -349,7 +381,7 @@ function TaskRow({
           <CriticalityCell taskId={task.id} value={task.criticality} />
         </span>
         <span className="hidden md:contents">
-          <ColorTagCell taskId={task.id} value={task.color_tag} />
+          <ColorTagCell taskId={task.id} value={cor} onChange={setCor} />
         </span>
       </div>
     </li>
@@ -387,8 +419,22 @@ function ConcluidoEm({ iso }: { iso: string }) {
  * planejamento entram dez tarefas seguidas, e dez modais matam o fluxo.
  * Enter cria e mantém o campo aberto para a próxima; Escape desiste.
  */
-function GhostRow({ defaultClientId }: { defaultClientId: string | null }) {
+function GhostRow({
+  defaultClientId,
+  clients,
+  onCreated,
+}: {
+  defaultClientId: string | null;
+  clients: { id: string; name: string }[];
+  onCreated: (taskId: string) => void;
+}) {
   const [titulo, setTitulo] = useState("");
+  /* Cliente escolhido aqui vale para a próxima tarefa e para as
+     seguintes: numa reunião entram cinco tarefas do mesmo cliente
+     seguidas, e reescolher a cada uma seria o oposto de agilizar. */
+  const [cliente, setCliente] = useState<{ id: string; name: string } | null>(
+    () => clients.find((c) => c.id === defaultClientId) ?? null,
+  );
   const [salvando, startTransition] = useTransition();
 
   function criar() {
@@ -396,13 +442,21 @@ function GhostRow({ defaultClientId }: { defaultClientId: string | null }) {
     if (limpo.length < 2) return;
 
     startTransition(async () => {
-      const r = await createTask({ title: limpo, clientId: defaultClientId });
-      if (r.ok) {
-        // Limpa e SEGUE aberto: quem digitou uma vai digitar a próxima.
-        setTitulo("");
-      } else {
+      const r = await createTask({
+        title: limpo,
+        clientId: cliente?.id ?? defaultClientId,
+      });
+
+      if (!r.ok) {
         toast.error(r.error);
+        return;
       }
+
+      setTitulo("");
+      /* Abre a gaveta da tarefa recém-criada. O título por si só quase
+         nunca é a tarefa inteira — falta prazo, responsável, descrição —
+         e antes era preciso criar, procurar a linha e clicar nela. */
+      onCreated(r.taskId);
     });
   }
 
@@ -416,11 +470,102 @@ function GhostRow({ defaultClientId }: { defaultClientId: string | null }) {
           if (e.key === "Enter") criar();
           if (e.key === "Escape") setTitulo("");
         }}
-        onBlur={criar}
+        /* Sem `onBlur={criar}`: com a gaveta abrindo em seguida, o blur
+           disparado ao focar o modal criaria uma segunda tarefa. Enter é
+           o gesto, e continua sendo. */
         disabled={salvando}
-        placeholder="Adicionar tarefa"
-        className="w-full bg-transparent py-1 text-sm outline-none placeholder:text-muted-foreground/50"
+        placeholder="Adicionar tarefa e pressionar Enter"
+        className="min-w-0 flex-1 bg-transparent py-1 text-sm outline-none placeholder:text-muted-foreground/50"
+      />
+
+      <GhostClientPicker
+        clients={clients}
+        value={cliente}
+        onChange={setCliente}
       />
     </div>
+  );
+}
+
+/**
+ * Cliente da linha fantasma.
+ *
+ * Mesma busca por nome da célula da tabela, em versão compacta. Não
+ * reaproveita `ClientCell` porque aquela salva no clique — aqui a
+ * tarefa ainda não existe, e o valor só viaja no Enter.
+ */
+function GhostClientPicker({
+  clients,
+  value,
+  onChange,
+}: {
+  clients: { id: string; name: string }[];
+  value: { id: string; name: string } | null;
+  onChange: (novo: { id: string; name: string } | null) => void;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const [busca, setBusca] = useState("");
+
+  const termo = busca.trim().toLowerCase();
+  const filtrados = termo
+    ? clients.filter((c) => c.name.toLowerCase().includes(termo))
+    : clients;
+
+  return (
+    <Popover open={aberto} onOpenChange={setAberto}>
+      <PopoverTrigger
+        render={
+          <button
+            type="button"
+            className="shrink-0 rounded-md px-2 py-1 text-2xs transition-colors hover:bg-accent"
+          />
+        }
+      >
+        {value ? (
+          <span className="font-medium text-signal">{value.name}</span>
+        ) : (
+          <span className="text-muted-foreground/60">+ cliente</span>
+        )}
+      </PopoverTrigger>
+
+      <PopoverContent className="w-60 p-0" align="end">
+        <input
+          autoFocus
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          placeholder="Buscar cliente…"
+          className="w-full border-b border-hairline bg-transparent px-3 py-2 text-xs outline-none placeholder:text-muted-foreground/50"
+        />
+        <div className="max-h-56 overflow-y-auto p-1">
+          <button
+            type="button"
+            onClick={() => {
+              onChange(null);
+              setAberto(false);
+            }}
+            className="w-full rounded px-2 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-accent"
+          >
+            Sem cliente
+          </button>
+          {filtrados.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => {
+                onChange(c);
+                setAberto(false);
+                setBusca("");
+              }}
+              className={cn(
+                "w-full truncate rounded px-2 py-1.5 text-left text-xs transition-colors hover:bg-accent",
+                c.id === value?.id && "bg-accent font-medium",
+              )}
+            >
+              {c.name}
+            </button>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
