@@ -76,9 +76,13 @@ export function TasksWorkspace({ tasks, clients, team }: TasksWorkspaceProps) {
   const searchParams = useSearchParams();
   const [, startTransition] = useTransition();
 
+  /* Abre em LISTA, não no quadro. O Kanban responde "em que etapa está
+     cada coisa"; a lista responde "o que é para hoje e de quem é" — que
+     é a pergunta de quem acabou de abrir a página. O quadro continua a
+     um clique. */
   const [view, setView] = useState<
     "board" | "list" | "calendar" | "done"
-  >("board");
+  >("list");
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>(ALL);
   const [assigneeFilter, setAssigneeFilter] = useState<string>(ALL);
