@@ -12,11 +12,11 @@ import { serverEnv } from "@/lib/env";
  * motivo: a resposta revela a carteira inteira da MCC, que é mais do que
  * o vínculo de um cliente só.
  *
- * DUAS CHAMADAS, não uma. `listAccessibleCustomers` devolve só os
- * RESOURCE NAMES (`customers/4618704113`) — nenhum nome, nenhuma moeda.
- * Uma lista de dez números crus não é um seletor: seria pior que o campo
- * de texto que ela substitui. A segunda chamada busca o descritivo de
- * cada conta com um `searchStream` na MCC.
+ * A LISTA VEM DE `customer_client`, não de `listAccessibleCustomers`.
+ * O segundo parecia o endpoint óbvio e é uma armadilha: devolve o que o
+ * usuário do OAuth alcança DIRETAMENTE, não a hierarquia da conta de
+ * gerência. Medido nesta MCC: 3 contas contra as 23 reais — e a do
+ * cliente que estávamos tentando vincular ficava de fora.
  */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -102,36 +102,13 @@ export async function GET(request: NextRequest) {
   };
 
   try {
-    /* 1) Quais contas este token alcança. */
-    const acessivel = await fetch(
-      `https://googleads.googleapis.com/${API_VERSION}/customers:listAccessibleCustomers`,
-      { headers, cache: "no-store", signal: AbortSignal.timeout(20_000) },
-    );
-
-    if (!acessivel.ok) {
-      /* O corpo pode ser HTML quando a versão da API morreu. Ler como
-         texto e cortar evita despejar uma página inteira na tela. */
-      const corpo = (await acessivel.text()).slice(0, 200);
-      return NextResponse.json({
-        ok: false,
-        error: `Google recusou (${acessivel.status}): ${corpo}`,
-      });
-    }
-
-    const { resourceNames = [] } = (await acessivel.json()) as {
-      resourceNames?: string[];
-    };
-
-    const ids = resourceNames.map((r) => r.split("/").pop() ?? "").filter(Boolean);
-
-    if (ids.length === 0) {
-      return NextResponse.json({ ok: true, accounts: [] });
-    }
-
-    /* 2) O descritivo de cada uma, numa consulta só na MCC. `IN` com a
-       lista inteira em vez de um request por conta: dez chamadas
-       sequenciais estourariam o tempo da função. */
+    /* UMA chamada, em `customer_client` a partir da MCC.
+       `listAccessibleCustomers` era o endpoint errado: ele devolve as
+       contas que o USUÁRIO do OAuth alcança diretamente, não a
+       hierarquia da conta de gerência. Nesta MCC retornava 3 de 23 — e
+       o Atacado de Pratas, que estava lá, ficava de fora. */
     const mcc = serverEnv.googleAdsLoginCustomerId.replace(/\D/g, "");
+
     const query = `
       SELECT
         customer_client.id,
@@ -140,10 +117,10 @@ export async function GET(request: NextRequest) {
         customer_client.test_account,
         customer_client.manager
       FROM customer_client
-      WHERE customer_client.id IN (${ids.join(",")})
+      WHERE customer_client.status = 'ENABLED'
     `;
 
-    const detalhes = await fetch(
+    const resposta = await fetch(
       `https://googleads.googleapis.com/${API_VERSION}/customers/${mcc}/googleAds:searchStream`,
       {
         method: "POST",
@@ -154,24 +131,19 @@ export async function GET(request: NextRequest) {
       },
     );
 
-    /* Se o descritivo falhar, ainda devolvemos os ids. Um seletor com
-       números crus é ruim; um seletor vazio é inútil. */
-    if (!detalhes.ok) {
+    if (!resposta.ok) {
+      /* O corpo vai junto, cortado. Resposta de versão morta da API é
+         uma página HTML inteira, e sem o motivo a tela só dizia "não
+         foi possível" — foi o que travou o diagnóstico por duas voltas. */
+      const motivo = (await resposta.text()).slice(0, 300);
       return NextResponse.json({
-        ok: true,
-        accounts: ids.map<ContaGoogle>((id) => ({
-          id: formatarId(id),
-          name: formatarId(id),
-          currency: null,
-          isTest: false,
-          isManager: false,
-        })),
-        warning: "Não foi possível ler os nomes das contas.",
+        ok: false,
+        error: `Google recusou (${resposta.status}): ${motivo}`,
       });
     }
 
     // searchStream devolve um ARRAY de chunks, não um objeto único.
-    const chunks = (await detalhes.json()) as {
+    const chunks = (await resposta.json()) as {
       results?: {
         customerClient?: {
           id?: string;
@@ -201,7 +173,8 @@ export async function GET(request: NextRequest) {
     }
 
     /* MCC e conta de teste ficam no fim: são alcançáveis mas quase nunca
-       são o que se quer vincular a um cliente. */
+       são o que se quer vincular. Vincular a MCC por engano devolve o
+       agregado da carteira inteira no relatório de um cliente só. */
     contas.sort((a, b) => {
       const pesoA = (a.isManager ? 2 : 0) + (a.isTest ? 1 : 0);
       const pesoB = (b.isManager ? 2 : 0) + (b.isTest ? 1 : 0);

@@ -78,6 +78,10 @@ export function GoogleAccountPicker({
         setContas(d.accounts ?? []);
         if ((d.accounts ?? []).length === 0) {
           setErro("Nenhuma conta alcançável por este login.");
+        } else if (d.warning) {
+          /* Lista veio, nomes não. Mostrar o motivo em vez de deixar a
+             pessoa olhando uma coluna de números sem explicação. */
+          setErro(d.warning);
         }
       } else {
         setErro(d.error ?? "Não foi possível listar as contas.");
