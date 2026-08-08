@@ -404,7 +404,23 @@ async function buscarCriativos(
  * origem fica em cada linha (`plataforma`), então nada se confunde.
  */
 function consolidar(campanhas: NoDaArvore[]): EstruturaDaConta {
-  const lista = [...campanhas].sort((a, b) => b.spendCents - a.spendCents);
+  /* Fora quem não entregou NADA no período. O card promete "o que
+     entregou", e conta antiga acumula campanha arquivada: no Atacado de
+     Pratas eram 4 campanhas do Google a R$ 0,00 empurrando para baixo a
+     única que gastou R$ 1.486. Sem gasto, sem impressão e sem resultado
+     não há o que ler — é ruído, não informação. */
+  const entregou = (n: NoDaArvore) =>
+    n.spendCents > 0 || n.impressions > 0 || n.results > 0;
+
+  const lista = campanhas
+    .filter(entregou)
+    .map((c) => ({
+      ...c,
+      filhos: c.filhos
+        .filter(entregou)
+        .map((s) => ({ ...s, filhos: s.filhos.filter(entregou) })),
+    }))
+    .sort((a, b) => b.spendCents - a.spendCents);
   return {
     campanhas: lista,
     totalSpendCents: lista.reduce((a, c) => a + c.spendCents, 0),

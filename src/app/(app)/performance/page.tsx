@@ -204,8 +204,6 @@ export default async function PerformancePage({
                       clientId={client.id}
                       clientName={client.name}
                       clientSlug={client.slug}
-                      since={start}
-                      until={end}
                       resultLabel={
                         defaultGoalMetricFor(client.segment).label
                       }

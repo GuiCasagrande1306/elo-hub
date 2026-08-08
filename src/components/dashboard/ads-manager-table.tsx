@@ -88,12 +88,12 @@ export function AdsManagerTable({
   costLabel: string;
 }) {
   const [expanded, setExpanded] = useState<ExpandedState>({});
+  /* Com o diálogo central há largura para mais colunas do que a gaveta
+     comportava. Ficam de fora só CPM e CPC, que são diagnóstico de
+     leilão — quem precisa deles liga no seletor. */
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({
-    /* Diagnóstico entra desligado — ver a nota no topo. */
     cpm: false,
-    ctr: false,
     cpc: false,
-    impressions: false,
   });
 
   const columns = useMemo(
