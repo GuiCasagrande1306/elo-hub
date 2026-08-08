@@ -8,9 +8,9 @@ import { KpiCard } from "./kpi-card";
 import { TrendChart } from "./trend-chart";
 import { PlatformSplitList } from "./platform-split";
 import { AdGallery } from "./ad-gallery";
-import { ClientForm } from "@/components/clients/client-form";
 import { ClientSettingsCard } from "@/components/clients/client-settings-card";
-import { IntegrationsCard } from "@/components/clients/integrations-card";
+import { ClientSettingsDialog } from "@/components/clients/client-settings-dialog";
+import { AdStructure } from "@/components/dashboard/ad-structure";
 import { Button } from "@/components/ui/button";
 import { useRealtimeRefresh } from "@/hooks/use-realtime";
 import { cn } from "@/lib/utils";
@@ -73,6 +73,12 @@ export interface ClientDashboardProps {
   /** Meta do mês corrente e se ela ainda precisa ser preenchida. */
   goalStatus: MonthlyGoalStatus;
   goalHistory: GoalHistoryEntry[];
+  /* Rótulos do que a conta mede — "Visitas ao perfil"/"Custo por
+     visita". Vêm prontos do servidor, da mesma função que nomeia os
+     KPIs do topo: derivá-los de novo aqui abriria a chance de o card de
+     estrutura chamar de um jeito o que o hero chama de outro. */
+  resultLabel: string;
+  costLabel: string;
 }
 
 export function ClientDashboard({
@@ -88,6 +94,8 @@ export function ClientDashboard({
   goal,
   goalStatus,
   goalHistory,
+  resultLabel,
+  costLabel,
 }: ClientDashboardProps) {
   // Qualquer sync de métricas ou anúncio revalida esta página para todos
   // os usuários conectados que têm acesso a esta conta.
@@ -156,6 +164,11 @@ export function ClientDashboard({
               {/* `nativeButton={false}` é obrigatório ao renderizar como
                   <a>: sem ele, o Base UI assume semântica de <button> e
                   aplica ARIA que não corresponde ao elemento real. */}
+              <ClientSettingsDialog
+                client={client}
+                integrations={integrations}
+                segment={client.segment}
+              />
               <Button
                 size="sm"
                 className="h-9"
@@ -242,21 +255,23 @@ export function ClientDashboard({
           <AdGallery creatives={creatives} />
         </section>
 
+        <AdStructure
+          clientId={client.id}
+          since={period.start}
+          until={period.end}
+          resultLabel={resultLabel}
+          costLabel={costLabel}
+        />
+
         {/* Configuração por último: é ajuste, não leitura do período.
             Integrações antes dos ajustes porque sem conta de mídia
             vinculada não há número nenhum para relatar. */}
         <GoalHistory entries={goalHistory} />
 
+        {/* Cadastro e contas de mídia saíram daqui para um diálogo — ver
+            `ClientSettingsDialog`. Ficam no botão "Configurar" do topo.
+            O que sobrou é o que se consulta junto com o desempenho. */}
         <div id="ajustes" className="scroll-mt-20" />
-        <IntegrationsCard
-          clientId={client.id}
-          clientSlug={client.slug}
-          segment={client.segment}
-          integrations={integrations}
-        />
-        {/* Cadastro primeiro: é onde o nicho é definido, e o nicho
-            decide o rótulo da meta que aparece no card seguinte. */}
-        <ClientForm client={client} />
         <ClientSettingsCard client={client} goal={goal} />
       </div>
     </div>

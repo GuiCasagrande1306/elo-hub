@@ -63,7 +63,15 @@ import type { Client } from "@/types/database";
 
 const NENHUM = "__nenhum__";
 
-export function ClientForm({ client }: { client: Client }) {
+export function ClientForm({
+  client,
+  /* Dentro do diálogo o card viraria caixa dentro de caixa, e o título
+     repetiria o do próprio diálogo. */
+  semMoldura = false,
+}: {
+  client: Client;
+  semMoldura?: boolean;
+}) {
   const router = useRouter();
   const [aba, setAba] = useState<"perfil" | "operacional">("perfil");
   const [enviando, startTransition] = useTransition();
@@ -157,12 +165,16 @@ export function ClientForm({ client }: { client: Client }) {
             | undefined;
           if (primeiro) setAba(FIELD_TAB[primeiro]);
         })}
-        className="surface-card p-5"
+        className={semMoldura ? undefined : "surface-card p-5"}
       >
-        <h2 className="text-sm font-semibold">Cadastro da conta</h2>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          Tudo que define o cliente e o que ele recebe.
-        </p>
+        {!semMoldura && (
+          <>
+            <h2 className="text-sm font-semibold">Cadastro da conta</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Tudo que define o cliente e o que ele recebe.
+            </p>
+          </>
+        )}
 
         <Tabs
           value={aba}

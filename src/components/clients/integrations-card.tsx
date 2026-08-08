@@ -67,19 +67,26 @@ export function IntegrationsCard({
   clientSlug,
   segment,
   integrations,
+  semMoldura = false,
 }: {
   clientId: string;
   clientSlug: string;
   /** Define qual evento do pixel conta como conversão por padrão. */
   segment: ClientSegment | null;
   integrations: IntegrationStatus[];
+  /** Dentro do diálogo, sem card e sem título — ver `ClientSettingsDialog`. */
+  semMoldura?: boolean;
 }) {
   return (
-    <section className="surface-card p-5">
-      <h2 className="text-sm font-semibold">Contas de mídia</h2>
-      <p className="mt-0.5 text-xs text-muted-foreground">
-        Sem isto o relatório sai zerado — é daqui que vêm os números.
-      </p>
+    <section className={semMoldura ? undefined : "surface-card p-5"}>
+      {!semMoldura && (
+        <>
+          <h2 className="text-sm font-semibold">Contas de mídia</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Sem isto o relatório sai zerado — é daqui que vêm os números.
+          </p>
+        </>
+      )}
 
       <div className="mt-5 flex flex-col gap-4">
         {integrations.map((i) => (

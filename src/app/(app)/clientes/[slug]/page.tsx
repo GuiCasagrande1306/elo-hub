@@ -168,6 +168,8 @@ export default async function ClientPage({
       integrations={integrations}
       goalStatus={goalStatus}
       goalHistory={goalHistory}
+      resultLabel={metrica.label}
+      costLabel={metrica.costLabel ?? "Custo por resultado"}
       goal={
         metaAtual
           ? {
