@@ -8,6 +8,7 @@ import {
   AdsManagerTable,
   type NoDaArvore as No,
 } from "@/components/dashboard/ads-manager-table";
+import { AdsManagerSkeleton } from "@/components/dashboard/ads-manager-skeleton";
 
 /* =====================================================================
    Estrutura da conta — campanha › conjunto › anúncio
@@ -48,7 +49,7 @@ export function AdStructure({
     setErro(null);
     try {
       const r = await fetch(
-        `/api/meta/structure?clientId=${clientId}&since=${since}&until=${until}`,
+        `/api/ads/structure?clientId=${clientId}&since=${since}&until=${until}`,
       );
       const j = (await r.json()) as Estrutura & { error?: string };
       if (j.error) setErro(j.error);
@@ -102,11 +103,7 @@ export function AdStructure({
         </p>
       )}
 
-      {carregando && !dados && (
-        <p className="py-8 text-center text-sm text-muted-foreground">
-          Consultando o gerenciador…
-        </p>
-      )}
+      {carregando && !dados && <AdsManagerSkeleton />}
 
       {dados && (
         <>

@@ -4,6 +4,7 @@ import { serverEnv } from "@/lib/env";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { CAMPOS_DE_METRICA, conversionActionFor } from "./conversion-action";
 import { valorDoTipo } from "./meta-ads";
+import { fetchGoogleStructure } from "./google-structure";
 import { decimalToCents, toInt } from "./normalize";
 import type { ClientSegment } from "@/types/database";
 
@@ -30,10 +31,14 @@ import type { ClientSegment } from "@/types/database";
 
 export type NivelDaArvore = "campanha" | "conjunto" | "anuncio";
 
+export type PlataformaDaArvore = "meta_ads" | "google_ads";
+
 export interface NoDaArvore {
   id: string;
   name: string;
   nivel: NivelDaArvore;
+  /** De onde veio a linha. As duas plataformas convivem na mesma árvore. */
+  plataforma: PlataformaDaArvore;
   spendCents: number;
   impressions: number;
   clicks: number;
@@ -111,25 +116,46 @@ export async function fetchAdStructure(
   const { data } = await admin
     .from("client_integrations")
     .select(
-      "external_account_id, conversion_action_type, clients(segment), integration_secrets(access_token)",
+      "platform, external_account_id, conversion_action_type, clients(segment), integration_secrets(access_token, refresh_token)",
     )
     .eq("client_id", clientId)
-    .eq("platform", "meta_ads")
-    .eq("is_active", true)
-    .maybeSingle();
+    .eq("is_active", true);
 
-  const linha = data as unknown as {
+  const integracoes = (data ?? []) as unknown as {
+    platform: string;
     external_account_id?: string;
     conversion_action_type?: string | null;
     clients?: { segment?: ClientSegment } | null;
-    integration_secrets?: { access_token?: string | null } | null;
-  } | null;
+    integration_secrets?: {
+      access_token?: string | null;
+      refresh_token?: string | null;
+    } | null;
+  }[];
+
+  const linha = integracoes.find((i) => i.platform === "meta_ads");
+  const google = integracoes.find((i) => i.platform === "google_ads");
 
   const token = linha?.integration_secrets?.access_token;
   const conta = linha?.external_account_id;
 
+  /* O Google roda EM PARALELO com a Meta e engole os próprios erros —
+     ver `fetchGoogleStructure`. Uma conta que só tem Google precisa
+     aparecer, e uma que só tem Meta não pode esperar o Google falhar. */
+  const promessaGoogle = fetchGoogleStructure(
+    google?.external_account_id,
+    google?.integration_secrets?.refresh_token,
+    since,
+    until,
+  );
+
+  /* A guarda também ESTREITA os tipos daqui para baixo — por isso ela
+     testa `token` e `conta` diretamente, em vez de um booleano à parte
+     que o TypeScript não sabe relacionar. */
   if (!token || !conta || conta.startsWith("pending:")) {
-    return { ok: false, error: "Conta do Meta ainda não vinculada." };
+    const campanhas = await promessaGoogle;
+    return campanhas.length > 0
+      ? { ok: true, dados: consolidar(campanhas) }
+      : { ok: false, error: "Nenhuma conta de mídia vinculada." };
   }
 
   const tipos = conversionActionFor(
@@ -160,6 +186,10 @@ export async function fetchAdStructure(
     };
 
     if (!resposta.ok || payload.error) {
+      /* A Meta falhou, mas o Google pode ter respondido. Devolver erro
+         seco esconderia metade da conta. */
+      const soGoogle = await promessaGoogle;
+      if (soGoogle.length > 0) return { ok: true, dados: consolidar(soGoogle) };
       return {
         ok: false,
         error: payload.error?.message ?? `Graph API respondeu ${resposta.status}.`,
@@ -170,13 +200,16 @@ export async function fetchAdStructure(
        miniatura nem permalink, e `/ads` não carrega métrica. Falhar
        aqui não derruba a árvore — os números são o essencial, a
        imagem é conforto. */
-    const criativos = await buscarCriativos(conta, token).catch(
-      () => new Map<string, Criativo>(),
-    );
+    const [criativos, campanhasGoogle] = await Promise.all([
+      buscarCriativos(conta, token).catch(() => new Map<string, Criativo>()),
+      promessaGoogle,
+    ]);
+
+    const meta = montarArvore(payload.data ?? [], tipos, criativos);
 
     return {
       ok: true,
-      dados: montarArvore(payload.data ?? [], tipos, criativos),
+      dados: consolidar([...meta.campanhas, ...campanhasGoogle]),
     };
   } catch (error) {
     return {
@@ -213,6 +246,7 @@ export function montarArvore(
       id: l.ad_id ?? `${setId}-?`,
       name: l.ad_name ?? "Anúncio sem nome",
       nivel: "anuncio",
+      plataforma: "meta_ads",
       spendCents: decimalToCents(l.spend),
       impressions: toInt(l.impressions),
       clicks: toInt(l.clicks),
@@ -229,6 +263,7 @@ export function montarArvore(
         id: campId,
         name: l.campaign_name ?? "Campanha sem nome",
         nivel: "campanha",
+        plataforma: "meta_ads",
         spendCents: 0,
         impressions: 0,
         clicks: 0,
@@ -246,6 +281,7 @@ export function montarArvore(
         id: setId,
         name: l.adset_name ?? "Conjunto sem nome",
         nivel: "conjunto",
+        plataforma: "meta_ads",
         spendCents: 0,
         impressions: 0,
         clicks: 0,
@@ -355,4 +391,24 @@ async function buscarCriativos(
   }
 
   return mapa;
+}
+
+
+/* ------------------------------------------------------------------ */
+
+/**
+ * Junta as campanhas das duas plataformas numa árvore só.
+ *
+ * Ordenadas por gasto, misturadas de propósito: a pergunta é "onde meu
+ * dinheiro foi", e ela não respeita fronteira de plataforma. O selo de
+ * origem fica em cada linha (`plataforma`), então nada se confunde.
+ */
+function consolidar(campanhas: NoDaArvore[]): EstruturaDaConta {
+  const lista = [...campanhas].sort((a, b) => b.spendCents - a.spendCents);
+  return {
+    campanhas: lista,
+    totalSpendCents: lista.reduce((a, c) => a + c.spendCents, 0),
+    totalResults: lista.reduce((a, c) => a + c.results, 0),
+    moeda: "BRL",
+  };
 }

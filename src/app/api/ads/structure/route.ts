@@ -4,9 +4,13 @@ import { getCurrentUser, createSupabaseServerClient } from "@/lib/supabase/serve
 import { fetchAdStructure } from "@/lib/ads/meta-structure";
 
 /**
- * GET /api/meta/structure?clientId=&since=&until=
+ * GET /api/ads/structure?clientId=&since=&until=
  *
- * Campanha › conjunto › anúncio, ao vivo da Graph API.
+ * Campanha › conjunto › anúncio das DUAS plataformas, ao vivo.
+ *
+ * Ficava em `/api/meta/structure` — o nome passou a mentir quando o
+ * Google entrou na mesma árvore, e rota com nome errado é a que alguém
+ * futuro vai duplicar por achar que falta a do Google.
  *
  * AUTORIZAÇÃO À MÃO, e não é opcional: `fetchAdStructure` usa
  * `service_role` para alcançar o token em `integration_secrets`, então

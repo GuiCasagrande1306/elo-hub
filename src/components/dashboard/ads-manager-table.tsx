@@ -45,10 +45,13 @@ import { cn } from "@/lib/utils";
 
 export type NivelDaArvore = "campanha" | "conjunto" | "anuncio";
 
+export type PlataformaDaArvore = "meta_ads" | "google_ads";
+
 export interface NoDaArvore {
   id: string;
   name: string;
   nivel: NivelDaArvore;
+  plataforma: PlataformaDaArvore;
   spendCents: number;
   impressions: number;
   clicks: number;
@@ -58,6 +61,11 @@ export interface NoDaArvore {
   permalink?: string | null;
   filhos: NoDaArvore[];
 }
+
+const PLATAFORMA_LABEL: Record<PlataformaDaArvore, string> = {
+  meta_ads: "Meta",
+  google_ads: "Google",
+};
 
 const NIVEL_LABEL: Record<NivelDaArvore, string> = {
   campanha: "Campanha",
@@ -359,6 +367,13 @@ function Nome({
           {row.name}
         </p>
         <p className="text-2xs text-muted-foreground">
+          {/* A plataforma só no topo: repeti-la em conjunto e anúncio
+              seria ruído, já que a origem se herda do pai. */}
+          {depth === 0 && (
+            <span className="mr-1.5 rounded bg-surface-2 px-1 py-px font-medium ring-1 ring-inset ring-hairline">
+              {PLATAFORMA_LABEL[row.plataforma]}
+            </span>
+          )}
           {NIVEL_LABEL[row.nivel]}
           {canExpand && ` · ${row.filhos.length}`}
         </p>

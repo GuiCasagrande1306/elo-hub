@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowUpRight, Layers, Loader2 } from "lucide-react";
+import { ArrowUpRight, Layers } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -16,6 +16,7 @@ import {
   AdsManagerTable,
   type NoDaArvore,
 } from "@/components/dashboard/ads-manager-table";
+import { AdsManagerSkeleton } from "@/components/dashboard/ads-manager-skeleton";
 
 /* =====================================================================
    Gaveta do gerenciador, a partir da Performance
@@ -62,7 +63,7 @@ export function AdsManagerSheet({
     setErro(null);
     try {
       const r = await fetch(
-        `/api/meta/structure?clientId=${clientId}&since=${since}&until=${until}`,
+        `/api/ads/structure?clientId=${clientId}&since=${since}&until=${until}`,
       );
       const j = (await r.json()) as {
         campanhas?: NoDaArvore[];
@@ -112,12 +113,7 @@ export function AdsManagerSheet({
           </SheetHeader>
 
           <div className="px-4 pb-6">
-            {carregando && (
-              <p className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
-                <Loader2 className="size-4 animate-spin" />
-                Consultando o gerenciador…
-              </p>
-            )}
+            {carregando && <AdsManagerSkeleton />}
 
             {erro && (
               <p className="rounded-xl bg-warning-muted px-4 py-3 text-sm text-warning">
