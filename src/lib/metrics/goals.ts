@@ -53,6 +53,31 @@ export interface PacingInfo {
   ratio: number;
 }
 
+/**
+ * Onde o período FECHA se o ritmo atual continuar.
+ *
+ * A conta é `executado ÷ decorrido` — idêntica a
+ * `(gasto / diasDecorridos) × diasDoMês`, só que sem contar dias: aqui
+ * `elapsed` já é a fração do período, e o período de uma meta nem sempre
+ * é o mês civil. Dividir por dias do mês quebraria toda meta que começa
+ * no dia 10 ou fecha em 45 dias.
+ *
+ * VIÉS CONHECIDO, e ele é pequeno e some sozinho: `elapsed` conta o dia
+ * corrente como inteiro, enquanto o executado só tem as horas que já
+ * sincronizaram. No dia 15 de 30 isso subestima a projeção em ~3%, e no
+ * dia 25 em ~1%. Corrigir exigiria granularidade de hora, que este
+ * arquivo recusa de propósito — número derivado de relógio renderizado
+ * no servidor e de novo no cliente diverge na hidratação.
+ */
+export interface Projection {
+  /** Valor projetado para o fim do período. */
+  value: number;
+  label: string;
+  /** Projetado ÷ planejado. 1 = fecha exatamente na meta. */
+  ratio: number;
+  tone: GoalTone;
+}
+
 export interface GoalProgress {
   kind: "budget" | "results";
   label: string;
@@ -66,6 +91,8 @@ export interface GoalProgress {
   elapsed: number | null;
   /** Ritmo do dia. `null` quando não há meta ou é cedo demais para ler. */
   pacing: PacingInfo | null;
+  /** Fechamento projetado. `null` nos mesmos casos do ritmo. */
+  projection: Projection | null;
   status: GoalStatus;
   /** Rótulo curto do status, já ciente de orçamento vs resultado. */
   statusLabel: string;
@@ -169,6 +196,69 @@ function buildPacing(
   };
 }
 
+/**
+ * Projeta o fechamento — ou devolve `null` quando projetar seria chute.
+ *
+ * Os dois primeiros cortes são os MESMOS do ritmo, e por um motivo mais
+ * forte aqui: a projeção DIVIDE por `elapsed`, então ela amplifica o
+ * ruído do começo do ciclo pelo inverso da fração. No dia 1 de 31,
+ * `elapsed` é 0,032 e uma sobra de R$ 400 de campanha subindo vira
+ * "Projeção: R$ 12.400" em vermelho. Um card que grita todo dia 1º é um
+ * card que ninguém lê no dia 20.
+ *
+ * O terceiro corte é `elapsed >= 1`: com o período fechado, "projeção" é
+ * só o realizado com outro nome, e ele já está duas linhas acima.
+ */
+function buildProjection(
+  kind: "budget" | "results",
+  planned: number,
+  executed: number,
+  elapsed: number | null,
+  format: (value: number) => string,
+): Projection | null {
+  if (planned <= 0) return null;
+  if (elapsed === null || elapsed < MIN_ELAPSED_FOR_PACING) return null;
+  if (elapsed >= 1) return null;
+
+  const value = executed / elapsed;
+  const ratio = value / planned;
+
+  /* A COR DECIDE SOBRE O PERCENTUAL ARREDONDADO, o mesmo que a interface
+     imprime. Sem isto a conta perfeita cai do lado errado: uma conta
+     exatamente no ritmo projeta 99,9995% da meta por resíduo de ponto
+     flutuante, `>= 1` é falso, e o card mostra "100%" em amarelo. Cor
+     que contradiz o número ao lado dela destrói a confiança no painel
+     inteiro — e o caso não é raro, é o cliente que está indo bem. */
+  const exibido = Math.round(ratio * 100) / 100;
+
+  /* As faixas saem de PACE_TOLERANCE em vez de 1,1 e 0,9 escritos à mão:
+     é a mesma tolerância que decide a cor do ritmo, e duas fontes para o
+     mesmo limiar dariam uma barra amarela sobre uma projeção verde. */
+  let tone: GoalTone;
+
+  if (kind === "budget") {
+    tone =
+      exibido > 1 + PACE_TOLERANCE
+        ? "negative"
+        : /* Subgasto também é desvio, pela razão do topo do arquivo:
+             verba parada não vira resultado e o cliente cobra o que
+             contratou. Pintar de verde um fechamento em 70% da verba
+             esconderia exatamente o que o painel existe para mostrar. */
+          exibido < 1 - PACE_TOLERANCE
+          ? "warning"
+          : "positive";
+  } else {
+    tone =
+      exibido >= 1
+        ? "positive"
+        : exibido >= 1 - PACE_TOLERANCE
+          ? "warning"
+          : "negative";
+  }
+
+  return { value, label: format(value), ratio, tone };
+}
+
 const BUDGET_STATUS_LABELS: Record<GoalStatus, string> = {
   "sem-meta": "Sem orçamento",
   "no-ritmo": "Ritmo saudável",
@@ -199,6 +289,13 @@ function budgetProgress(
 ): GoalProgress {
   const ratio = safeRatio(executedCents, plannedCents);
   const pacing = buildPacing(
+    plannedCents,
+    executedCents,
+    elapsed,
+    formatCurrency,
+  );
+  const projection = buildProjection(
+    "budget",
     plannedCents,
     executedCents,
     elapsed,
@@ -245,6 +342,7 @@ function budgetProgress(
     barPercent: Math.min(ratio * 100, 100),
     elapsed,
     pacing,
+    projection,
     status,
     statusLabel: BUDGET_STATUS_LABELS[status],
     tone,
@@ -269,6 +367,13 @@ function resultsProgress(
   const ratio = safeRatio(executedResults, plannedResults);
   const pacing = buildPacing(plannedResults, executedResults, elapsed, (v) =>
     formatGoalValue(metric, v),
+  );
+  const projection = buildProjection(
+    "results",
+    plannedResults,
+    executedResults,
+    elapsed,
+    (v) => formatGoalValue(metric, v),
   );
 
   let status: GoalStatus = "no-ritmo";
@@ -316,6 +421,7 @@ function resultsProgress(
     barPercent: Math.min(ratio * 100, 100),
     elapsed,
     pacing,
+    projection,
     status,
     statusLabel: RESULTS_STATUS_LABELS[status],
     tone,

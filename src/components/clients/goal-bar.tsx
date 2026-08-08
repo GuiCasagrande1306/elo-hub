@@ -1,6 +1,7 @@
 import {
   AlertTriangle,
   CheckCircle2,
+  CornerDownRight,
   MinusCircle,
   TrendingDown,
   TrendingUp,
@@ -123,14 +124,26 @@ export function GoalBar({ progress }: { progress: GoalProgress }) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Linha de ritmo                                                      */
+/* Linha de fechamento                                                 */
 /* ------------------------------------------------------------------ */
 
 /**
- * Ícone por status. Seta para cima em "acelerado" tem sentido oposto
- * nas duas barras — gastar rápido é alerta, entregar rápido é bom — e
- * é justamente por isso que a COR vem do tom já resolvido, e não do
- * ícone. O desenho diz a direção; a cor diz se é boa.
+ * UMA LINHA, E ELA RESPONDE "ONDE ISSO VAI FECHAR?".
+ *
+ * A versão anterior escrevia o diagnóstico do dia por extenso — "Gasto
+ * acelerado — 125% do previsto para hoje, a verba acaba antes do mês".
+ * Correto e ilegível em grade: duas dessas por card, dezenas de cards, e
+ * o olho para de ler todas. Pior, respondia a pergunta errada: quem abre
+ * a lista quer saber onde o mês fecha, não a aritmética de hoje.
+ *
+ * A aritmética não sumiu — ela inteira está no tooltip, junto com o
+ * status que saiu daqui. E o status também continua visível no chip do
+ * rodapé do card, então a leitura de relance não perdeu nada.
+ *
+ * A COR É DA PROJEÇÃO, não do ritmo, e as duas podem discordar de
+ * propósito: uma conta 15% acelerada no dia 20 ainda fecha dentro da
+ * verba, e pintar essa linha de amarelo contradiria o número que ela
+ * mesma mostra.
  */
 const PACE_ICONS: Record<GoalStatus, typeof CheckCircle2> = {
   "sem-meta": MinusCircle,
@@ -142,47 +155,79 @@ const PACE_ICONS: Record<GoalStatus, typeof CheckCircle2> = {
 };
 
 function PacingLine({ progress }: { progress: GoalProgress }) {
-  const tone = GOAL_TONE_CLASSES[progress.tone];
-  const Icon = PACE_ICONS[progress.status];
+  const { projection, pacing } = progress;
+
+  /* Sem projeção, a linha não pode ficar vazia: "sem meta definida" e
+     "começo de ciclo" são estados que precisam aparecer, senão o card
+     parece quebrado. Cai para o rótulo curto do status — sem a frase
+     longa, que é justamente o que esta refatoração tira da grade. */
+  if (!projection) {
+    const tone = GOAL_TONE_CLASSES[progress.tone];
+    const Icon = PACE_ICONS[progress.status];
+
+    return (
+      <span
+        className={cn(
+          "flex items-center gap-1.5 text-2xs leading-snug",
+          tone.text,
+        )}
+      >
+        <Icon className="size-3 shrink-0" />
+        <span className="truncate">{progress.statusLabel}</span>
+      </span>
+    );
+  }
+
+  const tone = GOAL_TONE_CLASSES[projection.tone];
 
   const linha = (
     <span
       className={cn(
-        "flex items-start gap-1.5 text-left text-2xs leading-snug",
+        "flex items-center gap-1.5 text-left text-2xs leading-snug",
         tone.text,
       )}
     >
-      <Icon className="mt-px size-3 shrink-0" />
-      <span className="min-w-0">
-        <span className="font-medium">{progress.statusLabel}</span>
-        {" — "}
-        {progress.message}
+      <CornerDownRight className="size-3 shrink-0 opacity-70" />
+      <span className="truncate">
+        <span className="text-muted-foreground">Projeção: </span>
+        <span className="font-medium tabular-nums">{projection.label}</span>
       </span>
     </span>
   );
-
-  /* Sem ritmo apurado não há conta para mostrar, e um tooltip vazio é
-     pior que nenhum: promete detalhe e entrega repetição. */
-  if (!progress.pacing) return linha;
 
   return (
     <Tooltip>
       {/* `render` e não `asChild`: este shadcn roda sobre Base UI. Um
           `span` no lugar do botão padrão — a frase é informativa, e um
           botão sem ação poluiria a navegação por teclado. */}
-      <TooltipTrigger render={<span className="cursor-help" />}>
+      <TooltipTrigger render={<span className="w-fit cursor-help" />}>
         {linha}
       </TooltipTrigger>
       <TooltipContent side="bottom" className="flex-col items-start gap-0.5">
-        <span>
-          Esperado até hoje: <strong>{progress.pacing.expectedLabel}</strong>
+        <span className="font-medium">
+          {progress.statusLabel} — {progress.message}
         </span>
-        <span>
-          Realizado: <strong>{progress.executedLabel}</strong>
+
+        {pacing && (
+          <>
+            <span className="mt-1">
+              Esperado até hoje: <strong>{pacing.expectedLabel}</strong>
+            </span>
+            <span>
+              Realizado: <strong>{progress.executedLabel}</strong>
+            </span>
+          </>
+        )}
+
+        <span className="mt-1">
+          Fecha em <strong>{projection.label}</strong> de{" "}
+          {progress.plannedLabel} ({formatPercent(projection.ratio, 0)})
         </span>
+
         <span className="opacity-70">
-          {formatPercent(progress.pacing.ratio, 0)} do ritmo ·{" "}
-          {formatPercent(progress.elapsed ?? 0, 0)} do período
+          {pacing ? `${formatPercent(pacing.ratio, 0)} do ritmo · ` : ""}
+          {formatPercent(progress.elapsed ?? 0, 0)} do período · mantido o
+          ritmo atual
         </span>
       </TooltipContent>
     </Tooltip>
