@@ -435,7 +435,15 @@ export async function setClientGoal(input: {
  * sobre uma conta intacta.
  */
 export type SaveClientResult =
-  | { ok: true }
+  | {
+      ok: true;
+      /**
+       * A troca de nicho mudou a unidade da meta e o alvo de resultados
+       * foi zerado. A tela avisa — zerar calado faria a conta aparecer
+       * sem meta amanhã sem ninguém saber por quê.
+       */
+      metaZerada?: boolean;
+    }
   | { ok: false; error: string; fieldErrors?: Record<string, string[]> };
 
 export async function saveClientProfile(
@@ -469,15 +477,36 @@ export async function saveClientProfile(
   };
 
   if (isDemoMode) {
-    const { demoClients } = await import("@/lib/mock/data");
+    const { demoClients, demoGoals } = await import("@/lib/mock/data");
     const alvo = demoClients.find((c) => c.id === v.clientId);
     if (!alvo) return { ok: false, error: "Cliente não encontrado." };
+
+    const zerou = mudouUnidadeDaMeta(alvo.segment, v.segment);
     Object.assign(alvo, campos);
+
+    if (zerou) {
+      const { start } = mesCorrenteBR();
+      for (const g of demoGoals) {
+        if (g.client_id !== v.clientId || g.period_start < start) continue;
+        g.results_metric = defaultGoalMetricFor(v.segment).key;
+        g.planned_results = 0;
+      }
+    }
+
     revalidatePath("/clientes");
-    return { ok: true };
+    return { ok: true, metaZerada: zerou };
   }
 
   const supabase = await createSupabaseServerClient();
+
+  /* O segmento ANTERIOR, antes do update sobrescrever. Sem ele não há
+     como saber se a unidade da meta mudou — e comparar depois compararia
+     o novo com ele mesmo. */
+  const { data: antes } = await supabase
+    .from("clients")
+    .select("segment")
+    .eq("id", v.clientId)
+    .single();
 
   const { data, error } = await supabase
     .from("clients")
@@ -493,11 +522,55 @@ export async function saveClientProfile(
     };
   }
 
+  /* --- A meta acompanha o nicho ------------------------------------
+     Trocar de delivery para negócio local troca a unidade do alvo: de
+     reais para conversas. A meta gravada continuaria apontando para
+     `revenue_cents`, coluna que uma conta de negócio local nunca
+     preenche — e a barra ficaria em 0% para sempre, sem erro nenhum.
+
+     O alvo é ZERADO, não convertido: R$ 5.000,00 não vira um número de
+     conversas, e reinterpretar os centavos como contagem produziria
+     "500.000 conversas" — a mesma classe de defeito que fez uma meta de
+     80 pedidos ser lida como R$ 0,80.
+
+     `>= mês corrente`: mês fechado é histórico e mantém a unidade em que
+     foi cumprido. O orçamento fica — dinheiro é dinheiro nos dois
+     nichos. */
+  const zerou = mudouUnidadeDaMeta(antes?.segment, v.segment);
+
+  if (zerou) {
+    const { start } = mesCorrenteBR();
+    await supabase
+      .from("client_goals")
+      .update({
+        results_metric: defaultGoalMetricFor(v.segment).key,
+        planned_results: 0,
+      })
+      .eq("client_id", v.clientId)
+      .gte("period_start", start);
+  }
+
   revalidatePath("/clientes");
   revalidatePath("/relatorios");
   revalidatePath("/esteira");
   revalidatePath("/");
-  return { ok: true };
+  return { ok: true, metaZerada: zerou };
+}
+
+/**
+ * A troca de nicho muda a unidade do alvo de resultados?
+ *
+ * Compara os PADRÕES dos dois segmentos, não os segmentos: sair de
+ * `leads` para `local_business` troca o rótulo (de "Leads" para
+ * "Conversas") mas os dois contam unidades, então o número continua
+ * válido e não há nada a zerar.
+ */
+function mudouUnidadeDaMeta(
+  antes: ClientSegment | null | undefined,
+  depois: ClientSegment,
+): boolean {
+  if (!antes || antes === depois) return false;
+  return defaultGoalMetricFor(antes).key !== defaultGoalMetricFor(depois).key;
 }
 
 /* =====================================================================

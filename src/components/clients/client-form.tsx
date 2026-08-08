@@ -125,7 +125,19 @@ export function ClientForm({ client }: { client: Client }) {
         return;
       }
 
-      toast.success("Cadastro salvo.");
+      /* A troca de nicho zerou o alvo da meta. Merece toast próprio e
+         mais tempo na tela: um "Cadastro salvo." verde esconderia que
+         a conta ficou sem meta. */
+      if (r.metaZerada) {
+        toast.warning("Nicho alterado — a meta de resultados foi zerada.", {
+          description:
+            "A unidade mudou e não há conversão possível. Defina o novo alvo em “Meta deste mês”.",
+          duration: 8000,
+        });
+      } else {
+        toast.success("Cadastro salvo.");
+      }
+
       form.reset(values);
       router.refresh();
     });

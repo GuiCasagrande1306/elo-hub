@@ -30,7 +30,10 @@ import {
   setClientLogo,
 } from "@/app/(app)/clientes/actions";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
-import { goalInputValue, goalMetricFor } from "@/lib/metrics/goal-metric";
+import {
+  defaultGoalMetricFor,
+  goalInputValue,
+} from "@/lib/metrics/goal-metric";
 import type { Client } from "@/types/database";
 
 /* =====================================================================
@@ -65,21 +68,31 @@ export function ClientSettingsCard({
 }) {
   const [pendente, startTransition] = useTransition();
 
-  /* A unidade da meta segue o segmento SALVO. Trocar o nicho agora é
-     outro formulário, com outro botão de salvar — e enquanto ele não
-     for salvo, a meta continua sendo escrita na unidade que o banco
-     ainda considera correta. Depois do salvamento a página revalida e o
-     campo reaparece na unidade nova.
+  /* A unidade vem do SEGMENTO, porque é a unidade em que `setClientGoal`
+     vai gravar — ele chama `defaultGoalMetricFor(segment)`.
 
-     Metas antigas trazem `resultsMetric` própria e ela vence — ver a
-     migration 20260806000025. */
-  const metrica = goalMetricFor(client.segment, goal?.resultsMetric);
+     Antes vinha de `goalMetricFor(segment, goal.resultsMetric)`, e a meta
+     gravada vencia. Rótulo e gravação passavam a discordar assim que o
+     nicho mudava: o campo dizia "Meta de faturamento (R$)" e o que se
+     digitasse ali era salvo como CONTAGEM. Digitar 5000 gravava 5.000
+     conversas — corrupção de unidade sem erro nenhum na tela.
+
+     O histórico continua lendo a unidade de cada linha (`getGoalHistory`
+     usa `goalMetricFor` por meta): mês fechado não é reinterpretado. */
+  const metrica = defaultGoalMetricFor(client.segment);
+
+  /* A meta gravada está na unidade de outro nicho — conversas e reais
+     não se convertem. Preencher o campo com o número velho ofereceria
+     "0,00" como se fosse conversa. Melhor vir vazio e dizer por quê. */
+  const unidadeMudou = Boolean(
+    goal && (goal.resultsMetric ?? "count") !== metrica.key,
+  );
 
   const [orcamento, setOrcamento] = useState(
     goal ? (goal.plannedBudgetCents / 100).toFixed(2).replace(".", ",") : "",
   );
   const [metaResultados, setMetaResultados] = useState(
-    goal ? goalInputValue(metrica, goal.plannedResults) : "",
+    goal && !unidadeMudou ? goalInputValue(metrica, goal.plannedResults) : "",
   );
   const [salvandoMeta, startMeta] = useTransition();
 
@@ -263,7 +276,17 @@ export function ClientSettingsCard({
           </div>
         </div>
 
-        <p className="mt-2 text-2xs text-muted-foreground">{metrica.hint}</p>
+        {/* O aviso ocupa o lugar da dica, não soma a ela: quem trocou o
+            nicho precisa saber por que o campo veio vazio, e repetir a
+            explicação geral embaixo só afastaria as duas. */}
+        {unidadeMudou ? (
+          <p className="mt-2 text-2xs text-warning">
+            O nicho mudou e a meta anterior estava em outra unidade — não dá
+            para converter. Defina a {metrica.inputLabel.toLowerCase()} de novo.
+          </p>
+        ) : (
+          <p className="mt-2 text-2xs text-muted-foreground">{metrica.hint}</p>
+        )}
 
         <div className="mt-3 flex justify-end">
           <Button

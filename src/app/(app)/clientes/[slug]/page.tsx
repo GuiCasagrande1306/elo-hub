@@ -19,7 +19,6 @@ import {
 } from "@/lib/metrics/kpi";
 import {
   defaultGoalMetricFor,
-  goalMetricFor,
 } from "@/lib/metrics/goal-metric";
 import type { ClientSegment, MetricKey } from "@/types/database";
 
@@ -106,9 +105,20 @@ export default async function ClientPage({
 
   const metaAtual = goals.get(client.id) ?? null;
 
-  /* O indicador desta conta. A meta gravada manda sobre o segmento —
-     ver `lib/metrics/goal-metric.ts`. */
-  const metrica = goalMetricFor(client.segment, metaAtual?.results_metric);
+  /* O RÓTULO DOS CARDS VEM DO SEGMENTO, NUNCA DA META GRAVADA.
+
+     Estava vindo de `goalMetricFor(segment, meta.results_metric)`, e a
+     meta vencia. Como `heroMetricsFor` já escolhia QUAL número mostrar
+     pelo segmento, os dois discordavam assim que o nicho mudava: uma
+     conta que saiu de delivery para negócio local mostrava a CONTAGEM de
+     conversas sob o título "FATURAMENTO". Número certo, nome errado —
+     que é pior do que os dois errados, porque parece que funciona.
+
+     A separação está documentada em `lib/metrics/goal-metric.ts`: rótulo
+     é cosmético e acompanha o cadastro; unidade é semântica e pertence
+     à meta. Aqui não há número digitado por ninguém — é o que a
+     plataforma mediu —, então quem manda é o segmento. */
+  const metrica = defaultGoalMetricFor(client.segment);
 
   const kpis = heroMetricsFor(client.segment)
     .map((key) => computeKpi(key, metrics.currentTotals, metrics.previousTotals))
