@@ -1,14 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Menu, Moon, Search, Sun } from "lucide-react";
+import { Menu, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 
 import { Sidebar } from "./sidebar";
 import { MobileNavigation } from "./mobile-navigation";
+import { GlobalSearch } from "./global-search";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { cn } from "@/lib/utils";
 import type { Client, Profile } from "@/types/database";
 
 interface AppShellProps {
@@ -65,7 +65,9 @@ export function AppShell({ user, clients, demoMode, children }: AppShellProps) {
             </SheetContent>
           </Sheet>
 
-          <SearchTrigger />
+          {/* A mesma lista que a sidebar usa: já filtrada pelo RLS, e é
+              o que torna a busca de cliente instantânea e sem rede. */}
+          <GlobalSearch clients={clients} role={user.role} />
 
           <div className="ml-auto flex items-center gap-1.5">
             {demoMode && <DemoBadge />}
@@ -88,24 +90,6 @@ export function AppShell({ user, clients, demoMode, children }: AppShellProps) {
 
       <MobileNavigation />
     </div>
-  );
-}
-
-function SearchTrigger() {
-  return (
-    <button
-      type="button"
-      className={cn(
-        "group flex h-9 flex-1 items-center gap-2 rounded-lg px-3 text-left text-sm text-muted-foreground transition-colors sm:max-w-xs",
-        "bg-surface-2/60 ring-1 ring-hairline hover:bg-surface-2 hover:text-foreground",
-      )}
-    >
-      <Search className="size-4 shrink-0" strokeWidth={1.9} />
-      <span className="truncate">Buscar cliente, tarefa…</span>
-      <kbd className="ml-auto hidden shrink-0 rounded border border-hairline bg-background px-1.5 font-mono text-[10px] leading-4 text-muted-foreground sm:inline-block">
-        ⌘K
-      </kbd>
-    </button>
   );
 }
 

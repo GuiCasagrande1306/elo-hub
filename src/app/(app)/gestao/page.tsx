@@ -72,7 +72,14 @@ export default async function GestaoPage() {
         title="Gestão"
         description="Fluxo de caixa, recorrência e inadimplência da agência."
         actions={
-          <Button variant="outline" render={<Link href="/gestao/recorrencia" />}>
+          /* `nativeButton={false}` porque o `render` troca o <button> por
+             um <a>: sem isso o Base UI reclama em toda renderização e o
+             elemento fica com semântica de botão sobre uma âncora. */
+          <Button
+            variant="outline"
+            nativeButton={false}
+            render={<Link href="/gestao/recorrencia" />}
+          >
             <Repeat className="size-4" />
             Recorrência
           </Button>
