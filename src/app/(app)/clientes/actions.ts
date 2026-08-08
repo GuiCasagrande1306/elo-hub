@@ -832,3 +832,59 @@ export async function setAccountFunds(input: {
   revalidatePath("/clientes");
   return { ok: true };
 }
+
+/* ------------------------------------------------------------------ */
+/* Permissões da Meta para o EloChat                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Diz se o token da Meta deste cliente serve para automação de direct.
+ *
+ * CHECAGEM DE PAPEL OBRIGATÓRIA aqui, diferente das ações vizinhas: o
+ * verificador lê `integration_secrets` com `service_role` e portanto
+ * ATRAVESSA o RLS. Sem o `role !== "admin"` abaixo, qualquer sessão
+ * autenticada provocaria uma consulta usando o token de um cliente.
+ *
+ * SOB DEMANDA, não no carregamento da página: é uma ida à Graph API por
+ * cliente, e o resultado quase nunca muda entre duas aberturas da tela.
+ * Fazê-la automática colocaria a latência da Meta no caminho de abrir os
+ * ajustes — e faria 46 chamadas em uma varredura da carteira.
+ */
+export async function checkMetaPermissionsAction(input: {
+  clientId: string;
+}): Promise<
+  | { ok: true; dados: import("@/lib/ads/elochat-scopes").PermissoesMeta }
+  | { ok: false; error: string }
+> {
+  const { getCurrentUser } = await import("@/lib/supabase/server");
+  const user = await getCurrentUser();
+
+  if (!user) return { ok: false, error: "Sessão expirada." };
+  if (user.role !== "admin") {
+    return { ok: false, error: "Apenas administradores podem verificar." };
+  }
+
+  /* A demonstração devolve o estado REAL da carteira hoje — as quatro
+     permissões faltando —, e não um erro. Todo número desta tela já é
+     fabricado, e o crachá "Modo demo" fica no cabeçalho o tempo inteiro;
+     o que não pode é a demonstração esconder justamente a tela que
+     precisa ser demonstrada. Medido em 08/08/2026: as 43 integrações têm
+     só `ads_read` e `business_management`. */
+  if (isDemoMode) {
+    const { ESCOPOS_ELOCHAT } = await import("@/lib/ads/elochat-scopes");
+    return {
+      ok: true,
+      dados: {
+        isReadyForEloChat: false,
+        missingPermissions: [...ESCOPOS_ELOCHAT],
+        declinedPermissions: [],
+        granted: ["ads_read", "business_management", "public_profile"],
+        error: null,
+        checkedAt: new Date().toISOString(),
+      },
+    };
+  }
+
+  const { checkMetaPermissions } = await import("@/lib/ads/meta-permissions");
+  return { ok: true, dados: await checkMetaPermissions(input.clientId) };
+}

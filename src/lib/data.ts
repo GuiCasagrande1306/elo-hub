@@ -758,11 +758,20 @@ export async function getClientIntegrations(
   const plataformas = ["meta_ads", "google_ads"] as const;
 
   if (isDemoMode) {
+    /* O Meta sai CONECTADO na demonstração, e não é enfeite: metade
+       deste card — escolha da conta, conta pré-paga, evento de conversão
+       e o estado das permissões do Instagram — só existe dentro do
+       `status.connected`. Com as duas plataformas desligadas, a
+       demonstração mostrava dois botões "Autorizar" e escondia a tela
+       inteira que ela deveria demonstrar.
+
+       O Google fica desligado de propósito, para o estado "não
+       conectado" continuar visível em algum lugar. */
     return plataformas.map((platform) => ({
       platform,
-      connected: false,
-      externalAccountId: null,
-      displayName: null,
+      connected: platform === "meta_ads",
+      externalAccountId: platform === "meta_ads" ? "act_1029384756" : null,
+      displayName: platform === "meta_ads" ? "Verdi — Conta principal" : null,
       lastSyncedAt: null,
       syncError: null,
       billingType: "postpaid" as const,

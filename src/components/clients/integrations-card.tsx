@@ -7,6 +7,7 @@ import { Check, ExternalLink, Loader2, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { GoogleAccountPicker } from "./google-account-picker";
+import { InstagramAutomationStatus } from "./instagram-automation-status";
 import { MetaAccountPicker } from "./meta-account-picker";
 import {
   Select,
@@ -398,6 +399,17 @@ function LinhaIntegracao({
                 errado zera conversão e receita no relatório.
               </p>
             </div>
+          )}
+
+          {/* O EloChat usa o MESMO token do Meta Ads, com permissões
+              diferentes — por isso mora aqui dentro e não num card
+              próprio: quem reautoriza para o direct mexe no token que a
+              sincronização de anúncios usa. */}
+          {status.platform === "meta_ads" && (
+            <InstagramAutomationStatus
+              clientId={clientId}
+              clientSlug={clientSlug}
+            />
           )}
         </div>
       )}

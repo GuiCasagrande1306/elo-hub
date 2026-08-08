@@ -21,6 +21,29 @@ export const dynamic = "force-dynamic";
    que resolve também acelera a revisão do app pela Meta. */
 const SCOPES = ["ads_read", "business_management"];
 
+/**
+ * `?elochat=1` pede TAMBÉM as permissões de automação de direct.
+ *
+ * Separado do consentimento normal de propósito: o vínculo de anúncios
+ * funciona hoje para 43 contas, e acrescentar quatro permissões ao
+ * pedido padrão faria toda reautorização de rotina exibir um diálogo
+ * mais assustador — com risco de a pessoa recusar o conjunto e derrubar
+ * a sincronização que já estava de pé.
+ *
+ * ⚠️ PEDIR NÃO É RECEBER. `pages_messaging` e `instagram_manage_messages`
+ * são de Acesso Avançado: fora do modo de desenvolvimento, a Meta só as
+ * concede depois de revisão do app e verificação do negócio. Enquanto
+ * isso não acontecer, este fluxo completa sem erro e volta sem as
+ * permissões — que é exatamente o que o verificador vai apontar.
+ */
+const SCOPES_ELOCHAT = [
+  ...SCOPES,
+  "pages_show_list",
+  "instagram_basic",
+  "pages_messaging",
+  "instagram_manage_messages",
+];
+
 export async function GET(request: NextRequest) {
   const user = await getCurrentUser();
   if (user?.role !== "admin") {
@@ -68,10 +91,25 @@ export async function GET(request: NextRequest) {
      permissão nenhuma, e o erro só aparece depois — na primeira chamada
      de insights, como "permissão ausente". Por isso a escolha é
      explícita: se houver config_id no ambiente, ele manda. */
+  const paraEloChat = request.nextUrl.searchParams.get("elochat") === "1";
+
   if (serverEnv.metaLoginConfigId) {
     url.searchParams.set("config_id", serverEnv.metaLoginConfigId);
   } else {
-    url.searchParams.set("scope", SCOPES.join(","));
+    url.searchParams.set(
+      "scope",
+      (paraEloChat ? SCOPES_ELOCHAT : SCOPES).join(","),
+    );
+  }
+
+  /* `auth_type=rerequest` só no fluxo do EloChat, e é o que faz a
+     diferença entre o botão funcionar e não funcionar: depois de a
+     pessoa recusar uma permissão, a Meta NÃO pergunta de novo num
+     consentimento comum. Sem isto o usuário atravessa o fluxo inteiro,
+     volta, e o verificador aponta a mesma pendência — sem nada na tela
+     explicando por quê. */
+  if (paraEloChat) {
+    url.searchParams.set("auth_type", "rerequest");
   }
 
   return NextResponse.redirect(url.toString());
