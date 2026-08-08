@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronRight, Layers, Loader2, RefreshCw } from "lucide-react";
+import { Layers, Loader2, RefreshCw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { formatCurrency, formatNumber } from "@/lib/format";
-import { cn } from "@/lib/utils";
+import {
+  AdsManagerTable,
+  type NoDaArvore as No,
+} from "@/components/dashboard/ads-manager-table";
 
 /* =====================================================================
    Estrutura da conta — campanha › conjunto › anúncio
@@ -19,20 +21,8 @@ import { cn } from "@/lib/utils";
    aqui é sempre "qual campanha está gastando", não "me mostre tudo".
    ===================================================================== */
 
-interface No {
-  id: string;
-  name: string;
-  spendCents: number;
-  impressions: number;
-  clicks: number;
-  results: number;
-  filhos: No[];
-}
-
 interface Estrutura {
   campanhas: No[];
-  totalSpendCents: number;
-  totalResults: number;
 }
 
 export function AdStructure({
@@ -52,7 +42,6 @@ export function AdStructure({
   const [dados, setDados] = useState<Estrutura | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(false);
-  const [abertos, setAbertos] = useState<Set<string>>(new Set());
 
   async function carregar() {
     setCarregando(true);
@@ -69,15 +58,6 @@ export function AdStructure({
     } finally {
       setCarregando(false);
     }
-  }
-
-  function alternar(id: string) {
-    setAbertos((atual) => {
-      const proximo = new Set(atual);
-      if (proximo.has(id)) proximo.delete(id);
-      else proximo.add(id);
-      return proximo;
-    });
   }
 
   return (
@@ -136,42 +116,14 @@ export function AdStructure({
               pausada.
             </p>
           ) : (
-            <>
-              <div className="hidden grid-cols-[1fr_100px_92px_92px] gap-3 border-b border-hairline px-2 pb-2 sm:grid">
-                {["", "Gasto", resultLabel, costLabel].map((h, i) => (
-                  <span
-                    key={h || i}
-                    className={cn("eyebrow", i > 0 && "text-right")}
-                  >
-                    {h}
-                  </span>
-                ))}
-              </div>
-
-              <ul className="divide-y divide-hairline">
-                {dados.campanhas.map((c) => (
-                  <Linha
-                    key={c.id}
-                    no={c}
-                    nivel={0}
-                    aberto={abertos}
-                    alternar={alternar}
-                  />
-                ))}
-              </ul>
-
-              <div className="mt-3 flex items-center justify-between border-t border-hairline pt-3 text-sm">
-                <span className="font-medium">Total da conta</span>
-                <span className="flex gap-6 tabular-nums">
-                  <span className="font-semibold">
-                    {formatCurrency(dados.totalSpendCents)}
-                  </span>
-                  <span className="font-semibold">
-                    {formatNumber(Math.round(dados.totalResults))}
-                  </span>
-                </span>
-              </div>
-            </>
+            /* A MESMA tabela da gaveta da Performance. Duas
+               implementações da mesma árvore divergiriam na primeira
+               coluna nova. */
+            <AdsManagerTable
+              dados={dados.campanhas}
+              resultLabel={resultLabel}
+              costLabel={costLabel}
+            />
           )}
         </>
       )}
@@ -179,101 +131,3 @@ export function AdStructure({
   );
 }
 
-/* ------------------------------------------------------------------ */
-
-const RECUO = ["pl-2", "pl-7", "pl-12"];
-
-function Linha({
-  no,
-  nivel,
-  aberto,
-  alternar,
-}: {
-  no: No;
-  nivel: number;
-  aberto: Set<string>;
-  alternar: (id: string) => void;
-}) {
-  const temFilhos = no.filhos.length > 0;
-  const chave = `${nivel}:${no.id}`;
-  const expandido = aberto.has(chave);
-
-  /* Custo unitário calculado AQUI, a partir do gasto e do resultado da
-     própria linha — não herdado do pai. Um conjunto que gastou sem
-     converter mostra "—", e é essa linha que a pessoa veio procurar. */
-  const custo = no.results > 0 ? no.spendCents / no.results : null;
-
-  return (
-    <li>
-      <div
-        className={cn(
-          "grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1 py-2 sm:grid-cols-[1fr_100px_92px_92px]",
-          RECUO[nivel],
-        )}
-      >
-        <button
-          type="button"
-          disabled={!temFilhos}
-          onClick={() => alternar(chave)}
-          className={cn(
-            "flex min-w-0 items-center gap-1.5 text-left",
-            temFilhos && "transition-colors hover:text-signal",
-          )}
-        >
-          {temFilhos ? (
-            <ChevronRight
-              className={cn(
-                "size-3.5 shrink-0 text-muted-foreground transition-transform",
-                expandido && "rotate-90",
-              )}
-            />
-          ) : (
-            <span className="size-3.5 shrink-0" aria-hidden />
-          )}
-
-          <span
-            className={cn(
-              "truncate",
-              nivel === 0 ? "text-sm font-medium" : "text-xs",
-              nivel === 2 && "text-muted-foreground",
-            )}
-          >
-            {no.name}
-          </span>
-
-          {temFilhos && (
-            <span className="shrink-0 text-2xs text-muted-foreground">
-              ({no.filhos.length})
-            </span>
-          )}
-        </button>
-
-        <span className="text-right text-xs tabular-nums">
-          {formatCurrency(no.spendCents)}
-        </span>
-
-        <span className="hidden text-right text-xs tabular-nums sm:block">
-          {formatNumber(Math.round(no.results))}
-        </span>
-
-        <span className="hidden text-right text-xs tabular-nums text-muted-foreground sm:block">
-          {custo === null ? "—" : formatCurrency(Math.round(custo))}
-        </span>
-      </div>
-
-      {expandido && temFilhos && (
-        <ul className="divide-y divide-hairline border-t border-hairline">
-          {no.filhos.map((f) => (
-            <Linha
-              key={f.id}
-              no={f}
-              nivel={nivel + 1}
-              aberto={aberto}
-              alternar={alternar}
-            />
-          ))}
-        </ul>
-      )}
-    </li>
-  );
-}

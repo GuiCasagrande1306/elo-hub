@@ -28,14 +28,21 @@ import type { ClientSegment } from "@/types/database";
    é uma chamada, feita só quando alguém abre o card.
    ===================================================================== */
 
+export type NivelDaArvore = "campanha" | "conjunto" | "anuncio";
+
 export interface NoDaArvore {
   id: string;
   name: string;
+  nivel: NivelDaArvore;
   spendCents: number;
   impressions: number;
   clicks: number;
   /** Conversão na unidade do segmento — visita, conversa, compra… */
   results: number;
+  revenueCents: number;
+  /** Só no nível do anúncio: miniatura e link para o post real. */
+  thumbnailUrl?: string | null;
+  permalink?: string | null;
   filhos: NoDaArvore[];
 }
 
@@ -58,7 +65,14 @@ interface LinhaAd {
   impressions?: string;
   clicks?: string;
   actions?: { action_type: string; value: string }[];
+  action_values?: { action_type: string; value: string }[];
   instagram_profile_visits?: string;
+}
+
+/** Metadados do criativo, vindos da edge `/ads` — não do insights. */
+interface Criativo {
+  thumbnailUrl: string | null;
+  permalink: string | null;
 }
 
 const FIELDS = [
@@ -72,6 +86,7 @@ const FIELDS = [
   "impressions",
   "clicks",
   "actions",
+  "action_values",
   ...CAMPOS_DE_METRICA,
 ].join(",");
 
@@ -151,7 +166,18 @@ export async function fetchAdStructure(
       };
     }
 
-    return { ok: true, dados: montarArvore(payload.data ?? [], tipos) };
+    /* Criativos numa chamada SEPARADA: `insights` não carrega
+       miniatura nem permalink, e `/ads` não carrega métrica. Falhar
+       aqui não derruba a árvore — os números são o essencial, a
+       imagem é conforto. */
+    const criativos = await buscarCriativos(conta, token).catch(
+      () => new Map<string, Criativo>(),
+    );
+
+    return {
+      ok: true,
+      dados: montarArvore(payload.data ?? [], tipos, criativos),
+    };
   } catch (error) {
     return {
       ok: false,
@@ -172,6 +198,7 @@ export async function fetchAdStructure(
 export function montarArvore(
   linhas: LinhaAd[],
   tipos: string[],
+  criativos: Map<string, Criativo> = new Map(),
 ): EstruturaDaConta {
   const campanhas = new Map<string, NoDaArvore>();
   const conjuntos = new Map<string, NoDaArvore>();
@@ -180,13 +207,19 @@ export function montarArvore(
     const campId = l.campaign_id ?? "_sem_campanha";
     const setId = l.adset_id ?? "_sem_conjunto";
 
+    const criativo = l.ad_id ? criativos.get(l.ad_id) : undefined;
+
     const anuncio: NoDaArvore = {
       id: l.ad_id ?? `${setId}-?`,
       name: l.ad_name ?? "Anúncio sem nome",
+      nivel: "anuncio",
       spendCents: decimalToCents(l.spend),
       impressions: toInt(l.impressions),
       clicks: toInt(l.clicks),
       results: somarTipos(l, tipos),
+      revenueCents: somarValores(l, tipos),
+      thumbnailUrl: criativo?.thumbnailUrl ?? null,
+      permalink: criativo?.permalink ?? null,
       filhos: [],
     };
 
@@ -195,10 +228,12 @@ export function montarArvore(
       campanha = {
         id: campId,
         name: l.campaign_name ?? "Campanha sem nome",
+        nivel: "campanha",
         spendCents: 0,
         impressions: 0,
         clicks: 0,
         results: 0,
+        revenueCents: 0,
         filhos: [],
       };
       campanhas.set(campId, campanha);
@@ -210,10 +245,12 @@ export function montarArvore(
       conjunto = {
         id: setId,
         name: l.adset_name ?? "Conjunto sem nome",
+        nivel: "conjunto",
         spendCents: 0,
         impressions: 0,
         clicks: 0,
         results: 0,
+        revenueCents: 0,
         filhos: [],
       };
       conjuntos.set(chaveSet, conjunto);
@@ -227,6 +264,7 @@ export function montarArvore(
       no.impressions += anuncio.impressions;
       no.clicks += anuncio.clicks;
       no.results += anuncio.results;
+      no.revenueCents += anuncio.revenueCents;
     }
   }
 
@@ -256,4 +294,65 @@ export function montarArvore(
  */
 function somarTipos(l: LinhaAd, tipos: string[]): number {
   return tipos.reduce((acc, tipo) => acc + valorDoTipo(l, tipo), 0);
+}
+
+/** Receita dos mesmos tipos, para o ROAS. Campo de métrica não tem. */
+function somarValores(l: LinhaAd, tipos: string[]): number {
+  return tipos.reduce(
+    (acc, tipo) =>
+      acc +
+      decimalToCents(
+        l.action_values?.find((a) => a.action_type === tipo)?.value,
+      ),
+    0,
+  );
+}
+
+/**
+ * Miniatura e link do post, por `ad_id`.
+ *
+ * `instagram_permalink_url` primeiro: é o post real, que a pessoa abre
+ * para ver o anúncio como o público vê. `preview_shareable_link` é o
+ * preview do Gerenciador — funciona, mas exige login na conta certa.
+ */
+async function buscarCriativos(
+  conta: string,
+  token: string,
+): Promise<Map<string, Criativo>> {
+  const mapa = new Map<string, Criativo>();
+
+  const url = new URL(
+    `https://graph.facebook.com/${serverEnv.metaApiVersion}/${
+      conta.startsWith("act_") ? conta : `act_${conta}`
+    }/ads`,
+  );
+  url.searchParams.set(
+    "fields",
+    "id,preview_shareable_link,creative{thumbnail_url,instagram_permalink_url}",
+  );
+  url.searchParams.set("limit", "500");
+
+  const r = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(15_000),
+    cache: "no-store",
+  });
+
+  const j = (await r.json()) as {
+    data?: {
+      id: string;
+      preview_shareable_link?: string;
+      creative?: { thumbnail_url?: string; instagram_permalink_url?: string };
+    }[];
+  };
+
+  for (const a of j.data ?? []) {
+    mapa.set(a.id, {
+      thumbnailUrl: a.creative?.thumbnail_url ?? null,
+      permalink:
+        a.creative?.instagram_permalink_url ?? a.preview_shareable_link ?? null,
+    });
+  }
+
+  return mapa;
 }

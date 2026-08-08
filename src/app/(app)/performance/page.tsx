@@ -16,6 +16,8 @@ import type { ClientSegment } from "@/types/database";
 import { buildTrend, computeKpi, deriveMetric } from "@/lib/metrics/kpi";
 import { formatCurrency, formatDelta, formatNumber } from "@/lib/format";
 import { ClientAvatar } from "@/components/clients/client-avatar";
+import { AdsManagerSheet } from "@/components/dashboard/ads-manager-sheet";
+import { defaultGoalMetricFor } from "@/lib/metrics/goal-metric";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Performance" };
@@ -101,6 +103,7 @@ export default async function PerformancePage({
                 "Custo por resultado",
                 "ROAS",
                 "Tendência",
+                "",
               ].map((label, index) => (
                 <th
                   key={label}
@@ -186,6 +189,30 @@ export default async function PerformancePage({
                       data={trend.map((p) => p.spend)}
                       stroke="var(--chart-2)"
                       className="h-7 w-28"
+                    />
+                  </div>
+                </td>
+
+                {/* A gaveta responde "por quê" sem tirar a carteira da
+                    tela — ver `AdsManagerSheet`. Fica numa coluna
+                    própria, e não no nome, porque o nome já é o link
+                    para a conta e dois destinos no mesmo alvo é o tipo
+                    de clique que se erra. */}
+                <td className="px-4 py-3">
+                  <div className="flex justify-end">
+                    <AdsManagerSheet
+                      clientId={client.id}
+                      clientName={client.name}
+                      clientSlug={client.slug}
+                      since={start}
+                      until={end}
+                      resultLabel={
+                        defaultGoalMetricFor(client.segment).label
+                      }
+                      costLabel={
+                        defaultGoalMetricFor(client.segment).costLabel ??
+                        "Custo por resultado"
+                      }
                     />
                   </div>
                 </td>
