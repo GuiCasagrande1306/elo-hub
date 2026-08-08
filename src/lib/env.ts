@@ -68,6 +68,13 @@ export const serverEnv = {
      da lista de `scope`. Vazio = fluxo clássico. */
   metaLoginConfigId: process.env.META_LOGIN_CONFIG_ID ?? "",
 
+  /* Instagram Login — EloChat. NÃO são os mesmos valores do Meta Ads:
+     no painel do app, o produto Instagram tem id e segredo próprios, e
+     usar os do Facebook devolve "Invalid platform app" já na
+     autorização. */
+  instagramAppId: process.env.INSTAGRAM_APP_ID ?? "",
+  instagramAppSecret: process.env.INSTAGRAM_APP_SECRET ?? "",
+
   // Google Ads API
   googleAdsDeveloperToken: process.env.GOOGLE_ADS_DEVELOPER_TOKEN ?? "",
   googleAdsClientId: process.env.GOOGLE_ADS_CLIENT_ID ?? "",
