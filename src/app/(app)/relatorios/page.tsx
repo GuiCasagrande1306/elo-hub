@@ -3,6 +3,8 @@ import type { Metadata } from "next";
 import { CheckCircle2, Clock, FileText, TriangleAlert } from "lucide-react";
 
 import { PageContainer, PageHeader } from "@/components/layout/page-header";
+import { TemplateSettingsDialog } from "@/components/reports/template-settings-dialog";
+import { getCurrentUser } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import {
   getClients,
@@ -40,6 +42,12 @@ const STATUS_META: Record<
 };
 
 export default async function ReportsPage() {
+  /* O papel decide o que a TELA diz; quem decide o que o banco DEVOLVE é
+     a policy `report_history_select` (migration 30): admin vê tudo,
+     colaborador vê os próprios envios e a fila do cron. Sem a frase, um
+     colaborador leria a lista curta como perda de dado. */
+  const user = await getCurrentUser();
+
   const [templates, reports, clients, pendentes, comMetricas] =
     await Promise.all([
       getReportTemplates(),
@@ -72,16 +80,36 @@ export default async function ReportsPage() {
     <PageContainer>
       <PageHeader
         title="Relatórios"
-        description="Templates por segmento e histórico de envios."
+        description="O que sai hoje e o que já saiu."
         actions={
-          <Button
-            size="sm"
-            className="h-9"
-            nativeButton={false}
-            render={<Link href="/relatorios/novo" />}
-          >
-            Gerar relatório
-          </Button>
+          <>
+            {/* Templates viraram CONFIGURAÇÃO atrás de um botão: mexidos
+                talvez uma vez por trimestre, ocupavam metade da tela que
+                deveria mostrar o que precisa ser enviado hoje. */}
+            {user?.role === "admin" && (
+              <TemplateSettingsDialog
+                templates={templates.map((t) => ({
+                  id: t.id,
+                  name: t.name,
+                  description: t.description,
+                  segmentLabel: t.segment
+                    ? SEGMENT_LABELS[t.segment]
+                    : "Genérico",
+                  metrics: t.metrics,
+                  metricLabels: t.metric_labels ?? {},
+                  sectionCount: t.sections.length,
+                }))}
+              />
+            )}
+            <Button
+              size="sm"
+              className="h-9"
+              nativeButton={false}
+              render={<Link href="/relatorios/novo" />}
+            >
+              Gerar relatório
+            </Button>
+          </>
         }
       />
 
@@ -108,63 +136,16 @@ export default async function ReportsPage() {
       <SendQueue itens={pendentes} />
       </section>
 
-      {/* Templates ------------------------------------------------- */}
-      <section className="mt-10">
-        <h2 className="text-lg font-semibold tracking-[-0.015em]">
-          Templates por segmento
-        </h2>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          O segmento do cliente define automaticamente quais métricas e seções
-          entram no PDF.
-        </p>
-
-        <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {templates.map((template) => (
-            <article key={template.id} className="surface-card flex flex-col p-5">
-              <div className="flex items-start justify-between gap-2">
-                <span className="rounded-full bg-surface-2 px-2 py-0.5 text-2xs font-medium ring-1 ring-hairline">
-                  {template.segment
-                    ? SEGMENT_LABELS[template.segment]
-                    : "Genérico"}
-                </span>
-                {template.is_default && (
-                  <span className="text-2xs text-signal">padrão</span>
-                )}
-              </div>
-
-              <h3 className="mt-3 text-sm font-semibold leading-snug">
-                {template.name}
-              </h3>
-              <p className="mt-1.5 flex-1 text-xs leading-relaxed text-muted-foreground">
-                {template.description}
-              </p>
-
-              <div className="mt-4 border-t border-hairline pt-3">
-                <p className="eyebrow mb-2">Métricas em destaque</p>
-                <div className="flex flex-wrap gap-1">
-                  {template.metrics.slice(0, 5).map((metric) => (
-                    <span
-                      key={metric}
-                      className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
-                    >
-                      {metric}
-                    </span>
-                  ))}
-                </div>
-                <p className="mt-2.5 text-2xs text-muted-foreground">
-                  {template.sections.length} seções no PDF
-                </p>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-
       {/* Histórico ------------------------------------------------- */}
       <section className="mt-10">
         <h2 className="text-lg font-semibold tracking-[-0.015em]">
           Histórico de envios
         </h2>
+        <p className="mt-0.5 text-sm text-muted-foreground">
+          {user?.role === "admin"
+            ? "Todos os envios da equipe."
+            : "Seus envios e os relatórios que o robô preparou."}
+        </p>
 
         {reports.length === 0 ? (
           <div className="mt-4 rounded-xl border border-dashed border-hairline py-14 text-center">

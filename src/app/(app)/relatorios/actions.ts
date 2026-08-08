@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 import { isDemoMode } from "@/lib/env";
 import { getClients, getReports } from "@/lib/data";
@@ -152,6 +153,75 @@ export async function enviarRelatorio(
       generated_by: linha.generated_by ?? user.id,
     })
     .eq("id", reportId);
+
+  revalidatePath("/relatorios");
+  return { ok: true };
+}
+
+/* =====================================================================
+   Edição dos templates por segmento
+   ---------------------------------------------------------------------
+   Quem barra colaborador é a policy `report_templates_admin`, que exige
+   `app.is_admin()`. Não repito a checagem aqui: duas fontes de verdade
+   sobre permissão divergem, e a que envelhece é sempre a da aplicação.
+
+   ⚠️ Até a migration 30 a tabela tinha a policy mas NÃO tinha
+   `grant update` — o Postgres recusava antes de avaliar a policy, e o
+   salvamento falhava com 42501. Se voltar a dar "permissão negada" num
+   admin, é grant, não policy.
+   ===================================================================== */
+
+const templateSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().trim().min(2).max(80),
+  description: z.string().trim().max(240),
+  /* Ordem importa: é a ordem dos KPIs no PDF. */
+  metrics: z.array(z.string()).min(1).max(8),
+  /* Rótulo por métrica. O mesmo `conversions` é "Vendas" na loja e
+     "Contatos" no negócio local — sem isto o cliente não reconhece o
+     próprio negócio no relatório. */
+  metricLabels: z.record(z.string(), z.string().trim().max(40)),
+});
+
+export async function salvarTemplate(input: {
+  id: string;
+  name: string;
+  description: string;
+  metrics: string[];
+  metricLabels: Record<string, string>;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = templateSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: "Confira nome, descrição e métricas." };
+  }
+
+  const { id, name, description, metrics, metricLabels } = parsed.data;
+
+  /* Rótulo em branco significa "usar o padrão da métrica", não string
+     vazia — gravar "" faria o PDF imprimir um cabeçalho sem texto. */
+  const rotulos = Object.fromEntries(
+    Object.entries(metricLabels).filter(([, v]) => v.trim().length > 0),
+  );
+
+  if (isDemoMode) return { ok: true };
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase
+    .from("report_templates")
+    .update({
+      name,
+      description: description || null,
+      metrics,
+      metric_labels: rotulos,
+    })
+    .eq("id", id);
+
+  if (error) {
+    if (error.code === "42501") {
+      return { ok: false, error: "Apenas administradores editam templates." };
+    }
+    return { ok: false, error: error.message };
+  }
 
   revalidatePath("/relatorios");
   return { ok: true };
