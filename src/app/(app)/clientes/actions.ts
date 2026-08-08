@@ -562,7 +562,7 @@ export async function saveClientProfile(
  *
  * Compara os PADRÕES dos dois segmentos, não os segmentos: sair de
  * `leads` para `local_business` troca o rótulo (de "Leads" para
- * "Conversas") mas os dois contam unidades, então o número continua
+ * "Visitas ao perfil") mas os dois contam unidades, então o número continua
  * válido e não há nada a zerar.
  */
 function mudouUnidadeDaMeta(
@@ -737,7 +737,7 @@ export async function setClientLogo(input: {
  * Escolhe qual evento do pixel conta como conversão nesta conta.
  *
  * `null` devolve ao padrão do segmento — e-commerce conta compra, leads
- * conta formulário, negócio local conta conversa iniciada. Só vale para
+ * conta formulário, negócio local conta visita ao perfil. Só vale para
  * o Meta: no Google a conversão é configurada na própria conta, e o
  * provider lê o que vier de lá.
  *

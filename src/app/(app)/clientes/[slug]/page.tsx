@@ -124,8 +124,8 @@ export default async function ClientPage({
     .map((key) => computeKpi(key, metrics.currentTotals, metrics.previousTotals))
     /* "Resultados" e "Custo por Resultado" são rótulos genéricos do
        catálogo de métricas. Aqui já sabemos o que a conta vende, então
-       o card diz "Conversas" e "Custo por conversa" em vez de obrigar
-       quem lê a lembrar de cabeça. */
+       o card diz "Visitas ao perfil" e "Custo por visita" em vez de
+       obrigar quem lê a lembrar de cabeça. */
     .map((kpi) =>
       kpi.key === "results" || kpi.key === "revenue"
         ? { ...kpi, label: metrica.label }

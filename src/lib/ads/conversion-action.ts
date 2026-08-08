@@ -17,6 +17,45 @@ import type { ClientSegment } from "@/types/database";
    do comum sobrescreve por conta, em `client_integrations`.
    ===================================================================== */
 
+/* ---------------------------------------------------------------------
+   Métricas que NÃO estão em `actions`
+
+   A Graph API tem duas gavetas para "o que o anúncio produziu":
+
+     actions[]  eventos do pixel e de mensageria, por `action_type`.
+     results[]  a coluna "Resultados" do Gerenciador — o que CADA
+                campanha otimiza, identificado por `indicator`.
+
+   Visita ao perfil só existe na segunda. Medido em 07/08/2026:
+   `profile_visit_view` aparece em `results` de 22 conjuntos com destino
+   INSTAGRAM_PROFILE, e em NENHUM `action_type` de nenhuma das contas.
+
+   ⚠️ `results` NÃO PODE SER SOMADO INTEIRO. Cada campanha reporta o
+   indicador do próprio objetivo, e medindo as mesmas contas apareceram
+   juntos: `reach` (12.603), `profile_visit_view` (430),
+   `actions:omni_landing_page_view` (52) e `mixed`. Somar daria 13.085
+   "resultados" numa mistura de alcance com visitas — número grande,
+   plausível e sem significado. Por isso o indicador entra na chave.
+
+   O prefixo distingue as duas gavetas dentro da mesma lista de tipos,
+   sem obrigar cada chamador a carregar um segundo parâmetro.
+   ------------------------------------------------------------------ */
+
+export const RESULT_PREFIX = "results:";
+
+/** Visita ao perfil do Instagram, vinda de `results`. */
+export const VISITA_AO_PERFIL = `${RESULT_PREFIX}profile_visit_view`;
+
+/** O tipo pede a gaveta `results` em vez de `actions`? */
+export function isResultIndicator(tipo: string): boolean {
+  return tipo.startsWith(RESULT_PREFIX);
+}
+
+/** `results:profile_visit_view` → `profile_visit_view`. */
+export function resultIndicatorOf(tipo: string): string {
+  return tipo.slice(RESULT_PREFIX.length);
+}
+
 /**
  * Padrão por segmento — um CONJUNTO, não um evento só.
  *
@@ -57,9 +96,18 @@ const POR_SEGMENTO: Record<ClientSegment, readonly string[]> = {
     "onsite_conversion.messaging_conversation_started_7d",
   ],
 
-  /* Negócio físico não tem carrinho — a conversão é a conversa que
-     começa. `_7d` é a janela padrão da Meta para esse evento. */
-  local_business: ["onsite_conversion.messaging_conversation_started_7d"],
+  /* Negócio físico: VISITA AO PERFIL.
+
+     Não vem de `actions` — medido em 07/08/2026, nenhum `action_type`
+     de visita existe, em 6 contas e ~150 tipos distintos. A fórmula
+     `actions.find(a => a.action_type === 'instagram_profile_views')`
+     devolveria `undefined` para sempre, e o `|| 0` transformaria isso em
+     "0 visitas" em toda conta de negócio local.
+
+     Vem do campo `results`, com `indicator: "profile_visit_view"` —
+     verificado em 22 conjuntos com destino INSTAGRAM_PROFILE. Ver
+     `RESULT_PREFIX` abaixo. */
+  local_business: [VISITA_AO_PERFIL],
 };
 
 /**
@@ -81,6 +129,11 @@ export function conversionActionFor(
 
 /** Opções para o seletor da tela, na ordem em que fazem sentido ler. */
 export const CONVERSION_ACTION_OPTIONS = [
+  {
+    value: VISITA_AO_PERFIL,
+    label: "Visita ao perfil",
+    hint: "negócio local — campanha com destino no Instagram",
+  },
   {
     value: "offsite_conversion.fb_pixel_purchase",
     label: "Compra (pixel)",

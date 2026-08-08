@@ -98,16 +98,20 @@ const CONTAGEM_POR_SEGMENTO: Record<
     costLabel: "Custo por lead",
   },
   local_business: {
-    /* A Meta entrega este número como conversa iniciada — é o evento que
-       o sync conta (`messaging_conversation_started_7d`). Chamar de
-       "visitas ao perfil" seria rotular um número pelo nome de outro:
-       visita de perfil vem de outro endpoint da Graph API e não está
-       disponível com as permissões atuais do app. */
-    label: "Conversas",
-    inputLabel: "Meta de conversas",
-    hint: "Quantas conversas o mês precisa abrir no WhatsApp, Direct ou Messenger.",
-    placeholder: "80",
-    costLabel: "Custo por conversa",
+    /* VISITA AO PERFIL, e o número é real: vem de `results` com
+       `indicator: "profile_visit_view"` — não de `actions`, onde ela
+       simplesmente não existe. A nota anterior aqui dizia que o dado
+       estava indisponível; estava, no endpoint em que se procurou.
+       Medição de 07/08/2026 em `conversion-action.ts`.
+
+       Conta que roda só campanha de mensagem não produz este indicador
+       e precisa do override "Conversa iniciada" em Contas de mídia —
+       senão o KPI dela zera. */
+    label: "Visitas ao perfil",
+    inputLabel: "Meta de visitas",
+    hint: "Quantas visitas ao perfil o mês precisa gerar.",
+    placeholder: "800",
+    costLabel: "Custo por visita",
   },
 };
 

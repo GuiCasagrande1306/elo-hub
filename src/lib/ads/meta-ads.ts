@@ -1,6 +1,7 @@
 import "server-only";
 
 import { serverEnv } from "@/lib/env";
+import { isResultIndicator, resultIndicatorOf } from "./conversion-action";
 import {
   decimalToCents,
   isSupportedCurrency,
@@ -43,11 +44,30 @@ const FIELDS = [
   "clicks",
   "actions",
   "action_values",
+  /* `results` é a coluna "Resultados" do Gerenciador. É a ÚNICA gaveta
+     em que visita ao perfil existe — não há `action_type` para ela. Ver
+     a medição em `conversion-action.ts`. */
+  "results",
 ].join(",");
 
 interface MetaAction {
   action_type: string;
   value: string;
+}
+
+/**
+ * Uma linha de `results`.
+ *
+ * `indicator` diz O QUE está sendo contado, e muda por campanha:
+ * `profile_visit_view`, `reach`, `actions:omni_landing_page_view`,
+ * `mixed`. Sem olhar o indicador, somar isto mistura alcance com visita.
+ *
+ * `values` vem como array de um elemento; `mixed` e campanha sem entrega
+ * vêm sem `values`, e aí não há número a ler.
+ */
+interface MetaResult {
+  indicator?: string;
+  values?: { value?: string }[];
 }
 
 interface MetaInsightRow {
@@ -59,6 +79,7 @@ interface MetaInsightRow {
   clicks?: string;
   actions?: MetaAction[];
   action_values?: MetaAction[];
+  results?: MetaResult[];
 }
 
 interface MetaResponse {
@@ -178,6 +199,35 @@ export const metaAdsProvider: AdsProvider = {
  * Exportada para poder ser testada sem rede — é aqui que moram os erros
  * de unidade e de contagem dupla de conversão.
  */
+/**
+ * O número de UM tipo nesta linha, venha ele de `actions` ou `results`.
+ *
+ * É aqui que mora a extração de visita ao perfil — o pedido original
+ * apontava para `actions.find(a => a.action_type === 'instagram_profile_views')`,
+ * que não existe: medido em 6 contas e ~150 `action_type` distintos, nenhum
+ * casa com perfil. O dado está em `results[].indicator`.
+ */
+function valorDoTipo(
+  row: { actions?: MetaAction[]; results?: MetaResult[] },
+  tipo: string,
+): number {
+  if (!isResultIndicator(tipo)) {
+    return toDecimal(
+      row.actions?.find((a) => a.action_type === tipo)?.value ?? 0,
+    );
+  }
+
+  const indicador = resultIndicatorOf(tipo);
+
+  /* `find` pelo indicador, NUNCA `results[0]`. Uma conta com campanha de
+     alcance e campanha de perfil devolve as duas na mesma lista, e o
+     primeiro elemento pode ser `reach` — 12.603 contra 430 visitas, na
+     medição. Campanha `mixed` ou sem entrega vem sem `values` e vira 0,
+     que é o certo: não dá para atribuir. */
+  const linha = row.results?.find((r) => r.indicator === indicador);
+  return toDecimal(linha?.values?.[0]?.value ?? 0);
+}
+
 export function toNormalizedRow(
   row: MetaInsightRow,
   conversionActionTypes: string | string[],
@@ -190,13 +240,15 @@ export function toNormalizedRow(
 
   /* SOMA sobre o conjunto, e o conjunto só contém eventos disjuntos —
      ver a análise em `conversion-action.ts`. Somar tipos que se contêm
-     multiplicaria a mesma pessoa. */
+     multiplicaria a mesma pessoa.
+
+     Duas gavetas: `actions` para evento de pixel/mensageria, `results`
+     para o que a campanha otimiza. Visita ao perfil só existe na
+     segunda, e o INDICADOR entra na busca — `results` traz `reach` e
+     `mixed` na mesma lista, e pegar o primeiro elemento somaria alcance
+     como se fosse visita. */
   const conversions = tipos.reduce(
-    (acc, tipo) =>
-      acc +
-      toDecimal(
-        row.actions?.find((a) => a.action_type === tipo)?.value ?? 0,
-      ),
+    (acc, tipo) => acc + valorDoTipo(row, tipo),
     0,
   );
 
@@ -206,10 +258,16 @@ export function toNormalizedRow(
      conta de e-commerce ganhar um segundo evento com valor. */
   const revenueTotal = tipos.reduce(
     (acc, tipo) =>
-      acc +
-      decimalToCents(
-        row.action_values?.find((a) => a.action_type === tipo)?.value,
-      ),
+      /* `results` não tem contrapartida em `action_values`: visita ao
+         perfil não carrega valor monetário. Procurar por
+         "results:profile_visit_view" ali devolveria undefined a cada
+         linha — barato, mas confundiria quem lesse depois. */
+      isResultIndicator(tipo)
+        ? acc
+        : acc +
+          decimalToCents(
+            row.action_values?.find((a) => a.action_type === tipo)?.value,
+          ),
     0,
   );
 
@@ -384,7 +442,11 @@ export async function fetchAdInsights(
     `https://graph.facebook.com/${serverEnv.metaApiVersion}/${accountId}/insights`,
   );
   url.searchParams.set("level", "ad");
-  url.searchParams.set("fields", "ad_id,spend,impressions,clicks,actions");
+  url.searchParams.set(
+    "fields",
+    // `results` junto: visita ao perfil não existe em `actions`.
+    "ad_id,spend,impressions,clicks,actions,results",
+  );
   url.searchParams.set("time_range", JSON.stringify({ since, until }));
   url.searchParams.set("limit", "300");
 
@@ -410,7 +472,7 @@ export async function fetchAdInsights(
       const conversions = conversionActionTypes.reduce(
         (acc, tipo) =>
           acc +
-          toDecimal(row.actions?.find((a) => a.action_type === tipo)?.value ?? 0),
+          valorDoTipo(row, tipo),
         0,
       );
 
