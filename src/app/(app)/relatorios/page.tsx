@@ -1,9 +1,9 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { CheckCircle2, Clock, FileText, TriangleAlert } from "lucide-react";
 
 import { PageContainer, PageHeader } from "@/components/layout/page-header";
 import { TemplateSettingsDialog } from "@/components/reports/template-settings-dialog";
+import { ReportHistoryList } from "@/components/reports/report-history";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,9 +12,7 @@ import {
   getReports,
   getReportTemplates,
 } from "@/lib/data";
-import { formatDateFull, formatPeriod } from "@/lib/format";
-import { cn } from "@/lib/utils";
-import type { ClientSegment, ReportStatus } from "@/types/database";
+import type { ClientSegment } from "@/types/database";
 import { listarPendentes } from "./actions";
 import { SendQueue } from "./send-queue";
 import { CommandStation } from "./command-station";
@@ -28,18 +26,6 @@ const SEGMENT_LABELS: Record<ClientSegment, string> = {
   local_business: "Negócio local",
 };
 
-const STATUS_META: Record<
-  ReportStatus,
-  { label: string; className: string; icon: typeof Clock }
-> = {
-  draft: { label: "Rascunho", className: "bg-muted text-muted-foreground", icon: FileText },
-  queued: { label: "Na fila", className: "bg-muted text-muted-foreground", icon: Clock },
-  generating: { label: "Gerando", className: "bg-warning-muted text-warning", icon: Clock },
-  ready: { label: "Pronto", className: "bg-signal-muted text-signal", icon: CheckCircle2 },
-  sending: { label: "Enviando", className: "bg-warning-muted text-warning", icon: Clock },
-  sent: { label: "Enviado", className: "bg-positive-muted text-positive", icon: CheckCircle2 },
-  failed: { label: "Falhou", className: "bg-negative-muted text-negative", icon: TriangleAlert },
-};
 
 export default async function ReportsPage() {
   /* O papel decide o que a TELA diz; quem decide o que o banco DEVOLVE é
@@ -73,8 +59,6 @@ export default async function ReportsPage() {
     metric: linha.metric,
   }));
 
-  const clientName = (id: string) =>
-    clients.find((c) => c.id === id)?.name ?? "Cliente";
 
   return (
     <PageContainer>
@@ -136,79 +120,17 @@ export default async function ReportsPage() {
       <SendQueue itens={pendentes} />
       </section>
 
-      {/* Histórico ------------------------------------------------- */}
-      <section className="mt-10">
-        <h2 className="text-lg font-semibold tracking-[-0.015em]">
-          Histórico de envios
-        </h2>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          {user?.role === "admin"
+      <ReportHistoryList
+        reports={reports}
+        /* `Map` não serializa para Client Component — vira objeto. */
+        clientNames={Object.fromEntries(clients.map((c) => [c.id, c.name]))}
+        escopo={
+          user?.role === "admin"
             ? "Todos os envios da equipe."
-            : "Seus envios e os relatórios que o robô preparou."}
-        </p>
+            : "Seus envios e os relatórios que o robô preparou."
+        }
+      />
 
-        {reports.length === 0 ? (
-          <div className="mt-4 rounded-xl border border-dashed border-hairline py-14 text-center">
-            <p className="text-sm text-muted-foreground">
-              Nenhum relatório gerado ainda.
-            </p>
-          </div>
-        ) : (
-          <div className="surface-card mt-4 overflow-hidden">
-            <div className="hidden grid-cols-[1fr_180px_130px_120px] gap-4 border-b border-hairline px-4 py-2.5 md:grid">
-              {["Relatório", "Período", "Status", "Enviado em"].map((label) => (
-                <span key={label} className="eyebrow">
-                  {label}
-                </span>
-              ))}
-            </div>
-
-            <ul className="divide-y divide-hairline">
-              {reports.map((report) => {
-                const status = STATUS_META[report.status];
-                return (
-                  <li
-                    key={report.id}
-                    className="grid grid-cols-1 gap-x-4 gap-y-2 px-4 py-3 md:grid-cols-[1fr_180px_130px_120px] md:items-center"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">
-                        {report.title}
-                      </p>
-                      <p className="mt-0.5 text-2xs text-muted-foreground">
-                        {clientName(report.client_id)}
-                        {report.channel === "whatsapp" && report.recipient
-                          ? ` · WhatsApp ${report.recipient}`
-                          : ""}
-                      </p>
-                    </div>
-
-                    <span className="text-xs tabular-nums text-muted-foreground">
-                      {formatPeriod(report.period_start, report.period_end)}
-                    </span>
-
-                    <span
-                      className={cn(
-                        "inline-flex w-fit items-center gap-1 rounded-full px-2 py-0.5 text-2xs font-medium",
-                        status.className,
-                      )}
-                    >
-                      <status.icon className="size-3" />
-                      {status.label}
-                    </span>
-
-                    <span className="text-xs tabular-nums text-muted-foreground">
-                      {report.delivered_at
-                        ? formatDateFull(report.delivered_at)
-                        : "—"}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        )}
-      </section>
     </PageContainer>
   );
 }
