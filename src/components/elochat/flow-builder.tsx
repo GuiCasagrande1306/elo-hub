@@ -22,12 +22,19 @@ import { NODE_TYPES, type NoDoFluxo } from "./flow-nodes";
 import {
   BLOCK_BY_ID,
   BLOCK_TYPES,
+  BLOCOS_COM_BOTOES,
+  BLOCOS_COM_TEXTO,
   KIND_LABELS,
   KIND_STYLES,
+  MAX_BOTOES,
+  MAX_CARTOES,
+  dadosPadrao,
   type BlockKind,
   type BlockType,
+  type CartaoDoNo,
   type DadosDoNo,
 } from "./blocks";
+import { InstagramPreview } from "./instagram-preview";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -42,13 +49,19 @@ import { CONSULTA_DESKTOP, useMediaQuery } from "@/lib/use-media-query";
 import { cn } from "@/lib/utils";
 
 /* =====================================================================
-   EloChat — construtor de fluxo
+   EloChat — construtor de fluxo para Instagram Direct
    ---------------------------------------------------------------------
    ⚠️ ESTA TELA NÃO DISPARA NADA. É o construtor, não o motor: não há
-   tabela, não há publicação e "Testar fluxo" não manda mensagem para
-   ninguém. O sistema já tem envio de WhatsApp em `/api/whatsapp/send`,
-   e ligar os dois é um projeto próprio — persistência do fluxo, fila de
-   execução, estado por contato e janela de 24h da Meta.
+   tabela, "Publicar" não publica e "Testar fluxo" não manda mensagem
+   para ninguém.
+
+   E o caminho até mandar não é curto. A Instagram Messaging API é
+   separada do envio de WhatsApp que o sistema já tem: pede uma conta
+   Business ligada a uma página, o app da Meta com `instagram_manage_messages`
+   revisado, webhook de `comments` e `messages`, e o respeito à janela de
+   24 horas — fora dela só passa mensagem de tipo permitido. Somando a
+   persistência do fluxo, a fila de execução e o estado por contato, é um
+   projeto, não um ajuste.
 
    Está escrito aqui em cima para que ninguém descubra isso em produção,
    com um cliente esperando a automação rodar.
@@ -59,71 +72,57 @@ import { cn } from "@/lib/utils";
    ferramenta e a imagem de uma ferramenta aparece no primeiro arraste.
    ===================================================================== */
 
+/* O fluxo de exemplo é o de captura por comentário, que é a automação
+   que quase toda conta de Instagram monta primeiro: comentar uma palavra
+   num Reel para receber algo no direct. */
 const POSICAO_INICIAL: NoDoFluxo[] = [
   {
     id: "gatilho",
     type: "elo",
     position: { x: 0, y: 0 },
     data: {
-      blockId: "keyword",
-      titulo: 'Palavra-chave "Promoção"',
-      texto: "Dispara quando alguém manda PROMOÇÃO no direct do Instagram.",
+      blockId: "comment",
+      titulo: 'Comentou "EU QUERO" no Reel',
+      texto:
+        "Dispara quando alguém comenta EU QUERO no Reel da campanha de agosto.",
       botoes: [],
+      cartoes: [],
     },
   },
   {
-    id: "mensagem",
+    id: "resposta",
     type: "elo",
-    position: { x: 0, y: 190 },
+    position: { x: 0, y: 200 },
+    data: {
+      blockId: "buttons",
+      titulo: "Resposta no direct",
+      texto:
+        "Que bom que você curtiu! Para liberar seu cupom, clique no botão abaixo.",
+      botoes: [{ id: "cupom", label: "Pegar cupom" }],
+      cartoes: [],
+    },
+  },
+  {
+    id: "cupom",
+    type: "elo",
+    position: { x: 330, y: 240 },
     data: {
       blockId: "message",
-      titulo: "Boas-vindas",
-      texto:
-        "Olá! Aqui está o seu desconto de 15% — é só usar o cupom ELO15 no carrinho. Posso ajudar em mais alguma coisa?",
-      botoes: [
-        { id: "comprar", label: "Quero comprar" },
-        { id: "atendente", label: "Falar com atendente" },
-      ],
-    },
-  },
-  {
-    id: "checkout",
-    type: "elo",
-    position: { x: 340, y: 150 },
-    data: {
-      blockId: "media",
-      titulo: "Enviar catálogo",
-      texto: "Manda o PDF com os produtos em promoção.",
+      titulo: "Entregar o cupom",
+      texto: "Prontinho! Use ELO15 no carrinho e o desconto entra sozinho.",
       botoes: [],
-    },
-  },
-  {
-    id: "humano",
-    type: "elo",
-    position: { x: 340, y: 330 },
-    data: {
-      blockId: "delay",
-      titulo: "Passar para humano",
-      texto: "Aguarda 1 minuto e avisa a equipe no grupo de atendimento.",
-      botoes: [],
+      cartoes: [],
     },
   },
 ];
 
 const ARESTAS_INICIAIS: Edge[] = [
-  { id: "e1", source: "gatilho", target: "mensagem", animated: true },
+  { id: "e1", source: "gatilho", target: "resposta", animated: true },
   {
     id: "e2",
-    source: "mensagem",
-    sourceHandle: "comprar",
-    target: "checkout",
-    animated: true,
-  },
-  {
-    id: "e3",
-    source: "mensagem",
-    sourceHandle: "atendente",
-    target: "humano",
+    source: "resposta",
+    sourceHandle: "cupom",
+    target: "cupom",
     animated: true,
   },
 ];
@@ -161,12 +160,7 @@ export function FlowBuilder() {
             x: 120 + (atuais.length % 4) * 36,
             y: 120 + (atuais.length % 4) * 36,
           },
-          data: {
-            blockId: bloco.id,
-            titulo: bloco.label,
-            texto: "",
-            botoes: [],
-          },
+          data: dadosPadrao(bloco),
         },
       ]);
       setSelecionado(id);
@@ -249,9 +243,13 @@ export function FlowBuilder() {
           </Button>
         </div>
 
-        {/* -------------------- Editor (desktop) -------------------- */}
+        {/* -------------------- Editor (desktop) --------------------
+            Mais largo que os 320px de um painel comum porque carrega a
+            prévia do celular: abaixo disso o balão fica estreito demais
+            para mostrar a quebra de linha real da mensagem, que é metade
+            do que a prévia serve para conferir. */}
         {noAtual && (
-          <aside className="hidden w-80 shrink-0 overflow-y-auto border-l border-hairline bg-surface lg:block">
+          <aside className="hidden w-[360px] shrink-0 overflow-y-auto border-l border-hairline bg-surface lg:block">
             <Editor
               no={noAtual}
               onEditar={editar}
@@ -286,7 +284,13 @@ export function FlowBuilder() {
             open={Boolean(noAtual)}
             onOpenChange={(v) => !v && setSelecionado(null)}
           >
-            <SheetContent side="right" className="w-[320px] p-0">
+            {/* `showCloseButton={false}` porque o `Editor` já traz o seu:
+                a gaveta desenhava um segundo X por cima do primeiro. */}
+            <SheetContent
+              side="right"
+              showCloseButton={false}
+              className="w-[340px] p-0"
+            >
               <SheetHeader className="sr-only">
                 <SheetTitle>Editar bloco</SheetTitle>
               </SheetHeader>
@@ -323,7 +327,8 @@ function Cabecalho({ nos }: { nos: number }) {
           </span>
         </div>
         <p className="truncate text-2xs text-muted-foreground">
-          Boas-vindas — WhatsApp · {nos} {nos === 1 ? "bloco" : "blocos"}
+          Cupom por comentário — Instagram · {nos}{" "}
+          {nos === 1 ? "bloco" : "blocos"}
         </p>
       </div>
 
@@ -426,6 +431,7 @@ function Paleta({ onAdicionar }: { onAdicionar: (b: BlockType) => void }) {
 /* Editor do bloco                                                     */
 /* ------------------------------------------------------------------ */
 
+
 function Editor({
   no,
   onEditar,
@@ -440,9 +446,12 @@ function Editor({
   const bloco = BLOCK_BY_ID.get(no.data.blockId);
   const estilo = KIND_STYLES[bloco?.kind ?? "action"];
 
-  /* Botão só faz sentido em bloco de mensagem: pendurar resposta rápida
-     num "Atraso" criaria uma saída que o motor não saberia percorrer. */
-  const aceitaBotoes = no.data.blockId === "message";
+  /* Só o que o contato RECEBE tem prévia. Um gatilho não produz balão, e
+     desenhar um para ele diria que o Instagram manda algo quando alguém
+     comenta — que é exatamente o contrário do que acontece. */
+  const mandaMensagem = BLOCOS_COM_TEXTO.has(no.data.blockId);
+  const aceitaBotoes = BLOCOS_COM_BOTOES.has(no.data.blockId);
+  const ehCarrossel = no.data.blockId === "carousel";
 
   function editarBotao(id: string, label: string) {
     onEditar({
@@ -450,8 +459,16 @@ function Editor({
     });
   }
 
+  function editarCartao(id: string, patch: Partial<CartaoDoNo>) {
+    onEditar({
+      cartoes: no.data.cartoes.map((c) =>
+        c.id === id ? { ...c, ...patch } : c,
+      ),
+    });
+  }
+
   return (
-    <div className="flex flex-col">
+    <div className="flex min-h-full flex-col">
       <div className="flex items-center gap-2 border-b border-hairline px-4 py-3">
         <span
           className={cn(
@@ -476,6 +493,12 @@ function Editor({
       </div>
 
       <div className="flex flex-col gap-4 p-4">
+        {/* A PRÉVIA VEM ANTES DOS CAMPOS. É ela que responde "ficou bom?",
+            e quem escreve copy de direct escreve olhando o resultado, não
+            o formulário. Enterrá-la embaixo de três campos faria o painel
+            precisar de rolagem justamente no momento de digitar. */}
+        {mandaMensagem && <InstagramPreview dados={no.data} />}
+
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="no-titulo">Nome do passo</Label>
           <Input
@@ -491,21 +514,21 @@ function Editor({
 
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="no-texto">
-            {aceitaBotoes ? "Mensagem" : "Descrição"}
+            {mandaMensagem ? "Mensagem" : "Descrição"}
           </Label>
           <Textarea
             id="no-texto"
             value={no.data.texto}
             onChange={(e) => onEditar({ texto: e.target.value })}
-            rows={5}
+            rows={4}
             maxLength={1000}
             placeholder={
-              aceitaBotoes
-                ? "Olá! Aqui está o seu desconto…"
+              mandaMensagem
+                ? "Que bom que você curtiu! Para liberar seu cupom…"
                 : "O que este passo faz"
             }
           />
-          {aceitaBotoes && (
+          {mandaMensagem && (
             <p className="text-2xs tabular-nums text-muted-foreground">
               {no.data.texto.length} de 1000 caracteres
             </p>
@@ -515,9 +538,16 @@ function Editor({
         {aceitaBotoes && (
           <div className="flex flex-col gap-2">
             <div className="flex items-baseline justify-between">
-              <Label>Botões de resposta</Label>
-              <span className="text-2xs tabular-nums text-muted-foreground">
-                {no.data.botoes.length} de 3
+              <Label>Botões</Label>
+              <span
+                className={cn(
+                  "text-2xs tabular-nums",
+                  no.data.botoes.length >= MAX_BOTOES
+                    ? "text-warning"
+                    : "text-muted-foreground",
+                )}
+              >
+                {no.data.botoes.length} de {MAX_BOTOES}
               </span>
             </div>
 
@@ -550,10 +580,11 @@ function Editor({
               </div>
             ))}
 
-            {/* Três é o teto do WhatsApp para botões de resposta rápida.
-                Deixar cadastrar quatro aqui seria construir um fluxo que
-                a plataforma recusa na hora de publicar. */}
-            {no.data.botoes.length < 3 && (
+            {/* Três é o teto do Instagram para botões colados na
+                mensagem. Deixar cadastrar quatro seria montar um fluxo
+                que a Meta recusa na hora de publicar. Quem precisa de
+                mais opções usa quick replies, que são outro recurso. */}
+            {no.data.botoes.length < MAX_BOTOES && (
               <Button
                 size="sm"
                 variant="outline"
@@ -568,6 +599,103 @@ function Editor({
                 }
               >
                 Adicionar botão
+              </Button>
+            )}
+          </div>
+        )}
+
+        {ehCarrossel && (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-baseline justify-between">
+              <Label>Cartões</Label>
+              <span className="text-2xs tabular-nums text-muted-foreground">
+                {no.data.cartoes.length} de {MAX_CARTOES}
+              </span>
+            </div>
+
+            <p className="text-2xs text-muted-foreground">
+              A imagem de cada cartão é escolhida na publicação — aqui se
+              define título, descrição e o texto do botão.
+            </p>
+
+            {no.data.cartoes.map((cartao, i) => (
+              <div
+                key={cartao.id}
+                className="flex flex-col gap-1.5 rounded-lg border border-hairline p-2"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-2xs font-medium text-muted-foreground">
+                    Cartão {i + 1}
+                  </span>
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    aria-label={`Remover cartão ${i + 1}`}
+                    onClick={() =>
+                      onEditar({
+                        cartoes: no.data.cartoes.filter(
+                          (c) => c.id !== cartao.id,
+                        ),
+                      })
+                    }
+                  >
+                    <Trash2 className="size-3.5" />
+                  </Button>
+                </div>
+
+                <Input
+                  value={cartao.titulo}
+                  onChange={(e) =>
+                    editarCartao(cartao.id, { titulo: e.target.value })
+                  }
+                  maxLength={80}
+                  placeholder="Título"
+                  className="h-8 text-xs"
+                  aria-label={`Título do cartão ${i + 1}`}
+                />
+                <Input
+                  value={cartao.subtitulo}
+                  onChange={(e) =>
+                    editarCartao(cartao.id, { subtitulo: e.target.value })
+                  }
+                  maxLength={80}
+                  placeholder="Descrição"
+                  className="h-8 text-xs"
+                  aria-label={`Descrição do cartão ${i + 1}`}
+                />
+                <Input
+                  value={cartao.botao}
+                  onChange={(e) =>
+                    editarCartao(cartao.id, { botao: e.target.value })
+                  }
+                  maxLength={20}
+                  placeholder="Texto do botão"
+                  className="h-8 text-xs"
+                  aria-label={`Botão do cartão ${i + 1}`}
+                />
+              </div>
+            ))}
+
+            {no.data.cartoes.length < MAX_CARTOES && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8"
+                onClick={() =>
+                  onEditar({
+                    cartoes: [
+                      ...no.data.cartoes,
+                      {
+                        id: `c-${Date.now()}`,
+                        titulo: "Novo cartão",
+                        subtitulo: "",
+                        botao: "Ver",
+                      },
+                    ],
+                  })
+                }
+              >
+                Adicionar cartão
               </Button>
             )}
           </div>
