@@ -1,7 +1,11 @@
 import "server-only";
 
 import { serverEnv } from "@/lib/env";
-import { isResultIndicator, resultIndicatorOf } from "./conversion-action";
+import {
+  CAMPOS_DE_METRICA,
+  isMetricField,
+  metricFieldOf,
+} from "./conversion-action";
 import {
   decimalToCents,
   isSupportedCurrency,
@@ -44,10 +48,9 @@ const FIELDS = [
   "clicks",
   "actions",
   "action_values",
-  /* `results` é a coluna "Resultados" do Gerenciador. É a ÚNICA gaveta
-     em que visita ao perfil existe — não há `action_type` para ela. Ver
-     a medição em `conversion-action.ts`. */
-  "results",
+  /* Campos próprios do Insights, fora de `actions`: hoje só
+     `instagram_profile_visits`. Ver a medição em `conversion-action.ts`. */
+  ...CAMPOS_DE_METRICA,
 ].join(",");
 
 interface MetaAction {
@@ -55,20 +58,6 @@ interface MetaAction {
   value: string;
 }
 
-/**
- * Uma linha de `results`.
- *
- * `indicator` diz O QUE está sendo contado, e muda por campanha:
- * `profile_visit_view`, `reach`, `actions:omni_landing_page_view`,
- * `mixed`. Sem olhar o indicador, somar isto mistura alcance com visita.
- *
- * `values` vem como array de um elemento; `mixed` e campanha sem entrega
- * vêm sem `values`, e aí não há número a ler.
- */
-interface MetaResult {
-  indicator?: string;
-  values?: { value?: string }[];
-}
 
 interface MetaInsightRow {
   date_start: string;
@@ -79,7 +68,9 @@ interface MetaInsightRow {
   clicks?: string;
   actions?: MetaAction[];
   action_values?: MetaAction[];
-  results?: MetaResult[];
+  /* Campos de métrica chegam como STRING, no mesmo nível da linha —
+     "instagram_profile_visits": "2005". Não é array. */
+  instagram_profile_visits?: string;
 }
 
 interface MetaResponse {
@@ -207,25 +198,24 @@ export const metaAdsProvider: AdsProvider = {
  * que não existe: medido em 6 contas e ~150 `action_type` distintos, nenhum
  * casa com perfil. O dado está em `results[].indicator`.
  */
-function valorDoTipo(
-  row: { actions?: MetaAction[]; results?: MetaResult[] },
+export function valorDoTipo(
+  row: { actions?: MetaAction[]; instagram_profile_visits?: string },
   tipo: string,
 ): number {
-  if (!isResultIndicator(tipo)) {
+  if (!isMetricField(tipo)) {
     return toDecimal(
       row.actions?.find((a) => a.action_type === tipo)?.value ?? 0,
     );
   }
 
-  const indicador = resultIndicatorOf(tipo);
+  /* Campo direto da linha, lido pelo nome. O cast é local e estreito:
+     `CAMPOS_DE_METRICA` é a lista fechada do que pode chegar aqui, e
+     cada um desses campos está declarado na interface da linha.
 
-  /* `find` pelo indicador, NUNCA `results[0]`. Uma conta com campanha de
-     alcance e campanha de perfil devolve as duas na mesma lista, e o
-     primeiro elemento pode ser `reach` — 12.603 contra 430 visitas, na
-     medição. Campanha `mixed` ou sem entrega vem sem `values` e vira 0,
-     que é o certo: não dá para atribuir. */
-  const linha = row.results?.find((r) => r.indicator === indicador);
-  return toDecimal(linha?.values?.[0]?.value ?? 0);
+     Ausente quando a conta não tem Instagram vinculado — vira 0, nunca
+     NaN. */
+  const valor = (row as Record<string, unknown>)[metricFieldOf(tipo)];
+  return toDecimal(typeof valor === "string" ? valor : 0);
 }
 
 export function toNormalizedRow(
@@ -258,11 +248,9 @@ export function toNormalizedRow(
      conta de e-commerce ganhar um segundo evento com valor. */
   const revenueTotal = tipos.reduce(
     (acc, tipo) =>
-      /* `results` não tem contrapartida em `action_values`: visita ao
-         perfil não carrega valor monetário. Procurar por
-         "results:profile_visit_view" ali devolveria undefined a cada
-         linha — barato, mas confundiria quem lesse depois. */
-      isResultIndicator(tipo)
+      /* Campo de métrica não tem contrapartida em `action_values`:
+         visita ao perfil não carrega valor monetário. */
+      isMetricField(tipo)
         ? acc
         : acc +
           decimalToCents(
@@ -418,6 +406,7 @@ interface MetaAdInsightRow {
   impressions?: string;
   clicks?: string;
   actions?: MetaAction[];
+  instagram_profile_visits?: string;
 }
 
 /**
@@ -444,8 +433,8 @@ export async function fetchAdInsights(
   url.searchParams.set("level", "ad");
   url.searchParams.set(
     "fields",
-    // `results` junto: visita ao perfil não existe em `actions`.
-    "ad_id,spend,impressions,clicks,actions,results",
+    // Campos de métrica junto: visita ao perfil não existe em `actions`.
+    `ad_id,spend,impressions,clicks,actions,${CAMPOS_DE_METRICA.join(",")}`,
   );
   url.searchParams.set("time_range", JSON.stringify({ since, until }));
   url.searchParams.set("limit", "300");

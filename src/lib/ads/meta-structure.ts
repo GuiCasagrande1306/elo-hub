@@ -2,8 +2,9 @@ import "server-only";
 
 import { serverEnv } from "@/lib/env";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { conversionActionFor, isResultIndicator, resultIndicatorOf } from "./conversion-action";
-import { decimalToCents, toDecimal, toInt } from "./normalize";
+import { CAMPOS_DE_METRICA, conversionActionFor } from "./conversion-action";
+import { valorDoTipo } from "./meta-ads";
+import { decimalToCents, toInt } from "./normalize";
 import type { ClientSegment } from "@/types/database";
 
 /* =====================================================================
@@ -57,7 +58,7 @@ interface LinhaAd {
   impressions?: string;
   clicks?: string;
   actions?: { action_type: string; value: string }[];
-  results?: { indicator?: string; values?: { value?: string }[] }[];
+  instagram_profile_visits?: string;
 }
 
 const FIELDS = [
@@ -71,7 +72,7 @@ const FIELDS = [
   "impressions",
   "clicks",
   "actions",
-  "results",
+  ...CAMPOS_DE_METRICA,
 ].join(",");
 
 export type ResultadoEstrutura =
@@ -246,20 +247,13 @@ export function montarArvore(
   };
 }
 
-/** Mesma regra de `toNormalizedRow`: duas gavetas, indicador na chave. */
+/**
+ * A MESMA função que o sync usa, importada em vez de reescrita.
+ *
+ * Duas cópias da regra "campo do Insights ou `action_type`" divergiriam
+ * na primeira mudança, e a árvore passaria a somar diferente do card de
+ * cima — na mesma tela.
+ */
 function somarTipos(l: LinhaAd, tipos: string[]): number {
-  return tipos.reduce((acc, tipo) => {
-    if (isResultIndicator(tipo)) {
-      const ind = resultIndicatorOf(tipo);
-      return (
-        acc +
-        toDecimal(
-          l.results?.find((r) => r.indicator === ind)?.values?.[0]?.value ?? 0,
-        )
-      );
-    }
-    return (
-      acc + toDecimal(l.actions?.find((a) => a.action_type === tipo)?.value ?? 0)
-    );
-  }, 0);
+  return tipos.reduce((acc, tipo) => acc + valorDoTipo(l, tipo), 0);
 }

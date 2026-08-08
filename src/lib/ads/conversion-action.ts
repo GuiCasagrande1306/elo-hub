@@ -20,41 +20,49 @@ import type { ClientSegment } from "@/types/database";
 /* ---------------------------------------------------------------------
    Métricas que NÃO estão em `actions`
 
-   A Graph API tem duas gavetas para "o que o anúncio produziu":
+   Visita ao perfil não é um evento do pixel — não existe `action_type`
+   para ela. Medido em 07/08/2026: 6 contas, ~150 tipos distintos entre
+   `actions` e `unique_actions`, nenhum casa com perfil.
 
-     actions[]  eventos do pixel e de mensageria, por `action_type`.
-     results[]  a coluna "Resultados" do Gerenciador — o que CADA
-                campanha otimiza, identificado por `indicator`.
+   É um CAMPO PRÓPRIO do Insights: `instagram_profile_visits`, string
+   com o número, disponível nos níveis de conta, campanha e anúncio e
+   compatível com `time_increment=1`.
 
-   Visita ao perfil só existe na segunda. Medido em 07/08/2026:
-   `profile_visit_view` aparece em `results` de 22 conjuntos com destino
-   INSTAGRAM_PROFILE, e em NENHUM `action_type` de nenhuma das contas.
+   ⚠️ NÃO usar `results[indicator=profile_visit_view]`, que foi a
+   primeira implementação. `results` é a coluna "Resultados" do
+   Gerenciador e só reporta o que CADA campanha otimiza — campanha de
+   reconhecimento ou de leads gera visita e reporta zero ali. Medido nas
+   mesmas contas, 30 dias:
 
-   ⚠️ `results` NÃO PODE SER SOMADO INTEIRO. Cada campanha reporta o
-   indicador do próprio objetivo, e medindo as mesmas contas apareceram
-   juntos: `reach` (12.603), `profile_visit_view` (430),
-   `actions:omni_landing_page_view` (52) e `mixed`. Somar daria 13.085
-   "resultados" numa mistura de alcance com visitas — número grande,
-   plausível e sem significado. Por isso o indicador entra na chave.
+       Bem viver             results 2.005   campo 2.381
+       Cottura Pasta Fresca  results 1.384   campo 2.123
+       Casarão de Fátima     results     0   campo   764
 
-   O prefixo distingue as duas gavetas dentro da mesma lista de tipos,
-   sem obrigar cada chamador a carregar um segundo parâmetro.
+   O Casarão é o caso que fecha o argumento: a campanha dele é de
+   formulário, então `results` reportava zero visitas — e ele produz 764.
+
+   O prefixo distingue "campo do Insights" de "tipo dentro de `actions`"
+   na mesma lista, sem obrigar cada chamador a carregar um segundo
+   parâmetro.
    ------------------------------------------------------------------ */
 
-export const RESULT_PREFIX = "results:";
+export const FIELD_PREFIX = "field:";
 
-/** Visita ao perfil do Instagram, vinda de `results`. */
-export const VISITA_AO_PERFIL = `${RESULT_PREFIX}profile_visit_view`;
+/** Visitas ao perfil do Instagram, campo próprio do Insights. */
+export const VISITA_AO_PERFIL = `${FIELD_PREFIX}instagram_profile_visits`;
 
-/** O tipo pede a gaveta `results` em vez de `actions`? */
-export function isResultIndicator(tipo: string): boolean {
-  return tipo.startsWith(RESULT_PREFIX);
+/** O tipo é um campo do Insights em vez de um `action_type`? */
+export function isMetricField(tipo: string): boolean {
+  return tipo.startsWith(FIELD_PREFIX);
 }
 
-/** `results:profile_visit_view` → `profile_visit_view`. */
-export function resultIndicatorOf(tipo: string): string {
-  return tipo.slice(RESULT_PREFIX.length);
+/** `field:instagram_profile_visits` → `instagram_profile_visits`. */
+export function metricFieldOf(tipo: string): string {
+  return tipo.slice(FIELD_PREFIX.length);
 }
+
+/** Campos do Insights que algum segmento pode pedir. Entram no `fields`. */
+export const CAMPOS_DE_METRICA = ["instagram_profile_visits"] as const;
 
 /**
  * Padrão por segmento — um CONJUNTO, não um evento só.
@@ -96,17 +104,9 @@ const POR_SEGMENTO: Record<ClientSegment, readonly string[]> = {
     "onsite_conversion.messaging_conversation_started_7d",
   ],
 
-  /* Negócio físico: VISITA AO PERFIL.
-
-     Não vem de `actions` — medido em 07/08/2026, nenhum `action_type`
-     de visita existe, em 6 contas e ~150 tipos distintos. A fórmula
-     `actions.find(a => a.action_type === 'instagram_profile_views')`
-     devolveria `undefined` para sempre, e o `|| 0` transformaria isso em
-     "0 visitas" em toda conta de negócio local.
-
-     Vem do campo `results`, com `indicator: "profile_visit_view"` —
-     verificado em 22 conjuntos com destino INSTAGRAM_PROFILE. Ver
-     `RESULT_PREFIX` abaixo. */
+  /* Negócio físico: VISITA AO PERFIL, do campo `instagram_profile_visits`
+     — todas as campanhas, não só as que otimizam para perfil. Ver a
+     medição em `FIELD_PREFIX` acima. */
   local_business: [VISITA_AO_PERFIL],
 };
 
@@ -132,7 +132,7 @@ export const CONVERSION_ACTION_OPTIONS = [
   {
     value: VISITA_AO_PERFIL,
     label: "Visita ao perfil",
-    hint: "negócio local — campanha com destino no Instagram",
+    hint: "negócio local — soma todas as campanhas, não só as de perfil",
   },
   {
     value: "offsite_conversion.fb_pixel_purchase",
