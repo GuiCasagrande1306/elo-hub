@@ -55,7 +55,15 @@ export interface EstruturaDaConta {
   campanhas: NoDaArvore[];
   totalSpendCents: number;
   totalResults: number;
-  /** Rótulo do que `results` conta, para a tela não dizer "resultados". */
+  /**
+   * Plataformas VINCULADAS na conta, tenham entregado ou não.
+   *
+   * Sem isto a tela não distingue "Google não configurado" de "Google
+   * configurado e parado". As campanhas zeradas são filtradas — e o
+   * usuário, com razão, lê a ausência como bug do sistema em vez de
+   * conta pausada. Ver `consolidar`.
+   */
+  conectadas: PlataformaDaArvore[];
   moeda: "BRL";
 }
 
@@ -135,6 +143,17 @@ export async function fetchAdStructure(
   const linha = integracoes.find((i) => i.platform === "meta_ads");
   const google = integracoes.find((i) => i.platform === "google_ads");
 
+  /* Vinculada = tem conta escolhida (não `pending:`). É o que a tela usa
+     para dizer "Google conectado, sem entrega" em vez de simplesmente
+     não mostrar nada. */
+  const vinculada = (i?: { external_account_id?: string }) =>
+    Boolean(i?.external_account_id && !i.external_account_id.startsWith("pending:"));
+
+  const conectadas: PlataformaDaArvore[] = [
+    ...(vinculada(linha) ? (["meta_ads"] as const) : []),
+    ...(vinculada(google) ? (["google_ads"] as const) : []),
+  ];
+
   const token = linha?.integration_secrets?.access_token;
   const conta = linha?.external_account_id;
 
@@ -153,9 +172,10 @@ export async function fetchAdStructure(
      que o TypeScript não sabe relacionar. */
   if (!token || !conta || conta.startsWith("pending:")) {
     const campanhas = await promessaGoogle;
-    return campanhas.length > 0
-      ? { ok: true, dados: consolidar(campanhas) }
-      : { ok: false, error: "Nenhuma conta de mídia vinculada." };
+    if (conectadas.length === 0) {
+      return { ok: false, error: "Nenhuma conta de mídia vinculada." };
+    }
+    return { ok: true, dados: consolidar(campanhas, conectadas) };
   }
 
   const tipos = conversionActionFor(
@@ -189,7 +209,8 @@ export async function fetchAdStructure(
       /* A Meta falhou, mas o Google pode ter respondido. Devolver erro
          seco esconderia metade da conta. */
       const soGoogle = await promessaGoogle;
-      if (soGoogle.length > 0) return { ok: true, dados: consolidar(soGoogle) };
+      if (soGoogle.length > 0)
+        return { ok: true, dados: consolidar(soGoogle, conectadas) };
       return {
         ok: false,
         error: payload.error?.message ?? `Graph API respondeu ${resposta.status}.`,
@@ -209,7 +230,7 @@ export async function fetchAdStructure(
 
     return {
       ok: true,
-      dados: consolidar([...meta.campanhas, ...campanhasGoogle]),
+      dados: consolidar([...meta.campanhas, ...campanhasGoogle], conectadas),
     };
   } catch (error) {
     return {
@@ -317,6 +338,9 @@ export function montarArvore(
     campanhas: lista,
     totalSpendCents: lista.reduce((a, c) => a + c.spendCents, 0),
     totalResults: lista.reduce((a, c) => a + c.results, 0),
+    /* `montarArvore` só monta o lado da Meta; quem junta as duas e sabe
+       o que está vinculado é `consolidar`. */
+    conectadas: ["meta_ads"],
     moeda: "BRL",
   };
 }
@@ -403,7 +427,10 @@ async function buscarCriativos(
  * dinheiro foi", e ela não respeita fronteira de plataforma. O selo de
  * origem fica em cada linha (`plataforma`), então nada se confunde.
  */
-function consolidar(campanhas: NoDaArvore[]): EstruturaDaConta {
+function consolidar(
+  campanhas: NoDaArvore[],
+  conectadas: PlataformaDaArvore[],
+): EstruturaDaConta {
   /* Fora quem não entregou NADA no período. O card promete "o que
      entregou", e conta antiga acumula campanha arquivada: no Atacado de
      Pratas eram 4 campanhas do Google a R$ 0,00 empurrando para baixo a
@@ -425,6 +452,7 @@ function consolidar(campanhas: NoDaArvore[]): EstruturaDaConta {
     campanhas: lista,
     totalSpendCents: lista.reduce((a, c) => a + c.spendCents, 0),
     totalResults: lista.reduce((a, c) => a + c.results, 0),
+    conectadas,
     moeda: "BRL",
   };
 }

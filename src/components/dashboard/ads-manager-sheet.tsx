@@ -17,8 +17,12 @@ import {
   type NoDaArvore,
 } from "@/components/dashboard/ads-manager-table";
 import { AdsManagerSkeleton } from "@/components/dashboard/ads-manager-skeleton";
+import {
+  PeriodPicker,
+  janelaDeDias,
+  type Periodo,
+} from "@/components/dashboard/period-picker";
 import { formatCurrency, formatNumber } from "@/lib/format";
-import { cn } from "@/lib/utils";
 
 /* =====================================================================
    Gerenciador unificado, em diálogo CENTRAL
@@ -38,31 +42,17 @@ import { cn } from "@/lib/utils";
    seria a diferença entre abrir em 1s e em um minuto.
    ===================================================================== */
 
-const PRESETS = [
-  { dias: 7, rotulo: "7 dias" },
-  { dias: 30, rotulo: "30 dias" },
-  { dias: 90, rotulo: "90 dias" },
-] as const;
+type Plataforma = "meta_ads" | "google_ads";
 
-/** Últimos N dias terminando ONTEM, no fuso de São Paulo. */
-function janela(dias: number): { since: string; until: string } {
-  const hoje = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Sao_Paulo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-
-  /* Termina ONTEM: o dia corrente ainda está veiculando e entraria como
-     uma queda que não existe. Mesma regra de `lastNDays`. */
-  const fim = new Date(`${hoje}T12:00:00-03:00`);
-  fim.setUTCDate(fim.getUTCDate() - 1);
-  const inicio = new Date(fim);
-  inicio.setUTCDate(inicio.getUTCDate() - (dias - 1));
-
-  const iso = (d: Date) => d.toISOString().slice(0, 10);
-  return { since: iso(inicio), until: iso(fim) };
+interface Resposta {
+  campanhas: NoDaArvore[];
+  conectadas: Plataforma[];
 }
+
+const PLATAFORMA: Record<Plataforma, string> = {
+  meta_ads: "Meta Ads",
+  google_ads: "Google Ads",
+};
 
 export function AdsManagerSheet({
   clientId,
@@ -78,29 +68,24 @@ export function AdsManagerSheet({
   costLabel: string;
 }) {
   const [aberto, setAberto] = useState(false);
-  const [dias, setDias] = useState(30);
-  const [dados, setDados] = useState<NoDaArvore[] | null>(null);
+  const [periodo, setPeriodo] = useState<Periodo>(() => janelaDeDias(30));
+  const [dados, setDados] = useState<Resposta | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(false);
 
   const buscar = useCallback(
-    async (quantosDias: number) => {
+    async ({ since, until }: Periodo) => {
       setCarregando(true);
       setErro(null);
       setDados(null);
-
-      const { since, until } = janela(quantosDias);
 
       try {
         const r = await fetch(
           `/api/ads/structure?clientId=${clientId}&since=${since}&until=${until}`,
         );
-        const j = (await r.json()) as {
-          campanhas?: NoDaArvore[];
-          error?: string;
-        };
+        const j = (await r.json()) as Resposta & { error?: string };
         if (j.error) setErro(j.error);
-        else setDados(j.campanhas ?? []);
+        else setDados(j);
       } catch {
         setErro("Não foi possível falar com a Meta e o Google agora.");
       } finally {
@@ -117,22 +102,25 @@ export function AdsManagerSheet({
      usuário e a requisição. */
   function abrir() {
     setAberto(true);
-    void buscar(dias);
+    void buscar(periodo);
   }
 
-  function trocarPeriodo(novosDias: number) {
-    if (novosDias === dias) return;
-    setDias(novosDias);
-    void buscar(novosDias);
+  function trocarPeriodo(novo: Periodo) {
+    setPeriodo(novo);
+    void buscar(novo);
   }
 
-  const totais = dados?.reduce(
+  const totais = dados?.campanhas.reduce(
     (acc, c) => ({
       gasto: acc.gasto + c.spendCents,
       resultados: acc.resultados + c.results,
     }),
     { gasto: 0, resultados: 0 },
   );
+
+  /* Vinculadas MENOS as que apareceram na árvore. */
+  const comEntrega = new Set(dados?.campanhas.map((c) => c.plataforma) ?? []);
+  const paradas = (dados?.conectadas ?? []).filter((p) => !comEntrega.has(p));
 
   return (
     <>
@@ -148,8 +136,15 @@ export function AdsManagerSheet({
       </Button>
 
       <Dialog open={aberto} onOpenChange={setAberto}>
-        {/* Largo de propósito: nove colunas não cabem em gaveta. */}
-        <DialogContent className="max-h-[90vh] w-[96vw] max-w-6xl overflow-y-auto">
+        {/* `sm:max-w-*` e não `max-w-*`: o `DialogContent` já traz
+            `sm:max-w-sm` embutido, e o tailwind-merge trata modificadores
+            diferentes como propriedades diferentes — um `max-w-6xl` solto
+            perde para ele acima de 640px, que foi o diálogo estreito com
+            barra de rolagem horizontal. Mesma variante substitui.
+
+            vw/vh em vez de largura fixa: acompanha a tela em vez de
+            exigir arrasto no monitor pequeno. */}
+        <DialogContent className="flex max-h-[92vh] w-[96vw] flex-col overflow-hidden sm:max-w-[min(96vw,1400px)]">
           <DialogHeader>
             <DialogTitle className="flex flex-wrap items-center gap-2">
               {clientName}
@@ -169,23 +164,7 @@ export function AdsManagerSheet({
           {/* Período e resumo na MESMA linha: o total só significa algo
               ao lado do intervalo que o produziu. */}
           <div className="mt-2 flex flex-wrap items-center justify-between gap-3 border-b border-hairline pb-3">
-            <div className="flex items-center gap-1 rounded-lg bg-surface-2 p-0.5">
-              {PRESETS.map((p) => (
-                <button
-                  key={p.dias}
-                  type="button"
-                  onClick={() => trocarPeriodo(p.dias)}
-                  className={cn(
-                    "rounded-md px-2.5 py-1 text-xs transition-colors",
-                    dias === p.dias
-                      ? "bg-background font-medium shadow-sm"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {p.rotulo}
-                </button>
-              ))}
-            </div>
+            <PeriodPicker valor={periodo} onChange={trocarPeriodo} />
 
             {totais && (
               <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs tabular-nums">
@@ -211,7 +190,19 @@ export function AdsManagerSheet({
             )}
           </div>
 
-          <div className="mt-4">
+          <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
+            {/* Plataforma vinculada que não entregou NADA no período. Sem
+                esta linha, a ausência do Google lê como defeito do
+                sistema — foi exatamente o que aconteceu. */}
+            {dados && !carregando && paradas.length > 0 && (
+              <p className="mb-3 rounded-lg bg-surface-2 px-3 py-2 text-2xs text-muted-foreground">
+                {paradas.map((p) => PLATAFORMA[p]).join(" e ")}{" "}
+                {paradas.length === 1 ? "está vinculado" : "estão vinculados"} e
+                não {paradas.length === 1 ? "teve" : "tiveram"} entrega neste
+                período.
+              </p>
+            )}
+
             {carregando && <AdsManagerSkeleton />}
 
             {erro && !carregando && (
@@ -220,16 +211,16 @@ export function AdsManagerSheet({
               </p>
             )}
 
-            {dados && dados.length === 0 && !erro && !carregando && (
+            {dados && dados.campanhas.length === 0 && !erro && !carregando && (
               <p className="py-16 text-center text-sm text-muted-foreground">
                 Nenhuma entrega neste período. Não é erro — a conta pode estar
                 pausada.
               </p>
             )}
 
-            {dados && dados.length > 0 && !carregando && (
+            {dados && dados.campanhas.length > 0 && !carregando && (
               <AdsManagerTable
-                dados={dados}
+                dados={dados.campanhas}
                 resultLabel={resultLabel}
                 costLabel={costLabel}
               />
