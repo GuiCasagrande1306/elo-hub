@@ -14,6 +14,7 @@ import { defaultGoalMetricFor } from "@/lib/metrics/goal-metric";
 import type {
   AdCreative,
   AdPlatform,
+  AgencyContract,
   Client,
   ClientFinancials,
   ClientGoal,
@@ -254,6 +255,29 @@ export const demoClientFinancials: ClientFinancials[] = [
   { client_id: "c-atlas", monthly_fee_cents: 380000, tax_id: null, billing_day: 10 },
   { client_id: "c-nord", monthly_fee_cents: 620000, tax_id: null, billing_day: 1 },
   { client_id: "c-lumen", monthly_fee_cents: 290000, tax_id: null, billing_day: null },
+];
+
+/* Os dois terceirizados da carteira demo são o Atlas (Bagano) e o Lumen
+   (Brava Hills). NENHUM DOS DOIS gera cobrança própria, embora os dois
+   tenham honorário em `demoClientFinancials` — é justamente esse par de
+   linhas que prova a regra: o valor está lá e mesmo assim não vira
+   lançamento, porque quem paga é a agência.
+
+   Só a Bagano sai fechada. As outras duas ficam sem valor de propósito,
+   para a tela ter o estado "parceria cadastrada, contrato ainda não
+   fechado" — e como nenhuma delas tem cliente ATIVO atrás (o Lumen está
+   em onboarding), o aviso sai amarelo e não vermelho. O vermelho é
+   reservado para agência com cliente ativo e sem honorário, que é
+   receita sumindo. */
+export const demoAgencyContracts: AgencyContract[] = [
+  {
+    agency: "Bagano",
+    monthly_fee_cents: 1_200_000,
+    billing_day: 10,
+    notes: null,
+  },
+  { agency: "Brava Hills", monthly_fee_cents: 0, billing_day: null, notes: null },
+  { agency: "Ampla Marketing", monthly_fee_cents: 0, billing_day: null, notes: null },
 ];
 
 /* ------------------------------------------------------------------ */

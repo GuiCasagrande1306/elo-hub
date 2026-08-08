@@ -216,6 +216,24 @@ export interface RecurringExpense {
   created_at: string;
 }
 
+/**
+ * Honorário cobrado DA AGÊNCIA parceira — um valor só para todos os
+ * clientes dela.
+ *
+ * Espelha `ClientFinancials`, mas a chave é o nome da agência e não um
+ * `client_id`: agência não é cliente, e criar um cliente-fantasma para
+ * segurar o honorário a colocaria na contagem de contas ativas, na
+ * Performance e no seletor de relatórios. Ver a migration 31.
+ */
+export interface AgencyContract {
+  /** Espelha `clients.agency_partner`. Chave primária. */
+  agency: string;
+  monthly_fee_cents: number;
+  /** 1–28, ou `null` para "sem cobrança recorrente" — o job pula. */
+  billing_day: number | null;
+  notes: string | null;
+}
+
 /** Uma linha do gráfico de fluxo de caixa. */
 export interface MonthlySummary {
   month: string;

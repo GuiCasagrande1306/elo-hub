@@ -2,7 +2,9 @@ import "server-only";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { mesCorrenteBR } from "@/lib/date-br";
+import { ehTerceirizado } from "@/lib/validation/client";
 import type {
+  AgencyContract,
   Client,
   ClientFinancials,
   RecurringExpense,
@@ -21,8 +23,13 @@ import type {
    fornecedor. Valor calculado não tem estado; linha materializada tem —
    é o que permite baixa parcial, atraso e desconto pontual.
 
-   O preço é a duplicidade: um job que cria 46 cobranças por mês e roda
-   duas vezes cria 92. Por isso `recurrence_key` — ver abaixo.
+   O preço é a duplicidade: um job que cria dezenas de cobranças por mês
+   e roda duas vezes cria o dobro. Por isso `recurrence_key` — ver abaixo.
+
+   QUEM É COBRADO não é a lista de clientes ativos. Cliente terceirizado
+   por agência parceira não gera cobrança própria: quem paga é a agência,
+   um valor só. São duas origens de entrada, `cliente:` e `agencia:`, e
+   nenhum cliente pertence às duas.
    ===================================================================== */
 
 /**
@@ -83,16 +90,23 @@ export function vencimento(mes: string, dia: number): string {
 /**
  * Identidade determinística de "esta origem, neste mês".
  *
- * `cliente:9f3a…:2026-09` / `despesa:1b7c…:2026-09`
+ * `cliente:9f3a…:2026-09` / `agencia:Bagano:2026-09` / `despesa:1b7c…:2026-09`
  *
  * O banco tem `unique (recurrence_key)`, então a segunda tentativa de
  * criar a mesma cobrança falha sozinha — não depende de o job lembrar de
  * checar antes. É o que torna seguro rodar isto todo dia, e é a razão de
  * o cron poder ser burro: reexecução manual, retry da Vercel depois de
  * timeout e clique duplo no botão convergem para o mesmo resultado.
+ *
+ * A agência é identificada pelo NOME, não por uuid, porque é assim que
+ * ela é chaveada em `agency_contracts` e em `clients.agency_partner`.
+ * Consequência a saber: renomear uma agência faz a cobrança do mês
+ * corrente ser emitida de novo com a chave nova. Não duplica valor a
+ * receber sem aviso — as duas linhas aparecem em Gestão —, mas é o
+ * motivo de renomear parceria ser operação para começo de mês.
  */
 export function chaveRecorrencia(
-  origem: "cliente" | "despesa",
+  origem: "cliente" | "agencia" | "despesa",
   id: string,
   mes: string,
 ): string {
@@ -134,9 +148,15 @@ export function planejarMes(
   clientes: Client[],
   financeiros: Map<string, Pick<ClientFinancials, "monthly_fee_cents" | "billing_day">>,
   despesas: RecurringExpense[],
+  agencias: AgencyContract[],
 ): PlanoDoMes {
   const linhas: LinhaPrevista[] = [];
   const pulados: Pulado[] = [];
+
+  /* Quantos clientes ativos cada agência cobre. Não é estatística: é o
+     que transforma "Bagano sem honorário" em "Bagano sem honorário, 11
+     clientes sem cobrança" — a diferença entre um aviso e um alarme. */
+  const cobertos = new Map<string, number>();
 
   /* --- Entradas: honorário de cliente ativo ----------------------- */
   for (const cliente of clientes) {
@@ -144,6 +164,22 @@ export function planejarMes(
        carteira para efeito de histórico, e faturá-los seria o pior erro
        possível deste job — cobrança de quem cancelou. */
     if (cliente.status !== "active") continue;
+
+    /* TERCEIRIZADO NÃO GERA COBRANÇA PRÓPRIA. Quem paga é a agência, um
+       valor só que cobre todos os clientes dela, e cobrar os dois lados
+       seria faturar a mesma operação duas vezes.
+
+       O teste é contra `AGENCIA_PROPRIA` e não contra a existência de
+       contrato: agência recém-criada, ainda sem linha em
+       `agency_contracts`, precisa cair aqui do mesmo jeito — e vai
+       aparecer logo abaixo em `pulados`, com o número de clientes que
+       ficaram sem cobrança. Amarrar o desvio ao contrato faria a agência
+       nova faturar cliente a cliente sem ninguém perceber. */
+    if (ehTerceirizado(cliente)) {
+      const agencia = cliente.agency_partner;
+      cobertos.set(agencia, (cobertos.get(agencia) ?? 0) + 1);
+      continue;
+    }
 
     const financeiro = financeiros.get(cliente.id);
 
@@ -172,6 +208,51 @@ export function planejarMes(
     });
   }
 
+  /* --- Entradas: honorário de agência parceira -------------------- */
+
+  /* A UNIÃO de quem tem contrato com quem aparece na carteira. Iterar só
+     os contratos deixaria a agência sem linha cadastrada invisível — e
+     ela é exatamente o caso perigoso, porque os clientes dela já foram
+     pulados ali em cima. */
+  const nomes = [
+    ...new Set([...cobertos.keys(), ...agencias.map((a) => a.agency)]),
+  ].sort();
+
+  const contratos = new Map(agencias.map((a) => [a.agency, a]));
+
+  for (const nome of nomes) {
+    const contrato = contratos.get(nome);
+    const clientes = cobertos.get(nome) ?? 0;
+
+    if (!contrato || contrato.monthly_fee_cents <= 0 || !contrato.billing_day) {
+      /* Sem cliente atrás, agência sem valor é parceria encerrada ou
+         ainda não iniciada — não é pendência e não vira aviso. Com
+         cliente atrás, é receita sumindo. */
+      if (clientes > 0) {
+        pulados.push({
+          quem: `${nome} (agência)`,
+          motivo: `${motivoDaAgencia(contrato)} — ${clientes} ${
+            clientes === 1 ? "cliente fica" : "clientes ficam"
+          } sem cobrança`,
+        });
+      }
+      continue;
+    }
+
+    linhas.push({
+      type: "income",
+      category: "client_fee",
+      status: "pending",
+      amount_cents: contrato.monthly_fee_cents,
+      /* "(agência)" no texto porque a linha fica em Gestão lado a lado
+         com honorário de cliente, sem `client_id` para desempatar. */
+      description: `Honorário ${nome} (agência) · ${rotuloMes(mes)}`,
+      client_id: null,
+      due_date: vencimento(mes, contrato.billing_day),
+      recurrence_key: chaveRecorrencia("agencia", nome, mes),
+    });
+  }
+
   /* --- Saídas: folha, assinaturas, impostos ----------------------- */
   for (const despesa of despesas) {
     if (!despesa.is_active) continue;
@@ -189,6 +270,13 @@ export function planejarMes(
   }
 
   return { linhas, pulados };
+}
+
+/** Por que a agência não gerou cobrança, na ordem em que se resolve. */
+function motivoDaAgencia(contrato: AgencyContract | undefined): string {
+  if (!contrato) return "sem contrato cadastrado";
+  if (contrato.monthly_fee_cents <= 0) return "sem honorário definido";
+  return "sem dia de cobrança";
 }
 
 /* ------------------------------------------------------------------ */
@@ -228,8 +316,11 @@ export async function materializarMes(
 
   const supabase = createSupabaseAdminClient();
 
-  const [clientes, financeiros, despesas] = await Promise.all([
-    supabase.from("clients").select("id, name, status"),
+  const [clientes, financeiros, despesas, agencias] = await Promise.all([
+    /* `agency_partner` não é enfeite: é ele que decide se o cliente é
+       faturado direto ou coberto pela agência. Sem a coluna aqui, todo
+       terceirizado voltaria a ser cobrado individualmente. */
+    supabase.from("clients").select("id, name, status, agency_partner"),
     supabase
       .from("client_financials")
       .select("client_id, monthly_fee_cents, billing_day"),
@@ -237,11 +328,27 @@ export async function materializarMes(
       .from("recurring_expenses")
       .select("*")
       .eq("is_active", true),
+    supabase
+      .from("agency_contracts")
+      .select("agency, monthly_fee_cents, billing_day, notes"),
   ]);
 
   if (clientes.error) throw clientes.error;
   if (financeiros.error) throw financeiros.error;
   if (despesas.error) throw despesas.error;
+
+  /* PARAR é a resposta certa aqui. Sem a tabela, as duas saídas possíveis
+     são ruins de formas diferentes: seguir sem ela cobraria os 22
+     terceirizados individualmente, e tratá-la como vazia pularia os 22
+     sem emitir nada no lugar. As duas geram um mês errado que parece
+     certo. O erro nomeia o arquivo porque quem lê isto é o log do cron. */
+  if (agencias.error) {
+    throw new Error(
+      agencias.error.code === "42P01"
+        ? "Tabela `agency_contracts` não existe: rode a migration 20260808000031_contratos_de_agencia.sql antes de emitir o mês."
+        : agencias.error.message,
+    );
+  }
 
   const { linhas, pulados } = planejarMes(
     mes,
@@ -256,6 +363,7 @@ export async function materializarMes(
       ]),
     ),
     (despesas.data ?? []) as RecurringExpense[],
+    (agencias.data ?? []) as AgencyContract[],
   );
 
   const totais = {

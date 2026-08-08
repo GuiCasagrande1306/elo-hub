@@ -13,7 +13,12 @@ import { PageContainer, PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { CashflowChart, GrowthChart } from "@/components/finance/finance-charts";
 import { TransactionsTable } from "@/components/finance/transactions-table";
-import { getClientFees, getClients, getFinancialData } from "@/lib/data";
+import {
+  getAgencyContracts,
+  getClientFees,
+  getClients,
+  getFinancialData,
+} from "@/lib/data";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { buildCashflowSeries, buildFinanceSnapshot } from "@/lib/finance/kpi";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/format";
@@ -46,13 +51,19 @@ export default async function GestaoPage() {
   if (!user) redirect("/login");
   if (user.role !== "admin") redirect("/");
 
-  const [{ transactions, monthly }, clients, fees] = await Promise.all([
+  const [{ transactions, monthly }, clients, fees, agencias] = await Promise.all([
     getFinancialData(12),
     getClients(),
     getClientFees(),
+    /* Lista vazia em vez de quebrar a página: esta tela não é só de
+       recorrência, e um erro aqui (migration ainda não rodada, ou
+       colaborador barrado pela policy de admin) tiraria do ar o fluxo de
+       caixa inteiro. O MRR aparece sem a parte das agências, que é
+       exatamente o que `getClientFees` já faz com os honorários. */
+    getAgencyContracts().catch(() => []),
   ]);
 
-  const snapshot = buildFinanceSnapshot(transactions, clients, fees);
+  const snapshot = buildFinanceSnapshot(transactions, clients, fees, agencias);
   const series = buildCashflowSeries(monthly);
 
   return (

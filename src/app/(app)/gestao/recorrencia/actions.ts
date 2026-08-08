@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { isDemoMode } from "@/lib/env";
 import { createSupabaseServerClient, getCurrentUser } from "@/lib/supabase/server";
+import { AGENCIA_PROPRIA, AGENCY_PARTNERS } from "@/lib/validation/client";
 import { materializarMes, isMesValido } from "@/lib/finance/recurrence";
 import type { ResultadoMaterializacao } from "@/lib/finance/recurrence";
 
@@ -89,6 +90,81 @@ export async function salvarContrato(input: {
       billing_day: billingDay,
     },
     { onConflict: "client_id" },
+  );
+
+  if (error) return { ok: false, error: erroDeBanco(error) };
+
+  revalidatePath("/gestao/recorrencia");
+  revalidatePath("/gestao");
+  return { ok: true };
+}
+
+/* ------------------------------------------------------------------ */
+/* Contrato da agência: um valor que cobre todos os clientes dela       */
+/* ------------------------------------------------------------------ */
+
+const contratoAgenciaSchema = z.object({
+  /* Nome e não uuid: é assim que a agência é chaveada em
+     `agency_contracts` e em `clients.agency_partner`. O `enum` recusa
+     nome fora da lista, que é o que impede um contrato órfão — uma
+     linha "Bagno" nunca casaria com os clientes de "Bagano" e o mês
+     sairia sem a cobrança dos 11. */
+  agency: z.enum(AGENCY_PARTNERS),
+  monthlyFeeCents: z.number().int().min(0).max(100_000_000),
+  billingDay: z.number().int().min(1).max(28).nullable(),
+});
+
+export async function salvarContratoDeAgencia(input: {
+  agency: string;
+  monthlyFeeCents: number;
+  billingDay: number | null;
+}): Promise<Resultado> {
+  const parsed = contratoAgenciaSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: "Agência, valor ou dia de cobrança inválido." };
+  }
+
+  const { agency, monthlyFeeCents, billingDay } = parsed.data;
+
+  /* A Elo não cobra de si mesma. O formulário nem oferece essa linha,
+     mas a ação é pública para qualquer sessão de admin. */
+  if (agency === AGENCIA_PROPRIA) {
+    return {
+      ok: false,
+      error: "Cliente da Elo é cobrado direto, não por contrato de agência.",
+    };
+  }
+
+  if (isDemoMode) {
+    const { demoAgencyContracts } = await import("@/lib/mock/data");
+    const atual = demoAgencyContracts.find((a) => a.agency === agency);
+    if (atual) {
+      atual.monthly_fee_cents = monthlyFeeCents;
+      atual.billing_day = billingDay;
+    } else {
+      demoAgencyContracts.push({
+        agency,
+        monthly_fee_cents: monthlyFeeCents,
+        billing_day: billingDay,
+        notes: null,
+      });
+    }
+    revalidatePath("/gestao/recorrencia");
+    return { ok: true };
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  /* `upsert` pela mesma razão de `salvarContrato`: a migration semeia só
+     as agências que já tinham cliente na carteira, e parceria nova chega
+     sem linha. */
+  const { error } = await supabase.from("agency_contracts").upsert(
+    {
+      agency,
+      monthly_fee_cents: monthlyFeeCents,
+      billing_day: billingDay,
+    },
+    { onConflict: "agency" },
   );
 
   if (error) return { ok: false, error: erroDeBanco(error) };

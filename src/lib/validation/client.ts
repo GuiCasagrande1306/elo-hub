@@ -36,6 +36,29 @@ export const AGENCY_PARTNERS = [
 
 export type AgencyPartner = (typeof AGENCY_PARTNERS)[number];
 
+/**
+ * Conta própria da Elo — cliente que a agência atende e FATURA direto.
+ *
+ * Os demais são terceirizados: quem paga é a agência parceira, um valor
+ * só, e o cliente não gera cobrança individual.
+ */
+export const AGENCIA_PROPRIA: AgencyPartner = "Elo Marketing";
+
+/**
+ * Cliente atendido por agência parceira — NÃO gera cobrança própria.
+ *
+ * Mora aqui, e não no motor de recorrência, porque o motor é
+ * `server-only` e esta regra também é lida pelo KPI de MRR e pela tela
+ * de Recorrência. UMA função para todos: se a tela decidisse por conta
+ * própria quem listar, os dois divergiriam no primeiro cliente que
+ * trocasse de agência — a lista mostraria 27 contratos e o mês sairia
+ * com 26, sem nada apontando a diferença.
+ */
+export function ehTerceirizado(cliente: { agency_partner: string }): boolean {
+  return Boolean(cliente.agency_partner) &&
+    cliente.agency_partner !== AGENCIA_PROPRIA;
+}
+
 export const CLIENT_SEGMENTS = [
   "ecommerce",
   "delivery",

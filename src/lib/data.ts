@@ -20,6 +20,7 @@ import {
 } from "@/lib/date-br";
 import type {
   AdCreative,
+  AgencyContract,
   Client,
   ClientFinancials,
   ClientGoal,
@@ -615,6 +616,33 @@ export async function getClientFinancials(): Promise<
   return new Map(
     (data ?? []).map((f) => [f.client_id as string, f as ClientFinancials]),
   );
+}
+
+/**
+ * Contrato de cada agência parceira. Admin apenas, via RLS.
+ *
+ * Devolve LISTA e não `Map` porque a tela precisa da ordem — e a ordem
+ * aqui é alfabética, não por valor: a lista é lida procurando um nome,
+ * não comparando honorários.
+ *
+ * A migration semeia uma linha por agência que já tem cliente na
+ * carteira, então lista vazia significa migration pendente, não
+ * "nenhuma agência" — daí `lancarSeSchemaPendente` valer aqui também.
+ */
+export async function getAgencyContracts(): Promise<AgencyContract[]> {
+  if (isDemoMode) {
+    const { demoAgencyContracts } = await import("@/lib/mock/data");
+    return demoAgencyContracts;
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("agency_contracts")
+    .select("agency, monthly_fee_cents, billing_day, notes")
+    .order("agency");
+
+  lancarSeSchemaPendente(error);
+  return (data ?? []) as AgencyContract[];
 }
 
 /**

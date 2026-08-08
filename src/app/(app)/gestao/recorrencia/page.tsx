@@ -5,16 +5,19 @@ import { ArrowLeft, Database } from "lucide-react";
 
 import { PageContainer, PageHeader } from "@/components/layout/page-header";
 import { ContractsTable } from "@/components/finance/contracts-table";
+import type { LinhaDeContrato } from "@/components/finance/contracts-table";
 import { MaterializeButton } from "@/components/finance/materialize-button";
 import { RecurringExpensesPanel } from "@/components/finance/recurring-expenses-panel";
 import {
   SchemaPendenteError,
+  getAgencyContracts,
   getClientFinancials,
   getClients,
   getRecurringExpenses,
 } from "@/lib/data";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { mesCorrente, proximoMes, rotuloMes } from "@/lib/finance/recurrence";
+import { ehTerceirizado } from "@/lib/validation/client";
 import { formatCurrency } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Recorrência" };
@@ -43,12 +46,14 @@ export default async function RecorrenciaPage() {
   let clients: Awaited<ReturnType<typeof getClients>>;
   let financials: Awaited<ReturnType<typeof getClientFinancials>>;
   let expenses: Awaited<ReturnType<typeof getRecurringExpenses>>;
+  let agencies: Awaited<ReturnType<typeof getAgencyContracts>>;
 
   try {
-    [clients, financials, expenses] = await Promise.all([
+    [clients, financials, expenses, agencies] = await Promise.all([
       getClients(),
       getClientFinancials(),
       getRecurringExpenses(),
+      getAgencyContracts(),
     ]);
   } catch (error) {
     if (error instanceof SchemaPendenteError) return <MigrationPendente />;
@@ -60,14 +65,75 @@ export default async function RecorrenciaPage() {
      o job vai ignorar de qualquer forma. */
   const ativos = clients.filter((c) => c.status === "active");
 
+  /* A carteira se parte em dois: quem a Elo fatura e quem a agência
+     paga. `ehTerceirizado` é a mesma função que o job usa — a lista e o
+     mês emitido não têm como divergir. */
+  const diretos = ativos.filter((c) => !ehTerceirizado(c));
+  const terceirizados = ativos.filter(ehTerceirizado);
+
+  /* Toda agência que aparece na carteira, tenha contrato cadastrado ou
+     não: a que não tem é justamente a que precisa aparecer, porque os
+     clientes dela já não geram cobrança própria. */
+  const clientesPorAgencia = new Map<string, number>();
+  for (const c of terceirizados) {
+    clientesPorAgencia.set(
+      c.agency_partner,
+      (clientesPorAgencia.get(c.agency_partner) ?? 0) + 1,
+    );
+  }
+
+  const nomesDeAgencia = [
+    ...new Set([
+      ...clientesPorAgencia.keys(),
+      ...agencies.map((a) => a.agency),
+    ]),
+  ].sort();
+
+  const contratosDeAgencia = new Map(agencies.map((a) => [a.agency, a]));
+
+  const linhas: LinhaDeContrato[] = [
+    ...nomesDeAgencia.map<LinhaDeContrato>((nome) => {
+      const contrato = contratosDeAgencia.get(nome);
+      return {
+        key: `agencia:${nome}`,
+        tipo: "agencia",
+        id: nome,
+        nome,
+        feeCents: contrato?.monthly_fee_cents ?? 0,
+        billingDay: contrato?.billing_day ?? null,
+        clientes: clientesPorAgencia.get(nome) ?? 0,
+      };
+    }),
+    ...diretos.map<LinhaDeContrato>((c) => {
+      const f = financials.get(c.id);
+      return {
+        key: `cliente:${c.id}`,
+        tipo: "cliente",
+        id: c.id,
+        nome: c.name,
+        feeCents: f?.monthly_fee_cents ?? 0,
+        billingDay: f?.billing_day ?? null,
+        logoUrl: c.logo_url,
+        brandPrimary: c.brand_primary,
+      };
+    }),
+  ];
+
   /* Previsto = o que o job CONSEGUE materializar hoje, não a soma dos
      honorários. Contrato sem dia de vencimento fica de fora da conta
      pela mesma razão que fica de fora do job — mostrar o total cheio
      aqui prometeria uma entrada que não vai ser gerada. */
-  const entradasPrevistas = ativos.reduce((acc, c) => {
-    const f = financials.get(c.id);
-    return f?.billing_day ? acc + f.monthly_fee_cents : acc;
-  }, 0);
+  const entradasPrevistas = linhas.reduce(
+    (acc, l) => (l.billingDay ? acc + l.feeCents : acc),
+    0,
+  );
+
+  /* Cliente coberto por agência que ainda não tem honorário fechado. É
+     receita que sumiu do previsto sem ninguém decidir isso — e o número
+     precisa estar no resumo, não escondido numa linha da tabela. */
+  const semCobertura = linhas
+    .filter((l) => l.tipo === "agencia" && !(l.feeCents > 0 && l.billingDay))
+    .reduce((acc, l) => acc + (l.clientes ?? 0), 0);
 
   const saidasPrevistas = expenses
     .filter((d) => d.is_active)
@@ -95,7 +161,12 @@ export default async function RecorrenciaPage() {
         <Resumo
           label="Entradas previstas"
           value={formatCurrency(entradasPrevistas)}
-          hint="Contratos com dia de cobrança definido"
+          hint={
+            semCobertura > 0
+              ? `Faltam ${semCobertura} clientes: a agência deles não tem honorário`
+              : "Contratos com dia de cobrança definido"
+          }
+          tone={semCobertura > 0 ? "warning" : "neutral"}
         />
         <Resumo
           label="Saídas previstas"
@@ -137,28 +208,13 @@ export default async function RecorrenciaPage() {
             Contratos
           </h2>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            Honorário e dia de vencimento. Sem os dois preenchidos, o cliente
-            fica fora do faturamento do mês.
+            Honorário e dia de vencimento. Sem os dois preenchidos, o contrato
+            fica fora do faturamento do mês. Cliente de agência não aparece
+            aqui: quem paga é a agência, um valor só.
           </p>
         </div>
 
-        <ContractsTable
-          clients={ativos}
-          /* Map não atravessa a fronteira de serialização para Client
-             Component — vira objeto aqui. */
-          financials={Object.fromEntries(
-            ativos.map((c) => {
-              const f = financials.get(c.id);
-              return [
-                c.id,
-                {
-                  monthly_fee_cents: f?.monthly_fee_cents ?? 0,
-                  billing_day: f?.billing_day ?? null,
-                },
-              ];
-            }),
-          )}
-        />
+        <ContractsTable linhas={linhas} />
       </section>
 
       {/* -------------------- Despesas fixas ----------------------- */}
@@ -190,7 +246,7 @@ function Resumo({
   label: string;
   value: string;
   hint: string;
-  tone?: "neutral" | "positive" | "negative";
+  tone?: "neutral" | "positive" | "negative" | "warning";
 }) {
   return (
     <article className="surface-card p-5">
@@ -203,7 +259,13 @@ function Resumo({
       >
         {value}
       </p>
-      <p className="mt-2.5 text-xs text-muted-foreground">{hint}</p>
+      <p
+        className={`mt-2.5 text-xs ${
+          tone === "warning" ? "font-medium text-warning" : "text-muted-foreground"
+        }`}
+      >
+        {hint}
+      </p>
     </article>
   );
 }
@@ -239,15 +301,20 @@ function MigrationPendente() {
         <p className="text-sm font-medium">Falta rodar a migration</p>
 
         <p className="max-w-prose text-sm text-muted-foreground">
-          O código desta tela já está no ar, mas as colunas que ela usa
-          (dia de cobrança do cliente e a tabela de despesas recorrentes)
-          ainda não existem no banco.
+          O código desta tela já está no ar, mas as tabelas e colunas que
+          ela usa (dia de cobrança, despesas recorrentes e contrato de
+          agência) ainda não existem no banco.
         </p>
 
         <p className="max-w-prose text-xs text-muted-foreground">
-          No Supabase, abra o <strong>SQL Editor</strong> e cole o conteúdo de{" "}
+          No Supabase, abra o <strong>SQL Editor</strong> e rode, nesta ordem,
+          o conteúdo de{" "}
           <code className="rounded bg-surface-2 px-1 py-0.5">
             supabase/migrations/20260807000029_financeiro_recorrente.sql
+          </code>{" "}
+          e{" "}
+          <code className="rounded bg-surface-2 px-1 py-0.5">
+            supabase/migrations/20260808000031_contratos_de_agencia.sql
           </code>
           . Depois recarregue esta página.
         </p>

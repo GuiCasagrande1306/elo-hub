@@ -1,4 +1,6 @@
+import { ehTerceirizado } from "@/lib/validation/client";
 import type {
+  AgencyContract,
   Client,
   FinancialTransaction,
   MonthlySummary,
@@ -20,6 +22,12 @@ import type {
    clientes ativos (`client_financials.monthly_fee_cents`), não a soma do que foi
    faturado no mês — um mês com dois pagamentos adiantados inflaria o
    MRR e faria a agência achar que cresceu.
+
+   E o contratado vem de DUAS tabelas. Cliente terceirizado não tem
+   honorário próprio: quem paga é a agência parceira, um valor só em
+   `agency_contracts`. Somar apenas `client_financials` deixaria de fora
+   a maior linha da carteira — as três agências cobrem 22 dos 46
+   clientes ativos — e o MRR apareceria pela metade.
    ===================================================================== */
 
 export interface FinanceSnapshot {
@@ -47,6 +55,9 @@ export function buildFinanceSnapshot(
      de uma coluna em `clients`, que hoje é legível por toda a equipe.
      Indexado por client_id para não custar O(n²) na soma. */
   fees: Map<string, number>,
+  /* Honorário das agências parceiras. Lista e não `Map` porque a soma
+     não olha o nome — só precisa dos valores. */
+  agencias: Pick<AgencyContract, "monthly_fee_cents">[],
   today = todayISO(),
 ): FinanceSnapshot {
   let paidIncome = 0;
@@ -79,12 +90,18 @@ export function buildFinanceSnapshot(
     }
   }
 
-  const mrrCents = clients
-    .filter((c) => c.status === "active")
+  /* Cliente terceirizado é PULADO aqui, não somado com valor zero: ele
+     tem honorário gravado em `client_financials` de quando era faturado
+     direto, e somá-lo contaria a mesma receita duas vezes — uma na linha
+     dele, outra no contrato da agência. */
+  const mrrClientes = clients
+    .filter((c) => c.status === "active" && !ehTerceirizado(c))
     .reduce((acc, c) => acc + (fees.get(c.id) ?? 0), 0);
 
+  const mrrAgencias = agencias.reduce((acc, a) => acc + a.monthly_fee_cents, 0);
+
   return {
-    mrrCents,
+    mrrCents: mrrClientes + mrrAgencias,
     balanceCents: paidIncome - paidExpense,
     expectedIncomeCents: expectedIncome,
     payableCents: payable,
