@@ -368,6 +368,40 @@
   }
 }
 
+/* ---------------------------------------------------------------------
+   React Flow — canvas do EloChat
+
+   A folha do @xyflow traz paleta própria, pensada para tema claro. Sem
+   estas linhas o canvas fica com pontilhado cinza-claro e controles
+   brancos sobre o fundo escuro do painel — parece um iframe de outro
+   produto colado no meio da tela.
+
+   São VARIÁVEIS da própria biblioteca, e não seletores de classe: a
+   `.react-flow__controls-button` do @xyflow pode mudar de nome em uma
+   minor, as variáveis são a API pública de tema. Ligadas aos tokens do
+   Elo Hub, então acompanham claro e escuro sozinhas.
+   ------------------------------------------------------------------ */
+
+.elochat-canvas .react-flow {
+  --xy-background-color: var(--background);
+  --xy-edge-stroke: var(--muted-foreground);
+  --xy-edge-stroke-selected: var(--signal);
+  --xy-connectionline-stroke: var(--signal);
+  --xy-attribution-background-color: transparent;
+
+  --xy-controls-button-background-color: var(--surface);
+  --xy-controls-button-background-color-hover: var(--surface-2);
+  --xy-controls-button-color: var(--muted-foreground);
+  --xy-controls-button-color-hover: var(--foreground);
+  --xy-controls-button-border-color: var(--hairline);
+}
+
+/* O pontilhado do fundo. `--xy-background-pattern-dots-color` só existe
+   a partir da v12; o seletor direto é a rede de segurança. */
+.elochat-canvas .react-flow__background-pattern {
+  color: var(--hairline);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

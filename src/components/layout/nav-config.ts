@@ -8,6 +8,7 @@ import {
   Settings,
   TriangleAlert,
   Users,
+  Workflow,
 } from "lucide-react";
 
 /**
@@ -70,6 +71,13 @@ export const navGroups: NavGroup[] = [
     ],
   },
   {
+    /* Ferramentas que a agência opera mas que não são o painel: vivem
+       num grupo próprio para não competir com Operação e Análise, que
+       são o dia a dia. */
+    label: "Apps parceiros",
+    items: [{ href: "/elochat", label: "EloChat", icon: Workflow }],
+  },
+  {
     label: "Sistema",
     items: [
       // `adminOnly` some com o item para colaborador — mas é cosmético.
@@ -94,12 +102,18 @@ export const navGroups: NavGroup[] = [
  * Lista plana, para a barra inferior do mobile.
  *
  * DERIVADA dos grupos, não escrita à mão: enquanto eram duas listas
- * independentes, um link novo entrava numa e faltava na outra. "Sistema"
- * fica de fora porque a barra do mobile cabe poucos ícones e ninguém
- * abre Gestão do celular.
+ * independentes, um link novo entrava numa e faltava na outra.
+ *
+ * Duas seções ficam de fora, por motivos diferentes. "Sistema" porque
+ * ninguém abre Gestão do celular. "Apps parceiros" porque o construtor
+ * de fluxo do EloChat é de três painéis e não cabe em 375px — a barra
+ * já carrega sete itens, e um oitavo trunca os rótulos de todos para
+ * oferecer justamente o destino que menos funciona ali.
  */
+const FORA_DA_BARRA_MOBILE = new Set(["Sistema", "Apps parceiros"]);
+
 export const primaryNav: NavItem[] = navGroups
-  .filter((g) => g.label !== "Sistema")
+  .filter((g) => !FORA_DA_BARRA_MOBILE.has(g.label ?? ""))
   .flatMap((g) => g.items);
 
 export const secondaryNav: NavItem[] =
