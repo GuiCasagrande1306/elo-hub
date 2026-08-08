@@ -1,6 +1,8 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 
 import { AppShell } from "@/components/layout/app-shell";
+import { OAuthReturnToast } from "@/components/layout/oauth-return-toast";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { getClients } from "@/lib/data";
@@ -30,6 +32,13 @@ export default async function AppLayout({
   // `delay` em ms — Base UI, não `delayDuration` do Radix.
   return (
     <TooltipProvider delay={200}>
+      {/* `useSearchParams` obriga um limite de Suspense, senão o Next
+          desativa a renderização estática de TODAS as rotas abaixo
+          deste layout. Não renderiza nada — só dispara o aviso. */}
+      <Suspense fallback={null}>
+        <OAuthReturnToast />
+      </Suspense>
+
       <AppShell user={user} clients={clients} demoMode={isDemoMode}>
         {children}
       </AppShell>
