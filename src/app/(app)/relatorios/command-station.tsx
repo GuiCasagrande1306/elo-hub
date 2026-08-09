@@ -16,7 +16,6 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { formatCurrency, formatMultiplier, formatPeriod } from "@/lib/format";
 import { formatGoalValue, type GoalMetric } from "@/lib/metrics/goal-metric";
-import { cn } from "@/lib/utils";
 
 /* =====================================================================
    Estação de comando
@@ -50,6 +49,8 @@ export interface ClientSummary {
   metric: GoalMetric;
   /** A janela que o servidor somou. É ela que rotula a mensagem. */
   period: { start: string; end: string };
+  /** Template que o segmento desta conta seleciona. Exibido, não escolhido. */
+  templateName: string;
 }
 
 const SECOES = [
@@ -59,16 +60,8 @@ const SECOES = [
   { icon: ImageIcon, titulo: "Criativos em destaque", sub: "O que mais performou" },
 ];
 
-export function CommandStation({
-  clients,
-  templates,
-}: {
-  clients: ClientSummary[];
-  templates: { id: string; name: string }[];
-}) {
+export function CommandStation({ clients }: { clients: ClientSummary[] }) {
   const [clientId, setClientId] = useState(clients[0]?.id ?? "");
-  const [templateId, setTemplateId] = useState(templates[0]?.id ?? "");
-  const [tipo, setTipo] = useState<"completo" | "simples">("completo");
   const [copiado, setCopiado] = useState(false);
 
   const cliente = clients.find((c) => c.id === clientId) ?? null;
@@ -163,23 +156,24 @@ export function CommandStation({
               </p>
             </div>
 
-            <label className="flex min-w-0 flex-col gap-1.5">
+            {/* Template também é CONSEQUÊNCIA, não escolha — o segmento
+                da conta decide. Havia um select aqui e ele não fazia
+                nada: guardava estado que ninguém lia. Escolher template
+                de verdade existe no compositor (`/relatorios/novo`),
+                onde a decisão chega até a geração do PDF. Duplicar o
+                controle aqui só oferecia a mesma decisão duas vezes, uma
+                delas sem efeito. */}
+            <div className="flex min-w-0 flex-col gap-1.5">
               <span className="eyebrow">Template</span>
-              <Select value={templateId} onValueChange={(v) => setTemplateId(v ?? templateId)}>
-                <SelectTrigger size="sm" className="w-full min-w-0">
-                  <SelectValue>
-                    {(v: string) =>
-                      templates.find((t) => t.id === v)?.name ?? "Padrão do segmento"
-                    }
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {templates.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </label>
+              {/* `title` porque o nome trunca nesta largura e, sendo
+                  texto e não select, não há outro jeito de ler inteiro. */}
+              <p
+                className="flex h-8 items-center truncate text-sm"
+                title={cliente?.templateName}
+              >
+                {cliente?.templateName ?? "—"}
+              </p>
+            </div>
           </div>
         </section>
 
@@ -203,35 +197,19 @@ export function CommandStation({
           </p>
         </section>
 
-        <section className="surface-card p-4">
-          <span className="eyebrow">Tipo de relatório</span>
-          <div className="mt-2 grid gap-2 sm:grid-cols-2">
-            {([
-              { v: "completo", t: "Relatório completo", s: "PDF anexado + mensagem" },
-              { v: "simples", t: "Relatório simples", s: "Só a mensagem no WhatsApp" },
-            ] as const).map((op) => (
-              <button
-                key={op.v}
-                type="button"
-                onClick={() => setTipo(op.v)}
-                className={cn(
-                  "rounded-xl border p-3 text-left transition-colors",
-                  tipo === op.v
-                    ? "border-signal bg-signal-muted/40"
-                    : "border-hairline hover:bg-accent/40",
-                )}
-              >
-                <span className="block text-sm font-medium">{op.t}</span>
-                <span className="mt-0.5 block text-2xs text-muted-foreground">{op.s}</span>
-              </button>
-            ))}
-          </div>
+        {/* HAVIA UM "Tipo de relatório" AQUI — dois cartões, "completo"
+            e "simples" — e ele só pintava a própria borda. Nada lia a
+            escolha: não mudava a mensagem, não ia para o PDF, não ia
+            para lugar nenhum.
 
-          {/* Ambos apontam para os fluxos que JÁ funcionam, em vez de
-              reimplementar geração e envio numa tela nova. Botão sem
-              handler seria controle morto — o defeito que esta sessão
-              inteira vem corrigindo. */}
-          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            E era redundante por construção: os dois botões abaixo JÁ
+            são essa escolha. "Copiar" (no card da mensagem) é o simples;
+            "Gerar PDF" é o completo. Um seletor de modo acima de dois
+            botões que fazem os dois modos oferece a mesma decisão duas
+            vezes — e a de cima não valia nada. */}
+        <section className="surface-card p-4">
+          <span className="eyebrow">O que fazer com isto</span>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
             <Button
               variant="outline"
               size="sm"
@@ -258,8 +236,9 @@ export function CommandStation({
             </Button>
           </div>
           <p className="mt-2 text-2xs text-muted-foreground">
-            A geração e o envio acontecem nos fluxos abaixo, já ligados ao
-            seu WhatsApp. Esta tela monta a mensagem e mostra os números.
+            Só a mensagem? Use o <strong>Copiar</strong> acima. Com PDF
+            anexado, gere primeiro e despache pela fila — ela sai do seu
+            WhatsApp. Esta tela monta o texto e mostra os números.
           </p>
         </section>
       </div>

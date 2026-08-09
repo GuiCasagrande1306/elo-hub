@@ -15,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { resolverTemplate } from "@/lib/reports/template-resolver";
 import { cn } from "@/lib/utils";
 import type { Client, ReportTemplate } from "@/types/database";
 
@@ -57,11 +58,11 @@ export function ReportComposer({
 
   const client = clients.find((c) => c.slug === clientSlug);
 
-  // Template automático = o padrão do segmento do cliente. É o
-  // comportamento que o sistema usa quando ninguém escolhe nada.
-  const autoTemplate =
-    templates.find((t) => t.segment === client?.segment && t.is_default) ??
-    templates.find((t) => t.segment === null && t.is_default);
+  /* Template automático = o padrão do segmento do cliente, e a regra
+     mora em `resolverTemplate`: a tela de Relatórios EXIBE qual seria, e
+     duas cópias da mesma resolução divergiriam sem ninguém ver — a tela
+     anunciando um template e o PDF saindo com outro. */
+  const autoTemplate = resolverTemplate(templates, client?.segment);
 
   const effectiveTemplate =
     templateId === "__auto__"

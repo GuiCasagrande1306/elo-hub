@@ -12,6 +12,7 @@ import {
   getReports,
   getReportTemplates,
 } from "@/lib/data";
+import { resolverTemplate } from "@/lib/reports/template-resolver";
 import type { ClientSegment } from "@/types/database";
 import { listarPendentes } from "./actions";
 import { SendQueue } from "./send-queue";
@@ -61,6 +62,13 @@ export default async function ReportsPage() {
        rotula a mensagem enviada ao cliente — antes a tela escolhia um
        rótulo ("últimos 7 dias") que não tinha relação com o número. */
     period: linha.period,
+    /* Resolvido AQUI, pela mesma função que o compositor usa para gerar
+       o PDF. A estação só exibe: o template é consequência do segmento,
+       e o lugar de trocá-lo é o compositor, onde a escolha chega até a
+       geração. */
+    templateName:
+      resolverTemplate(templates, linha.client.segment)?.name ??
+      "Padrão do segmento",
   }));
 
 
@@ -102,10 +110,7 @@ export default async function ReportsPage() {
       />
 
       <div className="mt-6">
-        <CommandStation
-          clients={resumos}
-          templates={templates.map((t) => ({ id: t.id, name: t.name }))}
-        />
+        <CommandStation clients={resumos} />
       </div>
 
       {/* Fila de envio ---------------------------------------------
