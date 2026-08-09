@@ -92,7 +92,12 @@ export default async function GestaoPage() {
           icon={TrendingUp}
           label="Receita recorrente (MRR)"
           value={formatCurrency(snapshot.mrrCents)}
-          hint={`${clients.filter((c) => c.status === "active").length} contas ativas`}
+          /* DIZ O QUE FOI SOMADO, não quantas contas existem. O rótulo
+             anterior era "47 contas ativas" ao lado de um número que
+             soma 26 linhas — e dividir um pelo outro para achar o ticket
+             médio errava em quase metade. Os números vêm do próprio
+             snapshot, do mesmo passo que calculou a soma. */
+          hint={`${snapshot.mrrCobertura.diretos} diretos + ${snapshot.mrrCobertura.agencias} agências, cobrindo ${snapshot.mrrCobertura.contasAtivas} contas`}
           index={0}
         />
         <FinanceCard

@@ -26,13 +26,33 @@ import type {
    E o contratado vem de DUAS tabelas. Cliente terceirizado não tem
    honorário próprio: quem paga é a agência parceira, um valor só em
    `agency_contracts`. Somar apenas `client_financials` deixaria de fora
-   a maior linha da carteira — as três agências cobrem 22 dos 46
-   clientes ativos — e o MRR apareceria pela metade.
+   a maior linha da carteira — em 09/08/2026, as cinco agências cobriam
+   26 dos 47 clientes ativos — e o MRR apareceria pela metade.
    ===================================================================== */
 
 export interface FinanceSnapshot {
   /** Receita recorrente mensal contratada, em centavos. */
   mrrCents: number;
+  /**
+   * O QUE O MRR SOMOU — devolvido junto porque o rótulo do card errava.
+   *
+   * Ele dizia "47 contas ativas" ao lado de um número que soma 26 linhas
+   * (os diretos mais as agências). Quem dividisse um pelo outro para
+   * achar o ticket médio erraria em quase metade: R$ 825 em vez de
+   * R$ 1.492. O número estava certo e o texto embaixo dele descrevia
+   * outra população.
+   *
+   * Sai do MESMO passo que calcula a soma, então não há como os dois
+   * divergirem de novo.
+   */
+  mrrCobertura: {
+    /** Clientes ativos faturados direto pela Elo. */
+    diretos: number;
+    /** Contratos de agência — cada um cobre vários clientes. */
+    agencias: number;
+    /** Contas ativas no total, incluindo as cobertas pelas agências. */
+    contasAtivas: number;
+  };
   /** Entradas menos saídas já liquidadas. Pode ser negativo. */
   balanceCents: number;
   /** Receita pendente com vencimento no futuro. */
@@ -94,14 +114,23 @@ export function buildFinanceSnapshot(
      tem honorário gravado em `client_financials` de quando era faturado
      direto, e somá-lo contaria a mesma receita duas vezes — uma na linha
      dele, outra no contrato da agência. */
-  const mrrClientes = clients
-    .filter((c) => c.status === "active" && !ehTerceirizado(c))
-    .reduce((acc, c) => acc + (fees.get(c.id) ?? 0), 0);
+  const ativos = clients.filter((c) => c.status === "active");
+  const diretos = ativos.filter((c) => !ehTerceirizado(c));
+
+  const mrrClientes = diretos.reduce(
+    (acc, c) => acc + (fees.get(c.id) ?? 0),
+    0,
+  );
 
   const mrrAgencias = agencias.reduce((acc, a) => acc + a.monthly_fee_cents, 0);
 
   return {
     mrrCents: mrrClientes + mrrAgencias,
+    mrrCobertura: {
+      diretos: diretos.length,
+      agencias: agencias.length,
+      contasAtivas: ativos.length,
+    },
     balanceCents: paidIncome - paidExpense,
     expectedIncomeCents: expectedIncome,
     payableCents: payable,
