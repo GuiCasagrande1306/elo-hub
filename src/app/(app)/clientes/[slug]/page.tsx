@@ -8,6 +8,7 @@ import {
   getGoalHistory,
   getMonthlyGoalStatus,
   getCreatives,
+  getClientGoalProgress,
   getCurrentGoals,
   getMetricsWithComparison,
   lastNDays,
@@ -93,15 +94,27 @@ export default async function ClientPage({
   const days = PRESETS.includes(parsed) ? parsed : 30;
   const { start, end } = intervalo ?? lastNDays(days);
 
-  const [metrics, creatives, integrations, goals, goalStatus, goalHistory] =
-    await Promise.all([
-      getMetricsWithComparison(client.id, start, end),
-      getCreatives(client.id, 6),
-      getClientIntegrations(client.id),
-      getCurrentGoals(),
-      getMonthlyGoalStatus(client.id),
-      getGoalHistory(client.id, 12, client.segment),
-    ]);
+  const [
+    metrics,
+    creatives,
+    integrations,
+    goals,
+    goalStatus,
+    goalHistory,
+    goalProgress,
+  ] = await Promise.all([
+    getMetricsWithComparison(client.id, start, end),
+    getCreatives(client.id, 6),
+    getClientIntegrations(client.id),
+    getCurrentGoals(),
+    getMonthlyGoalStatus(client.id),
+    getGoalHistory(client.id, 12, client.segment),
+    /* Janela PRÓPRIA, a da meta — não `start`/`end`, que vêm do seletor
+       de período. Reaproveitar os totais já buscados acima seria de
+       graça e daria uma projeção calculada sobre 90 dias de gasto para
+       responder onde o MÊS fecha. */
+    getClientGoalProgress(client),
+  ]);
 
   const metaAtual = goals.get(client.id) ?? null;
 
@@ -168,6 +181,7 @@ export default async function ClientPage({
       integrations={integrations}
       goalStatus={goalStatus}
       goalHistory={goalHistory}
+      goalProgress={goalProgress}
       resultLabel={metrica.label}
       costLabel={metrica.costLabel ?? "Custo por resultado"}
       goal={

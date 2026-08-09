@@ -17,11 +17,14 @@ import { cn } from "@/lib/utils";
 import { DateRangePicker } from "./date-range-picker";
 import { formatPeriod } from "@/lib/format";
 import type { KpiResult, PlatformSplit, TrendPoint } from "@/lib/metrics/kpi";
+import type { GoalProgressPair } from "@/lib/metrics/goals";
+import { formatPeriod as periodoLegivel } from "@/lib/format";
 import type {
   GoalHistoryEntry,
   IntegrationStatus,
   MonthlyGoalStatus,
 } from "@/lib/data";
+import { GoalBar } from "@/components/clients/goal-bar";
 import { GoalHistory } from "@/components/clients/goal-history";
 import { MonthlyGoalAlert } from "@/components/clients/monthly-goal-alert";
 import type { AdCreative, Client } from "@/types/database";
@@ -73,6 +76,11 @@ export interface ClientDashboardProps {
   /** Meta do mês corrente e se ela ainda precisa ser preenchida. */
   goalStatus: MonthlyGoalStatus;
   goalHistory: GoalHistoryEntry[];
+  /** Progresso e projeção do mês da meta. `null` = sem meta no período. */
+  goalProgress: {
+    progress: GoalProgressPair | null;
+    period: { start: string; end: string } | null;
+  } | null;
   /* Rótulos do que a conta mede — "Visitas ao perfil"/"Custo por
      visita". Vêm prontos do servidor, da mesma função que nomeia os
      KPIs do topo: derivá-los de novo aqui abriria a chance de o card de
@@ -94,6 +102,7 @@ export function ClientDashboard({
   goal,
   goalStatus,
   goalHistory,
+  goalProgress,
   resultLabel,
   costLabel,
 }: ClientDashboardProps) {
@@ -215,6 +224,39 @@ export function ClientDashboard({
             Google Ads + Meta Ads unificados · comparação com os{" "}
             {period.days} dias anteriores
           </p>
+
+          {/* ---------------- META DO MÊS ----------------
+              DEPOIS dos KPIs e visualmente separado, porque responde
+              outra pergunta e usa OUTRA JANELA. Os cards acima seguem o
+              seletor de período; estas barras são sempre o mês da meta,
+              e é por isso que o intervalo aparece escrito — sem ele,
+              quem trocar o seletor para 90 dias vai ler a projeção como
+              se fosse dos 90 dias. */}
+          {goalProgress?.progress && (
+            <section className="surface-card mt-4 p-5">
+              <div className="mb-4 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                <h2 className="text-sm font-semibold tracking-[-0.01em]">
+                  Meta do mês
+                </h2>
+                {goalProgress.period && (
+                  <span className="text-2xs tabular-nums text-muted-foreground">
+                    {periodoLegivel(
+                      goalProgress.period.start,
+                      goalProgress.period.end,
+                    )}
+                    {goalProgress.progress.cycle.daysLeft > 0 && (
+                      <> · faltam {goalProgress.progress.cycle.daysLeft} dias</>
+                    )}
+                  </span>
+                )}
+              </div>
+
+              <div className="grid gap-5 sm:grid-cols-2">
+                <GoalBar progress={goalProgress.progress.budget} />
+                <GoalBar progress={goalProgress.progress.results} />
+              </div>
+            </section>
+          )}
         </div>
       </section>
 

@@ -370,6 +370,47 @@ export async function getClientsWithGoals(
   );
 }
 
+/**
+ * Progresso da meta de UM cliente, para a página dele.
+ *
+ * Existe separado de `getClientsWithGoals` porque a página do cliente
+ * precisa de um, e aquela função varre a carteira inteira — 46 consultas
+ * de métrica para usar uma.
+ *
+ * ⚠️ A JANELA É A DA META, não a do seletor de período da página. São
+ * duas leituras diferentes convivendo na mesma tela: os cards do topo
+ * respondem "como foram os últimos 30 dias" e mudam com o seletor; a
+ * meta responde "onde este MÊS fecha" e não muda. Alimentar a projeção
+ * com o total de 90 dias devolveria um número plausível e errado —
+ * projetar o fechamento do mês a partir de três meses de gasto.
+ */
+export async function getClientGoalProgress(client: Client): Promise<{
+  progress: ReturnType<typeof buildGoalProgress>;
+  /** Início e fim da janela usada — a tela precisa dizer de qual mês fala. */
+  period: { start: string; end: string } | null;
+} | null> {
+  const goals = await getCurrentGoals();
+  const goal = goals.get(client.id) ?? null;
+
+  // Sem meta não há projeção: a tela já mostra o alerta de meta ausente.
+  if (!goal) return null;
+
+  const rows = await getMetrics(client.id, goal.period_start, goal.period_end);
+  const totals = sumMetrics(rows);
+  const metric = goalMetricFor(client.segment, goal.results_metric);
+
+  return {
+    progress: buildGoalProgress({
+      goal,
+      metric,
+      computedSpendCents: totals.spendCents,
+      computedConversions: totals.conversions,
+      computedRevenueCents: totals.revenueCents,
+    }),
+    period: { start: goal.period_start, end: goal.period_end },
+  };
+}
+
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
