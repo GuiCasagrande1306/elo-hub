@@ -27,11 +27,19 @@ import { defaultGoalMetricFor, parseGoalInput } from "@/lib/metrics/goal-metric"
 
 /* Lista fixa aqui e não no banco: parceria nova é decisão comercial, e
    um enum no Postgres pediria migração a cada acordo. */
+/* ⚠️ O texto aqui é CHAVE, não rótulo. Ele vai literal para
+   `clients.agency_partner` e precisa casar caractere a caractere com
+   `agency_contracts.agency` — que também é texto. Corrigir a grafia de
+   uma parceria depois de haver cliente nela quebra o vínculo em
+   silêncio: os clientes continuam apontando para o nome antigo, somem da
+   cobrança da agência e não voltam a ser faturados individualmente.
+   Renomear pede UPDATE nas duas tabelas, junto. */
 export const AGENCY_PARTNERS = [
   "Elo Marketing",
   "Brava Hills",
   "Bagano",
   "Ampla Marketing",
+  "Grupo Tasty",
 ] as const;
 
 export type AgencyPartner = (typeof AGENCY_PARTNERS)[number];
