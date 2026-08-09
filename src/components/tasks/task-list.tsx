@@ -1,10 +1,25 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { AlertTriangle, ChevronDown, Circle, CheckCircle2, Plus } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowDown,
+  ArrowUp,
+  ChevronDown,
+  Circle,
+  CheckCircle2,
+  Plus,
+} from "lucide-react";
 import { toast } from "sonner";
 
-import { COLOR_TAG_ROW, criticalityBadge } from "./task-meta";
+import { COLOR_TAG_ROW } from "./task-meta";
+import {
+  COLUNAS,
+  gradeDeColunas,
+  ordenarTarefas,
+  type ColunaId,
+  type Ordenacao,
+} from "./task-columns";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import {
@@ -32,10 +47,13 @@ import type { TaskWithRelations } from "@/types/database";
 
    No mobile a grade vira cartões empilhados — tabela com scroll
    horizontal em tela pequena é o pior dos dois mundos.
-   ===================================================================== */
 
-const GRID =
-  "grid-cols-[28px_1fr_150px_44px_128px_84px_92px_96px_44px_28px]";
+   A GRADE É DERIVADA, não escrita. Era uma string CSS fixa com dez
+   trilhas, e por isso esconder uma coluna deixava um buraco: a largura
+   não sabia quais células existiam. Agora sai de `gradeDeColunas`, e a
+   linha renderiza percorrendo o catálogo — cabeçalho e célula não têm
+   como discordar sobre o que está visível.
+   ===================================================================== */
 
 /** Tarefa criada pelo sistema, não por uma pessoa. */
 function isAlerta(title: string): boolean {
@@ -52,6 +70,9 @@ export function TaskList({
   dateFilter,
   onDateFilterChange,
   defaultClientId = null,
+  visiveis,
+  ordenacao,
+  onOrdenar,
 }: {
   tasks: TaskWithRelations[];
   /** Carteira para o seletor de cliente da linha e da criação. */
@@ -62,15 +83,18 @@ export function TaskList({
   dateFilter?: string;
   onDateFilterChange?: (valor: string) => void;
   defaultClientId?: string | null;
+  /* Visibilidade e ordenação vêm DE CIMA, não de cada grupo: com estado
+     por grupo, "Demandas da semana" e "Concluídos" acabariam com colunas
+     diferentes na mesma tela. */
+  visiveis: ColunaId[];
+  ordenacao: Ordenacao;
+  onOrdenar: (coluna: ColunaId) => void;
 }) {
   const [aberto, setAberto] = useState(true);
   const concluido = tone === "concluido";
 
-  const ordenadas = [...tasks].sort((a, b) =>
-    concluido
-      ? (b.completed_at ?? "").localeCompare(a.completed_at ?? "")
-      : (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999"),
-  );
+  const grade = gradeDeColunas(visiveis);
+  const ordenadas = ordenarTarefas(tasks, ordenacao, concluido);
 
   return (
     <section className="surface-card overflow-hidden">
@@ -118,22 +142,47 @@ export function TaskList({
         <>
           {/* Cabeçalho de colunas — só no desktop. */}
           <div
-            className={cn(
-              "hidden gap-3 border-y border-hairline px-4 py-2 md:grid",
-              GRID,
-            )}
+            className="hidden gap-3 border-y border-hairline px-4 py-2 md:grid"
+            style={{ gridTemplateColumns: grade }}
           >
             <span />
-            {["Tarefa", "Cliente", "Resp.", "Status", "Tempo", "Criticidade"].map(
-              (l) => (
-                <span key={l} className="eyebrow">
-                  {l}
-                </span>
-              ),
-            )}
-            <span className="eyebrow">{concluido ? "Concluído" : "Prazo"}</span>
-            <span />
-            <span />
+            <span className="eyebrow">Tarefa</span>
+            {COLUNAS.filter((c) => visiveis.includes(c.id)).map((coluna) => {
+              const ativa = ordenacao.coluna === coluna.id;
+              /* "Prazo" vira "Concluído" no grupo de feitos: é a mesma
+                 coluna de data, e chamá-la de prazo ali seria mentira. */
+              const rotulo =
+                coluna.id === "prazo" && concluido ? "Concluído" : coluna.label;
+
+              if (!coluna.ordenavel) {
+                return (
+                  <span key={coluna.id} className="eyebrow">
+                    {rotulo}
+                  </span>
+                );
+              }
+
+              return (
+                <button
+                  key={coluna.id}
+                  type="button"
+                  onClick={() => onOrdenar(coluna.id)}
+                  className={cn(
+                    "eyebrow flex items-center gap-1 text-left transition-colors hover:text-foreground",
+                    ativa && "text-foreground",
+                  )}
+                  title={`Ordenar por ${rotulo.toLowerCase()}`}
+                >
+                  {rotulo}
+                  {ativa &&
+                    (ordenacao.direcao === "asc" ? (
+                      <ArrowUp className="size-3" />
+                    ) : (
+                      <ArrowDown className="size-3" />
+                    ))}
+                </button>
+              );
+            })}
           </div>
 
           <ul className="divide-y divide-hairline">
@@ -144,6 +193,8 @@ export function TaskList({
                 clients={clients}
                 concluido={concluido}
                 onOpenTask={onOpenTask}
+                visiveis={visiveis}
+                grade={grade}
               />
             ))}
           </ul>
@@ -176,11 +227,16 @@ function TaskRow({
   task,
   concluido,
   onOpenTask,
+  visiveis,
+  grade,
 }: {
   task: TaskWithRelations;
   clients: { id: string; name: string }[];
   concluido: boolean;
   onOpenTask: (id: string) => void;
+  visiveis: ColunaId[];
+  /** Mesma trilha do cabeçalho — vem pronta para não recalcular por linha. */
+  grade: string;
 }) {
   const [feito, setFeito] = useState(concluido);
   /* Cor e cliente vivem AQUI, não dentro das células. A cor pinta a
@@ -195,8 +251,9 @@ function TaskRow({
   const [, startTransition] = useTransition();
 
   const due = formatDueDate(task.due_date);
-  const badge = criticalityBadge(task.criticality);
   const alerta = isAlerta(task.title);
+
+  const mostra = (id: ColunaId) => visiveis.includes(id);
 
   function alternar() {
     const anterior = feito;
@@ -229,8 +286,11 @@ function TaskRow({
           cor
             ? COLOR_TAG_ROW[cor]
             : "hover:bg-accent/40",
-          GRID,
         )}
+        /* `style` e não classe: a trilha é montada em tempo de execução
+           a partir das colunas visíveis, e o Tailwind só gera classes
+           que existem no código-fonte. */
+        style={{ gridTemplateColumns: grade }}
       >
         {/* Concluir */}
         <button
@@ -267,122 +327,130 @@ function TaskRow({
           </span>
         </button>
 
-        {/* Cliente — fora do mobile: o nome já está no card do
-            Kanban e aqui roubaria a linha do título. */}
-        <span className="hidden min-w-0 md:block">
-          <ClientCell
-            taskId={task.id}
-            value={cliente}
-            clients={clients}
-            onChange={setCliente}
-          />
-        </span>
+        {/* Da aqui para baixo, TODA célula é condicional. `mostra()` é a
+            mesma fonte que o cabeçalho consulta — não há como uma coluna
+            aparecer no título e sumir na linha, ou o contrário. */}
+
+        {/* Cliente em DUAS formas: seletor no desktop, texto no mobile.
+
+            Ele estava só no desktop, com a justificativa de que o nome
+            já aparece no card do Kanban — mas quem abre a lista no
+            celular não está no Kanban, e "de quem é isto" é a segunda
+            pergunta depois do título. Como texto ele custa meia linha e
+            não rouba o título; editar continua na gaveta. */}
+        {mostra("cliente") && (
+          <>
+            <span className="hidden min-w-0 md:block">
+              <ClientCell
+                taskId={task.id}
+                value={cliente}
+                clients={clients}
+                onChange={setCliente}
+              />
+            </span>
+            {cliente && (
+              <span className="max-w-full truncate text-2xs text-muted-foreground md:hidden">
+                {cliente.name}
+              </span>
+            )}
+          </>
+        )}
 
         {/* Avatares sobrepostos. Três e um contador: quatro cabeças
-            numa célula de 44px viram borrão ilegível. */}
-        <span className="flex -space-x-1.5">
-          {task.assignees.length === 0 ? (
-            <span className="text-2xs text-muted-foreground/60">—</span>
-          ) : (
-            <>
-              {task.assignees.slice(0, 3).map((p) => (
-                <span
-                  key={p.id}
-                  title={p.full_name}
-                  className="grid size-6 place-items-center rounded-full bg-surface-2 text-[9px] font-semibold ring-2 ring-card"
-                >
-                  {initials(p.full_name)}
-                </span>
-              ))}
-              {task.assignees.length > 3 && (
-                <span className="grid size-6 place-items-center rounded-full bg-surface-2 text-[9px] font-medium text-muted-foreground ring-2 ring-card">
-                  +{task.assignees.length - 3}
-                </span>
-              )}
-            </>
-          )}
-        </span>
+            numa célula estreita viram borrão ilegível. */}
+        {mostra("responsaveis") && (
+          <span className="flex -space-x-1.5">
+            {task.assignees.length === 0 ? (
+              <span className="text-2xs text-muted-foreground/60">—</span>
+            ) : (
+              <>
+                {task.assignees.slice(0, 3).map((p) => (
+                  <span
+                    key={p.id}
+                    title={p.full_name}
+                    className="grid size-6 place-items-center rounded-full bg-surface-2 text-[9px] font-semibold ring-2 ring-card"
+                  >
+                    {initials(p.full_name)}
+                  </span>
+                ))}
+                {task.assignees.length > 3 && (
+                  <span className="grid size-6 place-items-center rounded-full bg-surface-2 text-[9px] font-medium text-muted-foreground ring-2 ring-card">
+                    +{task.assignees.length - 3}
+                  </span>
+                )}
+              </>
+            )}
+          </span>
+        )}
 
-        <StatusCell taskId={task.id} value={task.status} />
+        {mostra("status") && (
+          <StatusCell taskId={task.id} value={task.status} />
+        )}
 
         {/* Tempo rastreado. Play aparece no hover; parado mostra "—". */}
-        <span className="hidden md:contents">
-        <TimeCell
-          taskId={task.id}
-          trackedSeconds={task.tracked_seconds}
-          startedAt={task.timer_started_at}
-        />
-        </span>
+        {mostra("tempo") && (
+          <span className="hidden md:contents">
+            <TimeCell
+              taskId={task.id}
+              trackedSeconds={task.tracked_seconds}
+              startedAt={task.timer_started_at}
+            />
+          </span>
+        )}
 
-        {/* Barra segmentada 1–10 no lugar da badge textual: "Alta"
-            agrupa 7 e 8 no mesmo rótulo, e a diferença entre eles é
-            justamente o que decide o que se faz primeiro. O número fica
-            ao lado porque a barra sozinha não se lê com precisão. */}
-        <span className="flex shrink-0 items-center gap-1.5" title={badge.label}>
-          <span
-            className={cn(
-              "text-xs font-semibold tabular-nums",
-              task.criticality >= 8
-                ? "text-negative"
-                : task.criticality >= 4
-                  ? "text-warning"
-                  : "text-muted-foreground",
-            )}
-          >
-            {task.criticality}
+        {/* Criticidade: UMA célula, que mostra e edita.
+
+            Havia aqui uma barra desenhada à mão e, ao lado, o
+            `CriticalityCell` — que já desenha número E barra. Eram duas
+            colunas da grade fixa, então a duplicação passava; virando uma
+            célula só, a linha ficava "10 ▮▮▮▮▮ 10". O comentário
+            original já admitia o problema ("duas leituras do mesmo dado
+            na mesma linha") e contornava escondendo o editor no mobile.
+
+            Agora é o próprio valor que se clica para editar, que é como
+            uma tabela deste tipo se comporta — e funciona no celular
+            também, onde antes só dava para ver. */}
+        {mostra("criticidade") && (
+          /* No mobile o invólucro limita a largura; no desktop
+             `md:contents` some com ele e a célula entra direto na grade.
+             Sem o limite, o gatilho `w-full` do editor tomava a linha
+             toda no celular e empurrava o prazo para uma quarta linha —
+             cada tarefa virava quatro linhas de altura. */
+          <span className="flex w-[132px] shrink-0 md:contents">
+            <CriticalityCell taskId={task.id} value={task.criticality} />
           </span>
-          <span className="flex gap-px">
-            {Array.from({ length: 10 }, (_, i) => (
-              <span
-                key={i}
-                className={cn(
-                  "h-2.5 w-1 rounded-[1px]",
-                  i < task.criticality
-                    ? task.criticality >= 8
-                      ? "bg-negative"
-                      : task.criticality >= 4
-                        ? "bg-warning"
-                        : "bg-positive"
-                    : "bg-muted",
-                )}
-              />
-            ))}
-          </span>
-        </span>
+        )}
 
         {/* Prazo ou conclusão */}
-        <span className="shrink-0 text-2xs tabular-nums">
-          {concluido ? (
-            task.completed_at ? (
-              <ConcluidoEm iso={task.completed_at} />
+        {mostra("prazo") && (
+          <span className="shrink-0 text-2xs tabular-nums">
+            {concluido ? (
+              task.completed_at ? (
+                <ConcluidoEm iso={task.completed_at} />
+              ) : (
+                <span className="text-muted-foreground/60">—</span>
+              )
             ) : (
-              <span className="text-muted-foreground/60">—</span>
-            )
-          ) : (
-            <span
-              className={cn(
-                due.tone === "overdue" && "font-medium text-negative",
-                due.tone === "today" && "font-medium text-warning",
-                (due.tone === "soon" || due.tone === "normal") &&
-                  "text-muted-foreground",
-                !due.label && "text-muted-foreground/60",
-              )}
-            >
-              {due.label || "—"}
-            </span>
-          )}
-        </span>
+              <span
+                className={cn(
+                  due.tone === "overdue" && "font-medium text-negative",
+                  due.tone === "today" && "font-medium text-warning",
+                  (due.tone === "soon" || due.tone === "normal") &&
+                    "text-muted-foreground",
+                  !due.label && "text-muted-foreground/60",
+                )}
+              >
+                {due.label || "—"}
+              </span>
+            )}
+          </span>
+        )}
 
-        {/* Editor de criticidade fora do mobile: as barrinhas coloridas
-            acima já mostram o mesmo número, e os dois juntos viravam
-            duas leituras do mesmo dado na mesma linha. No celular a
-            edição acontece na gaveta, que tem o slider. */}
-        <span className="hidden md:contents">
-          <CriticalityCell taskId={task.id} value={task.criticality} />
-        </span>
-        <span className="hidden md:contents">
-          <ColorTagCell taskId={task.id} value={cor} onChange={setCor} />
-        </span>
+        {mostra("cor") && (
+          <span className="hidden md:contents">
+            <ColorTagCell taskId={task.id} value={cor} onChange={setCor} />
+          </span>
+        )}
       </div>
     </li>
   );

@@ -33,6 +33,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useRealtimeRefresh } from "@/hooks/use-realtime";
+import { useLocalPreference } from "@/lib/use-local-preference";
+import { ColumnMenu } from "./column-menu";
+import {
+  COLUNAS_PADRAO,
+  ORDENACAO_PADRAO,
+  type ColunaId,
+  type Ordenacao,
+} from "./task-columns";
 import { cn } from "@/lib/utils";
 import { STATUS_LABELS, TASK_COLUMNS } from "./task-meta";
 import { dataNoBrasil } from "@/lib/date-br";
@@ -84,6 +92,35 @@ export function TasksWorkspace({ tasks, clients, team }: TasksWorkspaceProps) {
     "board" | "list" | "calendar" | "done"
   >("list");
   const [query, setQuery] = useState("");
+
+  /* Colunas e ordenação vivem AQUI e não em cada grupo: com estado por
+     grupo, "Demandas da semana" e "Concluídos" ficariam com colunas
+     diferentes na mesma tela. Persistidos no navegador porque é
+     preferência de quem olha, não dado do sistema. */
+  const [visiveis, setVisiveis] = useLocalPreference<ColunaId[]>(
+    "tarefas:colunas",
+    COLUNAS_PADRAO,
+  );
+  const [ordenacao, setOrdenacao] = useLocalPreference<Ordenacao>(
+    "tarefas:ordenacao",
+    ORDENACAO_PADRAO,
+  );
+
+  /* Três estados por coluna, não dois: crescente → decrescente → SEM
+     ordenação. Sem o terceiro, não há como voltar à ordem natural do
+     grupo (prazo em aberto, conclusão em feito) depois de clicar uma
+     vez — e é ela que responde "o que vence primeiro". */
+  function alternarOrdem(coluna: ColunaId) {
+    if (ordenacao.coluna !== coluna) {
+      setOrdenacao({ coluna, direcao: "asc" });
+      return;
+    }
+    setOrdenacao(
+      ordenacao.direcao === "asc"
+        ? { coluna, direcao: "desc" }
+        : ORDENACAO_PADRAO,
+    );
+  }
   const [statusFilter, setStatusFilter] = useState<string>(ALL);
   const [assigneeFilter, setAssigneeFilter] = useState<string>(ALL);
   /* Dia das concluídas. Vazio = todas — o padrão não pode esconder
@@ -229,7 +266,7 @@ export function TasksWorkspace({ tasks, clients, team }: TasksWorkspaceProps) {
       <div className="flex flex-wrap items-center gap-2">
         {/* Quatro abas não cabem em 375px. Rolagem horizontal em vez de
             quebra: abas em duas linhas deixam de parecer um seletor. */}
-        <div className="-mx-1 flex max-w-full items-center gap-0.5 overflow-x-auto rounded-lg bg-surface-2/70 p-0.5 ring-1 ring-hairline [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="-mx-1 flex w-full items-center gap-0.5 overflow-x-auto rounded-lg bg-surface-2/70 p-0.5 ring-1 ring-hairline sm:w-auto sm:max-w-full [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <ViewButton
             active={view === "board"}
             onClick={() => setView("board")}
@@ -256,7 +293,12 @@ export function TasksWorkspace({ tasks, clients, team }: TasksWorkspaceProps) {
           />
         </div>
 
-        <div className="relative min-w-0 flex-1 sm:max-w-64">
+        {/* `w-full` no mobile e só então `flex-1`. Com `flex-1` sozinho,
+            a tira de abas ocupava a linha inteira e esta caixa sobrava
+            com largura ZERO no fim dela — o `input` dentro vazava 44px
+            para fora e a página inteira ganhava rolagem horizontal.
+            Medido: container w=0, input right=403 numa tela de 375. */}
+        <div className="relative w-full min-w-0 sm:w-auto sm:flex-1 sm:max-w-64">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}
@@ -271,6 +313,15 @@ export function TasksWorkspace({ tasks, clients, team }: TasksWorkspaceProps) {
         {/* Desktop: filtros na barra. Mobile: dentro do Popover abaixo —
             dois selects de largura total empurravam a lista para fora da
             primeira dobra. */}
+        {/* Só na visão de tabela: no quadro e no calendário não há
+            coluna para esconder, e um menu que não faz nada ali seria o
+            controle morto que esta sessão vem tirando das telas. */}
+        {(view === "list" || view === "done") && (
+          <div className="hidden md:block">
+            <ColumnMenu visiveis={visiveis} onChange={setVisiveis} />
+          </div>
+        )}
+
         <div className="hidden items-center gap-2 md:flex">
         <Select
           value={assigneeFilter}
@@ -436,6 +487,9 @@ export function TasksWorkspace({ tasks, clients, team }: TasksWorkspaceProps) {
             onOpenTask={setOpenTask}
             title="Demandas da semana"
             tone="aberto"
+            visiveis={visiveis}
+            ordenacao={ordenacao}
+            onOrdenar={alternarOrdem}
           />
 
           <TaskList
@@ -444,6 +498,9 @@ export function TasksWorkspace({ tasks, clients, team }: TasksWorkspaceProps) {
             onOpenTask={setOpenTask}
             title="Concluídos"
             tone="concluido"
+            visiveis={visiveis}
+            ordenacao={ordenacao}
+            onOrdenar={alternarOrdem}
             dateFilter={diaConcluidas}
             onDateFilterChange={setDiaConcluidas}
           />
@@ -475,6 +532,9 @@ export function TasksWorkspace({ tasks, clients, team }: TasksWorkspaceProps) {
               onOpenTask={setOpenTask}
               title="Concluídos"
               tone="concluido"
+              visiveis={visiveis}
+              ordenacao={ordenacao}
+              onOrdenar={alternarOrdem}
             />
           )}
         </div>
