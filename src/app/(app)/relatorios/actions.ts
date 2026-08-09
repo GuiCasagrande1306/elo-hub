@@ -226,3 +226,110 @@ export async function salvarTemplate(input: {
   revalidatePath("/relatorios");
   return { ok: true };
 }
+
+/* ------------------------------------------------------------------ */
+/* Agenda de envio — em lote, direto da tela de Relatórios             */
+/* ------------------------------------------------------------------ */
+
+const agendaSchema = z.object({
+  /* `min(1)` e NÃO `uuid()`: o formato do id é assunto do banco, que
+     recusa o que não for uuid, e a coluna já está sob RLS. Exigir uuid
+     aqui quebrava o modo demonstração inteiro — os ids de lá são
+     `c-nord` — e a tela ficava sem como mostrar o fluxo que ela existe
+     para mostrar. */
+  clientId: z.string().min(1),
+  /* `null` = sem envio recorrente. 28 é o teto pelo mesmo motivo do
+     banco e do faturamento: fevereiro existe, e dia 30 nunca chegaria. */
+  reportDay: z.number().int().min(1).max(28).nullable(),
+  enabled: z.boolean(),
+  /* Telefone OU JID de grupo (`...@g.us`). Vazio limpa o destino. */
+  whatsapp: z.string().trim().max(120),
+});
+
+/**
+ * Grava destino, dia e liga/desliga o envio de UM cliente.
+ *
+ * Existe porque isso só era editável dentro do formulário completo do
+ * cliente, um diálogo por vez — e com 47 contas o resultado foi que
+ * NENHUMA ficou configurada. Mesma razão da tabela de contratos em
+ * Recorrência: quando são dezenas de linhas vindas de uma planilha,
+ * abrir e fechar um diálogo por linha é a diferença entre a tela ser
+ * usada e não ser.
+ *
+ * Sem checagem de papel: quem barra é a policy do banco em `clients`,
+ * como nas outras ações de cadastro. Uma segunda fonte de verdade sobre
+ * permissão aqui seria a que fica desatualizada.
+ */
+export async function salvarAgendaDeRelatorio(input: {
+  clientId: string;
+  reportDay: number | null;
+  enabled: boolean;
+  whatsapp: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = agendaSchema.safeParse(input);
+  if (!parsed.success) {
+    /* A mensagem do zod em vez de uma genérica: "Dia ou destino
+       inválido" não diz QUAL dos dois, e foi exatamente o que mascarou
+       este bug — o id é que estava sendo recusado, não o dia. */
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Dados inválidos.",
+    };
+  }
+
+  const { clientId, reportDay, enabled, whatsapp } = parsed.data;
+
+  /* LIGADO SEM DIA NUNCA DISPARA. O job procura `report_day = <dia de
+     hoje>`, então um cliente marcado como ativo e sem dia fica para
+     sempre em silêncio, parecendo configurado. Recusar aqui é o que
+     impede a tela de mostrar "pronto" para quem não está. */
+  if (enabled && reportDay === null) {
+    return {
+      ok: false,
+      error: "Escolha o dia do envio antes de ligar o automático.",
+    };
+  }
+
+  if (enabled && whatsapp === "") {
+    return {
+      ok: false,
+      error: "Sem destino no WhatsApp o relatório é gerado e não sai.",
+    };
+  }
+
+  if (isDemoMode) {
+    const { demoClients } = await import("@/lib/mock/data");
+    const alvo = demoClients.find((c) => c.id === clientId);
+    if (alvo) {
+      alvo.report_day = reportDay;
+      alvo.report_enabled = enabled;
+      alvo.whatsapp_phone = whatsapp || null;
+    }
+    revalidatePath("/relatorios");
+    return { ok: true };
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase
+    .from("clients")
+    .update({
+      report_day: reportDay,
+      report_enabled: enabled,
+      whatsapp_phone: whatsapp || null,
+    })
+    .eq("id", clientId);
+
+  if (error) {
+    return {
+      ok: false,
+      error:
+        error.code === "42501"
+          ? "O banco recusou a alteração. Fale com um administrador."
+          : error.message,
+    };
+  }
+
+  revalidatePath("/relatorios");
+  revalidatePath("/clientes");
+  return { ok: true };
+}

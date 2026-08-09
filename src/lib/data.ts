@@ -514,6 +514,46 @@ export async function getTeam(): Promise<Profile[]> {
 /* Relatórios                                                          */
 /* ------------------------------------------------------------------ */
 
+export interface ReportSetupRow {
+  id: string;
+  name: string;
+  logoUrl: string | null;
+  brandPrimary: string | null;
+  /** Telefone ou JID de grupo. `null` = sem destino cadastrado. */
+  whatsappPhone: string | null;
+  /** Dia do mês do envio automático, 1–28. */
+  reportDay: number | null;
+  reportEnabled: boolean;
+}
+
+/**
+ * Quem está pronto para receber relatório automático — e quem não está.
+ *
+ * Existe porque o agendamento morava SÓ no formulário de cada cliente,
+ * um diálogo por vez. Com 47 contas, o resultado medido em 08/08/2026
+ * era: 0 com envio ligado, 0 com dia definido, 7 com WhatsApp. O cron
+ * nunca teve o que preparar, e a fila de envio nascia vazia todo dia
+ * sem que nada na tela dissesse por quê.
+ *
+ * Só contas ATIVAS: configurar envio para quem cancelou é trabalho que
+ * o job vai ignorar.
+ */
+export async function getReportSetup(): Promise<ReportSetupRow[]> {
+  const clients = await getClients();
+
+  return clients
+    .filter((c) => c.status === "active")
+    .map((c) => ({
+      id: c.id,
+      name: c.name,
+      logoUrl: c.logo_url,
+      brandPrimary: c.brand_primary,
+      whatsappPhone: c.whatsapp_phone,
+      reportDay: c.report_day,
+      reportEnabled: c.report_enabled,
+    }));
+}
+
 export async function getReportTemplates(): Promise<ReportTemplate[]> {
   if (isDemoMode) {
     const { demoTemplates } = await import("@/lib/mock/data");

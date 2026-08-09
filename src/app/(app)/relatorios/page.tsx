@@ -4,12 +4,14 @@ import type { Metadata } from "next";
 import { PageContainer, PageHeader } from "@/components/layout/page-header";
 import { TemplateSettingsDialog } from "@/components/reports/template-settings-dialog";
 import { ReportHistoryList } from "@/components/reports/report-history";
+import { ReportSetupTable } from "@/components/reports/report-setup-table";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import {
   getClients,
   getClientsWithGoals,
   getReports,
+  getReportSetup,
   getReportTemplates,
 } from "@/lib/data";
 import { resolverTemplate } from "@/lib/reports/template-resolver";
@@ -35,7 +37,7 @@ export default async function ReportsPage() {
      colaborador leria a lista curta como perda de dado. */
   const user = await getCurrentUser();
 
-  const [templates, reports, clients, pendentes, comMetricas] =
+  const [templates, reports, clients, pendentes, comMetricas, agenda] =
     await Promise.all([
       getReportTemplates(),
       getReports(),
@@ -46,6 +48,10 @@ export default async function ReportsPage() {
          e nenhum valor da tela é inventado — o texto que sai daqui vai
          para o cliente final. */
       getClientsWithGoals(),
+      /* Quem está pronto para receber automático. Vem primeiro na tela
+         porque é o que destrava tudo abaixo: sem destino e dia, o cron
+         não prepara e a fila nasce vazia. */
+      getReportSetup(),
     ]);
 
   const resumos = comMetricas.map((linha) => ({
@@ -109,7 +115,14 @@ export default async function ReportsPage() {
         }
       />
 
-      <div className="mt-6">
+      {/* AGENDA ANTES DA ESTAÇÃO. A página inteira pressupunha um fluxo
+          configurado; medido em 08/08/2026, nenhuma das 47 contas ativas
+          tinha envio ligado. Enquanto houver pendência, o primeiro
+          bloco tem de ser o que a resolve — e ele se recolhe sozinho
+          quando não houver mais. */}
+      <ReportSetupTable linhas={agenda} />
+
+      <div className="mt-8">
         <CommandStation clients={resumos} />
       </div>
 
