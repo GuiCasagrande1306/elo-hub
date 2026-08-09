@@ -36,10 +36,17 @@ import { defaultGoalMetricFor, parseGoalInput } from "@/lib/metrics/goal-metric"
    Renomear pede UPDATE nas duas tabelas, junto. */
 export const AGENCY_PARTNERS = [
   "Elo Marketing",
-  "Brava Hills",
+  /* Renomeada de "Brava Hills" em 08/08/2026, junto com o UPDATE nas
+     duas tabelas — `clients.agency_partner` e `agency_contracts.agency`.
+     Trocar só aqui deixaria os 8 clientes apontando para um nome que a
+     lista não conhece, e o formulário de cliente os empurraria para
+     "Elo Marketing" no primeiro salvamento (ver o fallback em
+     `client-form.tsx`), voltando a cobrá-los individualmente. */
+  "Brava Reels",
   "Bagano",
   "Ampla Marketing",
   "Grupo Tasty",
+  "Agência Send",
 ] as const;
 
 export type AgencyPartner = (typeof AGENCY_PARTNERS)[number];
