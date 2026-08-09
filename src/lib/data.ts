@@ -298,6 +298,16 @@ export interface ClientWithGoal {
   /** Série de gasto no período da meta, para a sparkline do card. */
   trend: number[];
   /**
+   * A JANELA QUE FOI SOMADA — não a que alguém escolheu numa tela.
+   *
+   * Vem junto porque quem consome estes números precisa poder dizer de
+   * que intervalo eles são. A tela de Relatórios monta com eles um texto
+   * que vai para o cliente final, e sem esta informação ela rotulava a
+   * mensagem com um período qualquer: "resumo dos últimos 7 dias"
+   * acompanhado do gasto do mês inteiro.
+   */
+  period: { start: string; end: string };
+  /**
    * Progresso JÁ CALCULADO no servidor.
    *
    * Não é recalculado no cliente na primeira renderização de propósito:
@@ -358,6 +368,7 @@ export async function getClientsWithGoals(
         computedRevenueCents: totals.revenueCents,
         computedGoalValue: goalExecutedFrom(metric, totals),
         trend: buildTrend(rows).map((p) => p.spend),
+        period: { start, end },
         progress: buildGoalProgress({
           goal,
           metric,

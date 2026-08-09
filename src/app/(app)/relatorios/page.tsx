@@ -57,6 +57,10 @@ export default async function ReportsPage() {
        mandaria o erro direto para o cliente final. */
     resultValue: linha.computedGoalValue,
     metric: linha.metric,
+    /* A janela que o servidor de fato somou. Vai junto porque é ela que
+       rotula a mensagem enviada ao cliente — antes a tela escolhia um
+       rótulo ("últimos 7 dias") que não tinha relação com o número. */
+    period: linha.period,
   }));
 
 

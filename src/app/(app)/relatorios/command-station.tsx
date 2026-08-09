@@ -14,7 +14,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { formatCurrency, formatMultiplier } from "@/lib/format";
+import { formatCurrency, formatMultiplier, formatPeriod } from "@/lib/format";
 import { formatGoalValue, type GoalMetric } from "@/lib/metrics/goal-metric";
 import { cn } from "@/lib/utils";
 
@@ -24,10 +24,18 @@ import { cn } from "@/lib/utils";
    Uma tela para a pergunta "mandar o resultado desta conta agora".
    Filtros e mensagem à esquerda, o que o cliente vai receber à direita.
 
-   OS NÚMEROS SÃO REAIS. Vêm somados de `daily_metrics` no servidor, um
-   resumo por cliente, e trocam junto com a seleção. Banner com número
-   mockado é a armadilha que já custou três telas neste projeto — e aqui
-   seria pior, porque o texto que sai daqui vai para o cliente final.
+   OS NÚMEROS SÃO REAIS e o PERÍODO É O DELES. Vêm somados de
+   `daily_metrics` no servidor, na janela da meta vigente de cada conta,
+   e a tela rotula a mensagem com essa mesma janela.
+
+   ⚠️ HAVIA UM SELETOR DE PERÍODO AQUI, e ele mentia. Trocava a frase
+   ("resumo dos últimos 7 dias") sem trocar os números, que continuavam
+   sendo os do mês inteiro — e o texto daqui é copiado e enviado ao
+   cliente final. Um controle que muda o rótulo e não o dado é pior que
+   controle nenhum: ele produz um número errado com aparência de certo.
+
+   Voltará quando houver busca de verdade por intervalo. Enquanto não
+   houver, a tela diz o período que ela realmente somou.
 
    CORES POR TOKEN, não `purple-600`: o app tem tema claro e escuro, e
    cor fixa do Tailwind fica ilegível num dos dois.
@@ -40,13 +48,9 @@ export interface ClientSummary {
   /** Já na unidade de `metric` — resolvido no servidor. */
   resultValue: number;
   metric: GoalMetric;
+  /** A janela que o servidor somou. É ela que rotula a mensagem. */
+  period: { start: string; end: string };
 }
-
-const PERIODOS = [
-  { value: "7", label: "Últimos 7 dias" },
-  { value: "30", label: "Últimos 30 dias" },
-  { value: "mes", label: "Este mês" },
-] as const;
 
 const SECOES = [
   { icon: BarChart3, titulo: "Resumo executivo", sub: "Investimento, resultados e custo" },
@@ -63,14 +67,17 @@ export function CommandStation({
   templates: { id: string; name: string }[];
 }) {
   const [clientId, setClientId] = useState(clients[0]?.id ?? "");
-  const [periodo, setPeriodo] = useState<string>("30");
   const [templateId, setTemplateId] = useState(templates[0]?.id ?? "");
   const [tipo, setTipo] = useState<"completo" | "simples">("completo");
   const [copiado, setCopiado] = useState(false);
 
   const cliente = clients.find((c) => c.id === clientId) ?? null;
-  const periodoLabel =
-    PERIODOS.find((p) => p.value === periodo)?.label ?? "Últimos 30 dias";
+
+  /* Rótulo DERIVADO da janela somada, não escolhido. Muda quando o
+     cliente muda, porque cada conta tem o período da meta dela. */
+  const periodoLabel = cliente
+    ? formatPeriod(cliente.period.start, cliente.period.end)
+    : "—";
 
   /* Custo por resultado calculado aqui e não guardado: dividir na hora
      garante que ele nunca discorde do gasto e do resultado ao lado.
@@ -92,8 +99,13 @@ export function CommandStation({
     const { metric } = cliente;
 
     return [
-      `Olá! Segue o resumo de ${periodoLabel.toLowerCase()} da campanha.`,
+      "Olá! Segue o resumo da campanha.",
       "",
+      /* O período entra como CAMPO, na mesma lista dos números — não
+         embutido na saudação. Colado neles, não há como ler um sem o
+         outro; era exatamente essa separação que deixava a frase dizer
+         "7 dias" sobre o gasto de um mês. */
+      `• Período: ${periodoLabel}`,
       `• Investimento: ${formatCurrency(cliente.spendCents)}`,
       `• ${metric.label}: ${formatGoalValue(metric, cliente.resultValue)}`,
       cpl ? `• ${metric.costLabel}: ${formatCurrency(Math.round(cpl))}` : null,
@@ -118,11 +130,15 @@ export function CommandStation({
       {/* ---------------- Coluna esquerda ---------------- */}
       <div className="flex flex-col gap-4 lg:col-span-2">
         <section className="surface-card p-4">
+          {/* `min-w-0` nos três: item de grid tem `min-width: auto` e não
+              encolhe abaixo do próprio conteúdo. Sem isso o select de
+              template — cujo nome é longo, "E-commerce — Performance &
+              ROAS" — vazava 69px para fora do card em vez de truncar. */}
           <div className="grid gap-3 sm:grid-cols-3">
-            <label className="flex flex-col gap-1.5">
+            <label className="flex min-w-0 flex-col gap-1.5">
               <span className="eyebrow">Cliente</span>
               <Select value={clientId} onValueChange={(v) => setClientId(v ?? clientId)}>
-                <SelectTrigger size="sm">
+                <SelectTrigger size="sm" className="w-full min-w-0">
                   <SelectValue>
                     {(v: string) =>
                       clients.find((c) => c.id === v)?.name ?? "Selecione"
@@ -137,28 +153,20 @@ export function CommandStation({
               </Select>
             </label>
 
-            <label className="flex flex-col gap-1.5">
+            {/* Período NÃO é campo — é consequência. Mostrado como texto
+                para ficar claro que veio da meta da conta e que trocar o
+                cliente troca ele junto. */}
+            <div className="flex min-w-0 flex-col gap-1.5">
               <span className="eyebrow">Período</span>
-              <Select value={periodo} onValueChange={(v) => setPeriodo(v ?? "30")}>
-                <SelectTrigger size="sm">
-                  <SelectValue>
-                    {(v: string) =>
-                      PERIODOS.find((p) => p.value === v)?.label ?? "Período"
-                    }
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {PERIODOS.map((p) => (
-                    <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </label>
+              <p className="flex h-8 items-center text-sm tabular-nums">
+                {periodoLabel}
+              </p>
+            </div>
 
-            <label className="flex flex-col gap-1.5">
+            <label className="flex min-w-0 flex-col gap-1.5">
               <span className="eyebrow">Template</span>
               <Select value={templateId} onValueChange={(v) => setTemplateId(v ?? templateId)}>
-                <SelectTrigger size="sm">
+                <SelectTrigger size="sm" className="w-full min-w-0">
                   <SelectValue>
                     {(v: string) =>
                       templates.find((t) => t.id === v)?.name ?? "Padrão do segmento"
@@ -190,8 +198,8 @@ export function CommandStation({
             className="mt-2 resize-y font-mono text-xs"
           />
           <p className="mt-1.5 text-2xs text-muted-foreground">
-            Números somados das métricas sincronizadas. Trocam junto com o
-            cliente e o período.
+            Números somados das métricas sincronizadas, no período da meta
+            vigente desta conta. Trocam junto com o cliente.
           </p>
         </section>
 
@@ -264,7 +272,11 @@ export function CommandStation({
             {cliente?.name ?? "Nenhum cliente"}
           </h3>
 
-          <dl className="mt-4 grid grid-cols-3 gap-2 border-t border-white/20 pt-3">
+          {/* EMPILHADO, não em três colunas. Com faturamento de seis
+              dígitos — "R$ 835.070,52" — as três colunas colidiam num
+              card desta largura, e o valor ficava colado no vizinho. Uma
+              linha por número não tem esse limite. */}
+          <dl className="mt-4 flex flex-col gap-2 border-t border-white/20 pt-3">
             {[
               ["Investimento", cliente ? formatCurrency(cliente.spendCents) : "—"],
               [
@@ -279,9 +291,14 @@ export function CommandStation({
                 ? ["Retorno", roas ? formatMultiplier(roas) : "—"]
                 : ["Custo", cpl ? formatCurrency(Math.round(cpl)) : "—"],
             ].map(([label, valor]) => (
-              <div key={label}>
-                <dt className="text-[10px] uppercase tracking-wide opacity-75">{label}</dt>
-                <dd className="mt-0.5 text-sm font-semibold tabular-nums">{valor}</dd>
+              <div
+                key={label}
+                className="flex items-baseline justify-between gap-3"
+              >
+                <dt className="text-[10px] uppercase tracking-wide opacity-75">
+                  {label}
+                </dt>
+                <dd className="text-sm font-semibold tabular-nums">{valor}</dd>
               </div>
             ))}
           </dl>
