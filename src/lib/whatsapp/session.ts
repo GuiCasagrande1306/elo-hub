@@ -36,6 +36,25 @@ export function instanceNameFor(userId: string): string {
   return `${PREFIXO}${userId}`;
 }
 
+/**
+ * Instância de ATENDIMENTO de um cliente da carteira — o EloZap.
+ *
+ * Prefixo diferente de propósito. `user-` é o celular de uma pessoa da
+ * equipe, que só ela usa; `cliente-` é o número pelo qual o cliente da
+ * conta fala com a agência, e vários atendentes respondem por ele. Dois
+ * espaços de nome separados impedem que um pareamento de atendimento
+ * derrube o WhatsApp pessoal de alguém por colisão de id.
+ *
+ * ⚠️ AQUI A AUTORIZAÇÃO MUDA DE LUGAR. Nas funções pessoais o nome sai
+ * da sessão, então não existe parâmetro para adulterar. Aqui ele sai de
+ * um `clientId` que veio da requisição — quem chama PRECISA provar
+ * antes, pela RLS, que enxerga aquela conta. Ver a rota
+ * `/api/elozap/session`.
+ */
+export function instanceNameForClient(clientId: string): string {
+  return `cliente-${clientId}`;
+}
+
 export type ConnectionState =
   | "open"        // pareado e pronto
   | "connecting"  // aguardando leitura do QR
@@ -73,10 +92,21 @@ function achar(lista: unknown, nome: string): InstanceNode | null {
 }
 
 export async function getSessionStatus(userId: string): Promise<SessionStatus> {
+  return statusDaInstancia(instanceNameFor(userId));
+}
+
+/**
+ * Estado de UMA instância, pelo nome.
+ *
+ * O núcleo que as duas famílias compartilham — pessoal e atendimento.
+ * Separado para o EloZap não recopiar o tratamento de formato da
+ * Evolution, que muda de versão para versão (ver `achar`).
+ */
+export async function statusDaInstancia(nome: string): Promise<SessionStatus> {
   const resposta = await evolutionFetch("GET", "instance/fetchInstances");
   if (!resposta.success) return { state: "absent" };
 
-  const node = achar(resposta.data, instanceNameFor(userId));
+  const node = achar(resposta.data, nome);
   if (!node) return { state: "absent" };
 
   const bruto = (node.connectionStatus ?? "").toLowerCase();
@@ -88,6 +118,55 @@ export async function getSessionStatus(userId: string): Promise<SessionStatus> {
     phone: node.ownerJid?.split("@")[0],
     profileName: node.profileName,
   };
+}
+
+/**
+ * Estado de VÁRIAS instâncias com UMA consulta.
+ *
+ * `statusDaInstancia` já puxa a lista inteira a cada chamada — ótimo para
+ * uma conta, péssimo para a tela do EloZap, que pinta a carteira toda e
+ * dispararia uma requisição por cliente contra o mesmo contêiner de US$ 5.
+ *
+ * Existe aqui, e não na página, para o `achar` acima continuar sendo o
+ * ÚNICO lugar que entende o formato da Evolution — que muda de versão
+ * para versão. Uma cópia do parser na tela seria corrigida em separado.
+ *
+ * Nome ausente da resposta = `absent`, igual à versão de uma conta.
+ * Evolution fora do ar devolve todos como `absent` em vez de lançar: o
+ * contêiner do Railway dorme e acorda, e a tela precisa abrir enquanto
+ * ele sobe.
+ */
+export async function statusDeVarias(
+  nomes: string[],
+): Promise<Map<string, SessionStatus>> {
+  const mapa = new Map<string, SessionStatus>();
+  if (nomes.length === 0) return mapa;
+
+  const resposta = await evolutionFetch("GET", "instance/fetchInstances");
+
+  for (const nome of nomes) {
+    const node = resposta.success ? achar(resposta.data, nome) : null;
+
+    if (!node) {
+      mapa.set(nome, { state: "absent" });
+      continue;
+    }
+
+    const bruto = (node.connectionStatus ?? "").toLowerCase();
+
+    mapa.set(nome, {
+      state:
+        bruto === "open"
+          ? "open"
+          : bruto === "connecting"
+            ? "connecting"
+            : "close",
+      phone: node.ownerJid?.split("@")[0],
+      profileName: node.profileName,
+    });
+  }
+
+  return mapa;
 }
 
 export interface PairingResult {
@@ -108,8 +187,12 @@ export interface PairingResult {
  * (~40s), e as duas situações são indistinguíveis para quem clicou.
  */
 export async function startPairing(userId: string): Promise<PairingResult> {
-  const nome = instanceNameFor(userId);
-  const atual = await getSessionStatus(userId);
+  return parearInstancia(instanceNameFor(userId));
+}
+
+/** Cria (se preciso) e devolve o QR de UMA instância, pelo nome. */
+export async function parearInstancia(nome: string): Promise<PairingResult> {
+  const atual = await statusDaInstancia(nome);
 
   if (atual.state === "open") return { success: true, state: "open" };
 
@@ -321,9 +404,16 @@ export async function fetchAllGroups(userId: string): Promise<GroupsResult> {
 export async function logoutSession(
   userId: string,
 ): Promise<{ success: boolean; error?: string }> {
+  return desconectarInstancia(instanceNameFor(userId));
+}
+
+/** Desconecta o celular de UMA instância, pelo nome, sem apagá-la. */
+export async function desconectarInstancia(
+  nome: string,
+): Promise<{ success: boolean; error?: string }> {
   const resposta = await evolutionFetch(
     "DELETE",
-    `instance/logout/${encodeURIComponent(instanceNameFor(userId))}`,
+    `instance/logout/${encodeURIComponent(nome)}`,
   );
 
   return resposta.success
