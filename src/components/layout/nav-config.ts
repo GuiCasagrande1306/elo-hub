@@ -6,6 +6,7 @@ import {
   LayoutGrid,
   Repeat,
   Settings,
+  Share2,
   TriangleAlert,
   Users,
   Workflow,
@@ -75,7 +76,15 @@ export const navGroups: NavGroup[] = [
        num grupo próprio para não competir com Operação e Análise, que
        são o dia a dia. */
     label: "Apps parceiros",
-    items: [{ href: "/elochat", label: "EloChat", icon: Workflow }],
+    items: [
+      {
+        href: "/midias-sociais",
+        label: "Mídias sociais",
+        icon: Share2,
+        matchPrefix: true,
+      },
+      { href: "/elochat", label: "EloChat", icon: Workflow },
+    ],
   },
   {
     label: "Sistema",
@@ -105,10 +114,13 @@ export const navGroups: NavGroup[] = [
  * independentes, um link novo entrava numa e faltava na outra.
  *
  * Duas seções ficam de fora, por motivos diferentes. "Sistema" porque
- * ninguém abre Gestão do celular. "Apps parceiros" porque o construtor
- * de fluxo do EloChat é de três painéis e não cabe em 375px — a barra
- * já carrega sete itens, e um oitavo trunca os rótulos de todos para
- * oferecer justamente o destino que menos funciona ali.
+ * ninguém abre Gestão do celular. "Apps parceiros" por espaço: a barra
+ * já carrega sete itens e um oitavo truncaria o rótulo de todos.
+ *
+ * Mídias sociais funciona bem no celular — a agenda substitui a grade
+ * abaixo de `lg` — e mesmo assim não entra aqui: o custo recai sobre os
+ * sete destinos do dia a dia. Chega-se a ela pelo menu lateral ou pelo
+ * ⌘K, que lê desta mesma lista.
  */
 const FORA_DA_BARRA_MOBILE = new Set(["Sistema", "Apps parceiros"]);
 

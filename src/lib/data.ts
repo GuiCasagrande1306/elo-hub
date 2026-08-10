@@ -33,6 +33,10 @@ import type {
   RecurringExpense,
   ReportHistory,
   ReportTemplate,
+  SocialAccount,
+  SocialPostComment,
+  SocialPostTarget,
+  SocialPostWithRelations,
   TaskWithRelations,
 } from "@/types/database";
 
@@ -1476,4 +1480,114 @@ async function getAgencyTrend(
       spend: v.spend / 100,
       revenue: v.revenue / 100,
     }));
+}
+
+/* ------------------------------------------------------------------ */
+/* Mídias sociais                                                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Pauta social da carteira.
+ *
+ * SEM RECORTE DE PERÍODO na consulta, e isso é uma decisão, não uma
+ * omissão. O calendário navega mês a mês no navegador; buscar por mês
+ * significaria um round-trip a cada seta, e — pior — os posts SEM DATA
+ * ficariam de fora de todo recorte, que é justamente a pauta que mais
+ * precisa aparecer. O volume comporta: 47 contas com uma dúzia de peças
+ * por mês é ordem de centenas de linhas, não de milhares.
+ *
+ * Arquivados entram. Quem filtra é a tela, porque a aba de histórico
+ * precisa deles e a policy já limitou à carteira visível.
+ */
+export async function getSocialPosts(options?: {
+  clientId?: string;
+}): Promise<SocialPostWithRelations[]> {
+  if (isDemoMode) {
+    const { demoSocialPosts } = await import("@/lib/mock/social");
+    return options?.clientId
+      ? demoSocialPosts.filter((p) => p.client_id === options.clientId)
+      : demoSocialPosts;
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  /* Os dois embeds de `profiles` precisam ser desambiguados pelo NOME DA
+     CONSTRAINT: há duas chaves estrangeiras da mesma tabela para a mesma
+     tabela (`created_by` e `approved_by`), e sem isso o PostgREST não
+     sabe por qual seguir e devolve erro em vez de escolher uma. */
+  let query = supabase
+    .from("social_posts")
+    .select(
+      `
+      *,
+      targets:social_post_targets(*),
+      client:clients(id, name, brand_primary, logo_url),
+      author:profiles!social_posts_created_by_fkey(id, full_name, avatar_url),
+      approver:profiles!social_posts_approved_by_fkey(id, full_name),
+      comments:social_post_comments(count)
+    `,
+    )
+    .order("scheduled_at", { ascending: true, nullsFirst: false });
+
+  if (options?.clientId) query = query.eq("client_id", options.clientId);
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  type Linha = Record<string, unknown> & { comments?: { count: number }[] };
+
+  return (data ?? []).map((linha) => {
+    const { comments, ...post } = linha as Linha;
+    return {
+      ...post,
+      /* O embed de contagem volta como `[{ count: 3 }]` — e como `[]`
+         quando não há nenhum, não como `[{ count: 0 }]`. */
+      comment_count: comments?.[0]?.count ?? 0,
+      targets: (post.targets ?? []) as SocialPostTarget[],
+    };
+  }) as unknown as SocialPostWithRelations[];
+}
+
+/** Perfis sociais cadastrados. Cadastro editorial, não conexão de API. */
+export async function getSocialAccounts(
+  clientId?: string,
+): Promise<SocialAccount[]> {
+  if (isDemoMode) {
+    const { demoSocialAccounts } = await import("@/lib/mock/social");
+    return clientId
+      ? demoSocialAccounts.filter((a) => a.client_id === clientId)
+      : demoSocialAccounts;
+  }
+
+  const supabase = await createSupabaseServerClient();
+  let query = supabase.from("social_accounts").select("*").order("network");
+
+  if (clientId) query = query.eq("client_id", clientId);
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  return (data ?? []) as SocialAccount[];
+}
+
+/** Conversa de aprovação de um post, do mais antigo para o mais novo. */
+export async function getSocialComments(
+  postId: string,
+): Promise<SocialPostComment[]> {
+  if (isDemoMode) {
+    const { demoSocialComments } = await import("@/lib/mock/social");
+    return demoSocialComments
+      .filter((c) => c.post_id === postId)
+      .sort((a, b) => a.created_at.localeCompare(b.created_at));
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("social_post_comments")
+    .select("*, author:profiles(id, full_name, avatar_url)")
+    .eq("post_id", postId)
+    .order("created_at");
+
+  if (error) throw error;
+  return (data ?? []) as unknown as SocialPostComment[];
 }

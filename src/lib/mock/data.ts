@@ -224,7 +224,7 @@ export const demoClients: Client[] = [
     status: "onboarding",
     logo_url: null,
     brand_primary: "#8A6E4B",
-    agency_partner: "Brava Hills",
+    agency_partner: "Brava Reels",
     brand_secondary: "#FAF7F2",
     brand_font: "Inter",
     website: "https://lumenarq.com.br",
@@ -258,7 +258,7 @@ export const demoClientFinancials: ClientFinancials[] = [
 ];
 
 /* Os dois terceirizados da carteira demo são o Atlas (Bagano) e o Lumen
-   (Brava Hills). NENHUM DOS DOIS gera cobrança própria, embora os dois
+   (Brava Reels). NENHUM DOS DOIS gera cobrança própria, embora os dois
    tenham honorário em `demoClientFinancials` — é justamente esse par de
    linhas que prova a regra: o valor está lá e mesmo assim não vira
    lançamento, porque quem paga é a agência.
@@ -276,7 +276,7 @@ export const demoAgencyContracts: AgencyContract[] = [
     billing_day: 10,
     notes: null,
   },
-  { agency: "Brava Hills", monthly_fee_cents: 0, billing_day: null, notes: null },
+  { agency: "Brava Reels", monthly_fee_cents: 0, billing_day: null, notes: null },
   { agency: "Ampla Marketing", monthly_fee_cents: 0, billing_day: null, notes: null },
 ];
 

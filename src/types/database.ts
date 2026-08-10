@@ -445,3 +445,104 @@ export interface ReportHistory {
   is_automated: boolean;
   created_at: string;
 }
+
+/* ------------------------------------------------------------------ */
+/* Mídias sociais                                                      */
+/* ------------------------------------------------------------------ */
+
+export type SocialNetwork =
+  | "instagram"
+  | "facebook"
+  | "linkedin"
+  | "tiktok"
+  | "youtube"
+  | "x"
+  | "pinterest"
+  | "threads"
+  | "google_business";
+
+export type SocialFormat =
+  | "feed"
+  | "reels"
+  | "stories"
+  | "carrossel"
+  | "video"
+  | "shorts"
+  | "artigo";
+
+/**
+ * Trâmite EDITORIAL da peça.
+ *
+ * Não existe "publicado" nesta lista, e não é esquecimento: publicação é
+ * medida em `SocialPostTarget`, uma linha por rede. Ver o cabeçalho da
+ * migration 33 e `situacaoDoPost` em `@/lib/social/post-status`.
+ */
+export type SocialPostStatus =
+  | "rascunho"
+  | "em_aprovacao"
+  | "ajustes"
+  | "aprovado"
+  | "arquivado";
+
+export type SocialTargetStatus = "pendente" | "publicado" | "falhou";
+
+export interface SocialAccount {
+  client_id: string;
+  network: SocialNetwork;
+  /** Sem o `@`. A interface adiciona na hora de exibir. */
+  handle: string;
+  profile_url: string | null;
+  is_active: boolean;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SocialPostTarget {
+  id: string;
+  post_id: string;
+  network: SocialNetwork;
+  /** `null` = herda a legenda do post. `""` = vai sem legenda. */
+  caption_override: string | null;
+  status: SocialTargetStatus;
+  published_at: string | null;
+  published_url: string | null;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SocialPost {
+  id: string;
+  client_id: string;
+  title: string;
+  caption: string;
+  format: SocialFormat;
+  media_urls: string[];
+  /** `null` = pauta sem data. Estado legítimo, não pendência. */
+  scheduled_at: string | null;
+  status: SocialPostStatus;
+  approved_by: string | null;
+  approved_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SocialPostComment {
+  id: string;
+  post_id: string;
+  author_id: string | null;
+  body: string;
+  created_at: string;
+  author?: Pick<Profile, "id" | "full_name" | "avatar_url"> | null;
+}
+
+/** Post com relações resolvidas — formato consumido pela UI. */
+export interface SocialPostWithRelations extends SocialPost {
+  targets: SocialPostTarget[];
+  client?: Pick<Client, "id" | "name" | "brand_primary" | "logo_url"> | null;
+  author?: Pick<Profile, "id" | "full_name" | "avatar_url"> | null;
+  approver?: Pick<Profile, "id" | "full_name"> | null;
+  comment_count?: number;
+}
