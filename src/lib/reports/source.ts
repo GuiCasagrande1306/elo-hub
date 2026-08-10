@@ -39,6 +39,16 @@ import type {
 
 export interface MetricsWindow {
   current: DailyMetric[];
+  /**
+   * Linhas do período ANTERIOR, não só o total.
+   *
+   * As duas origens já as tinham em memória para calcular
+   * `previousTotals` e simplesmente as descartavam. Expor custa zero e
+   * é o que permite comparar plataforma a plataforma — sem elas, a
+   * seção do Meta mostraria números sem variação, ou exigiria uma
+   * segunda consulta ao banco para o mesmo dado.
+   */
+  previous: DailyMetric[];
   currentTotals: ReturnType<typeof sumMetrics>;
   previousTotals: ReturnType<typeof sumMetrics>;
   period: { start: string; end: string; days: number };
@@ -94,6 +104,7 @@ export function sessionSource(): ReportSource {
       const m = await getMetricsWithComparison(clientId, start, end);
       return {
         current: m.current,
+        previous: m.previous,
         currentTotals: m.currentTotals,
         previousTotals: m.previousTotals,
         period: m.period,
@@ -157,10 +168,12 @@ export function systemSource(): ReportSource {
               m.metric_date <= b,
           );
         const current = janela(start, end);
+        const previous = janela(prev.start, prev.end);
         return {
           current,
+          previous,
           currentTotals: sumMetrics(current),
-          previousTotals: sumMetrics(janela(prev.start, prev.end)),
+          previousTotals: sumMetrics(previous),
           period: { start, end, days: prev.days },
         };
       }
@@ -181,11 +194,13 @@ export function systemSource(): ReportSource {
       ]);
 
       const current = (atual.data ?? []) as DailyMetric[];
+      const previous = (anterior.data ?? []) as DailyMetric[];
 
       return {
         current,
+        previous,
         currentTotals: sumMetrics(current),
-        previousTotals: sumMetrics((anterior.data ?? []) as DailyMetric[]),
+        previousTotals: sumMetrics(previous),
         period: { start, end, days: prev.days },
       };
     },

@@ -386,6 +386,15 @@ export type ReportSectionType =
   | "kpi_grid"
   | "trend_chart"
   | "platform_split"
+  /**
+   * Uma PÁGINA POR PLATAFORMA, com o quadro completo de métricas e as
+   * campanhas daquele canal.
+   *
+   * Diferente de `platform_split`, que só mostra a fatia do orçamento:
+   * a participação esconde que o Google entregou o dobro de resultados
+   * com metade do investimento.
+   */
+  | "platform_detail"
   | "campaign_table"
   | "ad_gallery"
   | "insights"

@@ -10,6 +10,7 @@ import { PLATFORM_LABELS } from "@/lib/metrics/kpi";
 import { resolvePeriod } from "@/lib/date-br";
 import {
   formatCurrency,
+  formatDelta,
   formatNumber,
   formatPercent,
   formatPeriod,
@@ -72,7 +73,8 @@ export default async function PrintReportPage({
   const data = await getPrintReportData(clientId, periodStart, periodEnd);
   if (!data) notFound();
 
-  const { client, kpis, platforms, creatives, weekly, totals } = data;
+  const { client, kpis, platforms, platformDetail, creatives, weekly, totals } =
+    data;
   const brand = client.brand_primary ?? "#16466e";
   const periodo = formatPeriod(periodStart, periodEnd);
 
@@ -269,6 +271,121 @@ export default async function PrintReportPage({
           <PageFooter numero={2} />
         </section>
 
+        {/* ================== UMA PÁGINA POR PLATAFORMA ==================
+            Meta e Google separados, cada um com o quadro completo e as
+            próprias campanhas. O bloco acima mostra a FATIA do orçamento;
+            esta parte responde a pergunta que o cliente faz de verdade —
+            "como foi o Meta, como foi o Google" —, que a participação
+            esconde quando um canal entrega o dobro com metade da verba.
+
+            Sai do mesmo `buildPlatformDetail` que alimenta o PDF: dois
+            cálculos fariam a folha revisada aqui divergir do arquivo
+            enviado. */}
+        {platformDetail.map((p, i) => (
+          <section
+            key={p.platform}
+            className={`page flex flex-col px-[18mm] py-[16mm] ${A4}`}
+          >
+            <PageHeader client={client.name} periodo={periodo} brand={brand} />
+
+            <span
+              className="mt-8 inline-flex w-fit rounded px-2 py-1 text-[9px] font-bold uppercase tracking-[0.14em] text-white"
+              style={{ background: brand }}
+            >
+              {p.label}
+            </span>
+
+            <h2 className="mt-3 text-[26px] font-bold tracking-[-0.025em]">
+              Desempenho no {p.label}
+            </h2>
+            <p className="mt-1 text-[12px] text-[#64707d]">
+              {formatPercent(p.spendShare, 0)} do investimento do período. A
+              variação compara este canal com ele mesmo no período anterior.
+            </p>
+
+            <div className="mt-6 grid grid-cols-3 gap-3">
+              {p.kpis.map((kpi) => (
+                <div
+                  key={kpi.key}
+                  className="rounded-xl border border-[#e6e8ec] bg-[#f8f9fb] p-4"
+                >
+                  <p className="text-[8px] font-semibold uppercase tracking-[0.14em] text-[#8b95a1]">
+                    {kpi.label}
+                  </p>
+                  <p className="mt-2 text-[20px] font-bold tracking-[-0.02em]">
+                    {kpi.formatted}
+                  </p>
+                  <p
+                    className="mt-1 text-[9px] font-medium"
+                    style={{ color: sentimentColor(kpi.sentiment) }}
+                  >
+                    {kpi.deltaPercent === null
+                      ? "sem base anterior"
+                      : `${formatDelta(kpi.deltaPercent)} · antes ${kpi.previousFormatted}`}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            {p.campaigns.length > 0 && (
+              <div className="mt-8">
+                <h3 className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#64707d]">
+                  Campanhas
+                </h3>
+
+                <table className="mt-3 w-full border-collapse text-[10px]">
+                  <thead>
+                    <tr className="border-b border-[#d8dce2] text-left text-[8px] uppercase tracking-[0.1em] text-[#8b95a1]">
+                      <th className="py-2 font-semibold">Campanha</th>
+                      <th className="py-2 text-right font-semibold">Investido</th>
+                      <th className="py-2 text-right font-semibold">Result.</th>
+                      <th className="py-2 text-right font-semibold">Custo</th>
+                      <th className="py-2 text-right font-semibold">Cliques</th>
+                      <th className="py-2 text-right font-semibold">CTR</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {/* SEIS, medido no Chrome: com onze KPIs e oito
+                        linhas a seção media 306,6mm contra 297mm de
+                        folha, partia em duas e a numeração estática do
+                        rodapé (3 + i) passava a mentir. Seis cabe. */}
+                    {p.campaigns.slice(0, 6).map((c) => (
+                      <tr key={c.name} className="border-b border-[#f0f2f5]">
+                        <td className="py-2 pr-3">{c.name}</td>
+                        <td className="py-2 text-right tabular-nums">
+                          {formatCurrency(c.spendCents)}
+                        </td>
+                        <td className="py-2 text-right tabular-nums">
+                          {formatNumber(c.results)}
+                        </td>
+                        <td className="py-2 text-right tabular-nums">
+                          {c.results > 0 ? formatCurrency(c.cpaCents) : "—"}
+                        </td>
+                        <td className="py-2 text-right tabular-nums">
+                          {formatNumber(c.clicks)}
+                        </td>
+                        <td className="py-2 text-right tabular-nums">
+                          {formatPercent(c.ctr, 2)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                {p.campaigns.length > 6 && (
+                  <p className="mt-2 text-[9px] italic text-[#8b95a1]">
+                    Mais {p.campaigns.length - 6}{" "}
+                    {p.campaigns.length - 6 === 1 ? "campanha" : "campanhas"} com
+                    investimento menor.
+                  </p>
+                )}
+              </div>
+            )}
+
+            <PageFooter numero={3 + i} />
+          </section>
+        ))}
+
         {/* ===================== CRIATIVOS ATIVOS ====================== */}
         <section className={`page flex flex-col px-[18mm] py-[16mm] ${A4}`}>
           <PageHeader client={client.name} periodo={periodo} brand={brand} />
@@ -365,7 +482,8 @@ export default async function PrintReportPage({
             </div>
           </div>
 
-          <PageFooter numero={3} />
+          {/* Depois das páginas por plataforma — a numeração acompanha. */}
+          <PageFooter numero={3 + platformDetail.length} />
         </section>
       </main>
     </>

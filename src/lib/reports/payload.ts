@@ -1,6 +1,7 @@
 import "server-only";
 
 import {
+  PLATFORM_LABELS,
   buildTrend,
   computeKpi,
   deriveMetric,
@@ -10,6 +11,10 @@ import {
   type TrendPoint,
 } from "@/lib/metrics/kpi";
 import { sessionSource, type ReportSource } from "./source";
+import {
+  buildPlatformDetail,
+  type PlatformDetail,
+} from "./platform-detail";
 import type {
   AdCreative,
   Client,
@@ -36,6 +41,9 @@ import type {
    É isso que garante que o PDF nunca divirja da tela.
    ===================================================================== */
 
+/* Reexportados: o documento PDF e a página A4 importam daqui. */
+export type { PlatformCampaign, PlatformDetail } from "./platform-detail";
+
 export interface ReportPayload {
   meta: {
     generatedAt: string;
@@ -57,6 +65,8 @@ export interface ReportPayload {
   kpis: KpiResult[];
   trend: TrendPoint[];
   platforms: PlatformSplit[];
+  /** Uma entrada por plataforma que teve veiculação no período. */
+  platformDetail: PlatformDetail[];
   creatives: ReportCreative[];
   sections: ReportSection[];
   /** Texto escrito pelo time; vazio quando ainda não preenchido. */
@@ -82,14 +92,6 @@ export interface ReportCreative {
   ctr: number;
   clicks: number;
 }
-
-const PLATFORM_LABELS: Record<AdCreative["platform"], string> = {
-  google_ads: "Google Ads",
-  meta_ads: "Meta Ads",
-  tiktok_ads: "TikTok Ads",
-  linkedin_ads: "LinkedIn Ads",
-  organic: "Orgânico",
-};
 
 /**
  * O renderizador de PDF só embute imagem raster. SVG e URLs relativas
@@ -159,6 +161,11 @@ export async function buildReportPayload(options: {
     kpis,
     trend: buildTrend(metrics.current),
     platforms: splitByPlatform(metrics.current),
+    platformDetail: buildPlatformDetail(
+      metrics.current,
+      metrics.previous,
+      rotulos,
+    ),
     creatives: creatives.map((ad) => {
       const image = ad.storage_path ?? ad.thumbnail_url;
       return {

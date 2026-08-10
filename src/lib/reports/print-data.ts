@@ -11,6 +11,10 @@ import {
   type KpiResult,
   type PlatformSplit,
 } from "@/lib/metrics/kpi";
+import {
+  buildPlatformDetail,
+  type PlatformDetail,
+} from "./platform-detail";
 import type {
   AdCreative,
   Client,
@@ -29,10 +33,52 @@ import type {
 
 const HERO_METRICS: MetricKey[] = ["spend", "results", "cpa"];
 
+/**
+ * Rótulos do template da conta, pelo cliente ADMIN.
+ *
+ * Existe porque o mesmo `conversions` é "Vendas" numa conta e
+ * "Contatos" noutra, e quem define isso é `report_templates.metric_labels`.
+ * Sem esta leitura, a folha revisada na tela dizia "Resultados" e o PDF
+ * enviado ao cliente dizia "Vendas" — mesmos números, palavras
+ * diferentes, no documento que a equipe usa justamente para conferir.
+ *
+ * Admin e não RLS pelo mesmo motivo do resto do arquivo: quem chama
+ * pode ser o Puppeteer, sem sessão. A autorização acontece antes, na
+ * página.
+ */
+async function rotulosDoTemplate(
+  client: Client,
+): Promise<Partial<Record<MetricKey, string>>> {
+  if (isDemoMode) {
+    const { demoTemplates } = await import("@/lib/mock/data");
+    const t =
+      demoTemplates.find((x) => x.segment === client.segment && x.is_default) ??
+      demoTemplates.find((x) => x.segment === client.segment);
+    return t?.metric_labels ?? {};
+  }
+
+  const admin = createSupabaseAdminClient();
+  const { data } = await admin
+    .from("report_templates")
+    .select("metric_labels, is_default")
+    .eq("segment", client.segment)
+    .order("is_default", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return (data?.metric_labels ?? {}) as Partial<Record<MetricKey, string>>;
+}
+
 export interface PrintReportData {
   client: Client;
   kpis: KpiResult[];
   platforms: PlatformSplit[];
+  /**
+   * Uma entrada por plataforma com veiculação. Sai do MESMO
+   * `buildPlatformDetail` que o PDF usa — sem isso, a folha revisada na
+   * tela e o arquivo enviado ao cliente mostrariam contas diferentes.
+   */
+  platformDetail: PlatformDetail[];
   creatives: AdCreative[];
   /** Agregado por semana — o gráfico do resumo executivo. */
   weekly: { label: string; spend: number; results: number }[];
@@ -67,6 +113,7 @@ export async function getPrintReportData(
         .slice(0, 6),
       periodStart,
       periodEnd,
+      await rotulosDoTemplate(client),
     );
   }
 
@@ -98,13 +145,16 @@ export async function getPrintReportData(
 
   if (!clientRes.data) return null;
 
+  const client = clientRes.data as Client;
+
   return assemble(
-    clientRes.data as Client,
+    client,
     (current.data ?? []) as DailyMetric[],
     (previous.data ?? []) as DailyMetric[],
     (creatives.data ?? []) as AdCreative[],
     periodStart,
     periodEnd,
+    await rotulosDoTemplate(client),
   );
 }
 
@@ -115,6 +165,7 @@ function assemble(
   creatives: AdCreative[],
   periodStart: string,
   periodEnd: string,
+  rotulos: Partial<Record<MetricKey, string>> = {},
 ): PrintReportData {
   const currentTotals = sumMetrics(current);
   const previousTotals = sumMetrics(previous);
@@ -123,10 +174,13 @@ function assemble(
     client,
     // Mesmas funções do dashboard: é o que garante que o PDF entregue ao
     // cliente não divirja do número que o gestor vê na tela.
-    kpis: HERO_METRICS.map((key) =>
-      computeKpi(key, currentTotals, previousTotals),
-    ),
+    kpis: HERO_METRICS.map((key) => {
+      const kpi = computeKpi(key, currentTotals, previousTotals);
+      const rotulo = rotulos[key];
+      return rotulo ? { ...kpi, label: rotulo } : kpi;
+    }),
     platforms: splitByPlatform(current),
+    platformDetail: buildPlatformDetail(current, previous, rotulos),
     creatives,
     weekly: toWeekly(current),
     totals: {

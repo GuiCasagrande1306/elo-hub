@@ -154,6 +154,42 @@ const styles = StyleSheet.create({
   },
 
   /* --------------------------- Canais --------------------------- */
+  /* --------------------- Página por plataforma -------------------- */
+  platformBadge: {
+    alignSelf: "flex-start",
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 3,
+    fontSize: 8,
+    fontFamily: "Helvetica-Bold",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    color: "#FFFFFF",
+    marginBottom: 8,
+  },
+  platformShare: { fontSize: 9, color: INK_SOFT, marginBottom: 14 },
+  tableHead: {
+    flexDirection: "row",
+    borderBottomWidth: 1,
+    borderBottomColor: HAIRLINE,
+    paddingBottom: 5,
+    marginBottom: 2,
+  },
+  tableRow: {
+    flexDirection: "row",
+    paddingVertical: 5,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F3F5",
+  },
+  th: {
+    fontSize: 7.5,
+    fontFamily: "Helvetica-Bold",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+    color: INK_SOFT,
+  },
+  td: { fontSize: 8.5 },
+
   splitRow: { marginBottom: 12 },
   splitHead: {
     flexDirection: "row",
@@ -284,20 +320,38 @@ export function ReportDocument({ payload }: { payload: ReportPayload }) {
           <Text style={styles.headerMeta}>{period}</Text>
         </View>
 
-        {bodySections.map((section, index) => (
-          <View key={`${section.type}-${index}`} style={styles.section} wrap={false}>
-            <Text style={styles.h2}>{section.title}</Text>
-            {/* Gráficos usam a cor da marca DO CLIENTE, não o acento da
-                agência: o documento é lido por ele, e o neon do template
-                tem contraste ruim sobre papel branco. O acento fica
-                reservado à capa, onde marca a autoria da agência. */}
-            <SectionBody
-              section={section.type}
-              payload={payload}
-              accent={chartColor}
-            />
-          </View>
-        ))}
+        {bodySections.map((section, index) => {
+          /* `platform_detail` sai do molde das outras seções: ele rende
+             UMA PÁGINA POR PLATAFORMA, e o invólucro comum tem
+             `wrap={false}` — que tentaria segurar onze KPIs mais a
+             tabela de campanhas de dois canais na mesma folha e
+             estouraria a margem. */
+          if (section.type === "platform_detail") {
+            return (
+              <PlatformPages
+                key={`${section.type}-${index}`}
+                payload={payload}
+                title={section.title}
+                accent={chartColor}
+              />
+            );
+          }
+
+          return (
+            <View key={`${section.type}-${index}`} style={styles.section} wrap={false}>
+              <Text style={styles.h2}>{section.title}</Text>
+              {/* Gráficos usam a cor da marca DO CLIENTE, não o acento da
+                  agência: o documento é lido por ele, e o neon do template
+                  tem contraste ruim sobre papel branco. O acento fica
+                  reservado à capa, onde marca a autoria da agência. */}
+              <SectionBody
+                section={section.type}
+                payload={payload}
+                accent={chartColor}
+              />
+            </View>
+          );
+        })}
 
         <View style={styles.footer} fixed>
           <Text>Elo Marketing</Text>
@@ -417,13 +471,127 @@ function SectionBody({
   }
 }
 
-function KpiGrid({ payload }: { payload: ReportPayload }) {
-  // Três por linha: mais que isso e o valor não cabe em A4 sem encolher
-  // a fonte a ponto de prejudicar a leitura impressa.
-  const rows: ReportPayload["kpis"][] = [];
-  for (let i = 0; i < payload.kpis.length; i += 3) {
-    rows.push(payload.kpis.slice(i, i + 3));
+/**
+ * Uma página por plataforma: quadro completo de métricas + campanhas.
+ *
+ * `break` em TODAS, inclusive na primeira. O canal começa em folha
+ * limpa porque é assim que o cliente lê — ele procura "a parte do Meta",
+ * e uma seção que começa no meio da página anterior não é uma parte.
+ *
+ * Plataforma sem veiculação no período não aparece: `platformDetail` já
+ * vem só com quem teve linha. Uma conta que só roda Meta não recebe uma
+ * página de Google zerada.
+ */
+function PlatformPages({
+  payload,
+  title,
+  accent,
+}: {
+  payload: ReportPayload;
+  title: string;
+  accent: string;
+}) {
+  if (payload.platformDetail.length === 0) {
+    return (
+      <View style={styles.section} wrap={false}>
+        <Text style={styles.h2}>{title}</Text>
+        <Text style={styles.emptyNote}>
+          Nenhuma plataforma teve veiculação neste período.
+        </Text>
+      </View>
+    );
   }
+
+  return (
+    <>
+      {payload.platformDetail.map((p) => (
+        <View key={p.platform} style={styles.section} break>
+          <Text style={[styles.platformBadge, { backgroundColor: accent }]}>
+            {p.label}
+          </Text>
+
+          <Text style={styles.h2}>{title}</Text>
+          <Text style={styles.platformShare}>
+            {formatPercent(p.spendShare, 0)} do investimento do período · variação
+            contra o período anterior deste mesmo canal
+          </Text>
+
+          <KpiCards kpis={p.kpis} />
+
+          {p.campaigns.length > 0 && (
+            <View style={{ marginTop: 16 }}>
+              <Text style={[styles.eyebrow, { marginBottom: 8 }]}>
+                Campanhas
+              </Text>
+
+              <View style={styles.tableHead}>
+                <Text style={[styles.th, { flex: 3 }]}>Campanha</Text>
+                <Text style={[styles.th, { flex: 1, textAlign: "right" }]}>
+                  Investido
+                </Text>
+                <Text style={[styles.th, { flex: 1, textAlign: "right" }]}>
+                  Result.
+                </Text>
+                <Text style={[styles.th, { flex: 1, textAlign: "right" }]}>
+                  Custo
+                </Text>
+                <Text style={[styles.th, { flex: 1, textAlign: "right" }]}>
+                  Cliques
+                </Text>
+                <Text style={[styles.th, { flex: 1, textAlign: "right" }]}>
+                  CTR
+                </Text>
+              </View>
+
+              {/* SEIS, e o número foi medido, não escolhido.
+                  Com onze KPIs (quatro linhas de cartões, ~415pt) mais
+                  cabeçalho de tabela e a nota do rodapé, oito linhas
+                  somam ~735pt contra ~697pt úteis da folha — cada
+                  plataforma estourava para uma segunda página que saía
+                  quase vazia. Seis cabe; sete já não. */}
+              {p.campaigns.slice(0, 6).map((c) => (
+                <View key={c.name} style={styles.tableRow}>
+                  <Text style={[styles.td, { flex: 3 }]}>{c.name}</Text>
+                  <Text style={[styles.td, { flex: 1, textAlign: "right" }]}>
+                    {formatCurrency(c.spendCents)}
+                  </Text>
+                  <Text style={[styles.td, { flex: 1, textAlign: "right" }]}>
+                    {formatNumber(c.results)}
+                  </Text>
+                  <Text style={[styles.td, { flex: 1, textAlign: "right" }]}>
+                    {c.results > 0 ? formatCurrency(c.cpaCents) : "—"}
+                  </Text>
+                  {/* Cliques existia só na folha HTML: a equipe conferia
+                      uma tabela de seis colunas e o cliente recebia uma
+                      de cinco. */}
+                  <Text style={[styles.td, { flex: 1, textAlign: "right" }]}>
+                    {formatNumber(c.clicks)}
+                  </Text>
+                  <Text style={[styles.td, { flex: 1, textAlign: "right" }]}>
+                    {formatPercent(c.ctr, 2)}
+                  </Text>
+                </View>
+              ))}
+
+              {p.campaigns.length > 6 && (
+                <Text style={[styles.emptyNote, { paddingVertical: 6 }]}>
+                  Mais {p.campaigns.length - 6}{" "}
+                  {p.campaigns.length - 6 === 1 ? "campanha" : "campanhas"} com
+                  investimento menor.
+                </Text>
+              )}
+            </View>
+          )}
+        </View>
+      ))}
+    </>
+  );
+}
+
+/** Grade de KPIs de três colunas, reaproveitada pelas duas seções. */
+function KpiCards({ kpis }: { kpis: ReportPayload["kpis"] }) {
+  const rows: ReportPayload["kpis"][] = [];
+  for (let i = 0; i < kpis.length; i += 3) rows.push(kpis.slice(i, i + 3));
 
   return (
     <View>
@@ -445,6 +613,12 @@ function KpiGrid({ payload }: { payload: ReportPayload }) {
       ))}
     </View>
   );
+}
+
+function KpiGrid({ payload }: { payload: ReportPayload }) {
+  // Delega para `KpiCards`: a grade é a mesma da página por plataforma,
+  // e duas cópias divergiriam na primeira mudança de espaçamento.
+  return <KpiCards kpis={payload.kpis} />;
 }
 
 /**
