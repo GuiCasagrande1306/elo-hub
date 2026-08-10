@@ -108,10 +108,27 @@ const DEMO_NAO_PAREIA = () =>
   );
 
 export async function GET(request: NextRequest) {
-  const auth = await autorizar(
-    new URL(request.url).searchParams.get("cliente"),
-  );
+  const clientId = new URL(request.url).searchParams.get("cliente");
+  const auth = await autorizar(clientId);
   if (!auth.ok) return auth.resposta;
+
+  /* EM DEMONSTRAÇÃO, a mesma fixture que a página usou para desenhar.
+     Consultar a Evolution aqui devolveria "sem número" para uma conta
+     que a tela acabou de mostrar como conectada — um clique em Atualizar
+     desmontava a demonstração. E, num demo publicado (o
+     `NEXT_PUBLIC_DEMO_MODE=1` que `env.ts` prevê), pouparia o contêiner
+     do Railway de responder a visitante anônimo. */
+  if (isDemoMode) {
+    const { demoConnections } = await import("@/lib/mock/data");
+    // `Object.hasOwn` e não indexação direta: `?cliente=constructor`
+    // alcançaria o protótipo e devolveria uma função para serializar.
+    const id = clientId as string;
+    return NextResponse.json(
+      Object.hasOwn(demoConnections, id)
+        ? demoConnections[id]
+        : { state: "absent" },
+    );
+  }
 
   return NextResponse.json(await statusDaInstancia(auth.nome));
 }

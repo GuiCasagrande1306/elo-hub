@@ -6,6 +6,13 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 5210
+    },
+    {
+      "name": "elo-hub-demo",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "env": { "NEXT_PUBLIC_DEMO_MODE": "1" },
+      "port": 5210
     }
   ]
 }

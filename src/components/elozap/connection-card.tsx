@@ -17,6 +17,16 @@ import type { Client } from "@/types/database";
    atende por ele. Instância separada da pessoal de cada atendente — ver
    `instanceNameForClient`.
 
+   O CARTÃO É CONTROLADO: quem guarda o estado da conexão é o painel, que
+   precisa dele para o filtro e o contador. Aqui dentro fica só o QR, que
+   é efêmero e não interessa a mais ninguém.
+
+   TRÊS LAYOUTS, um por situação, porque as ações úteis são diferentes:
+
+     sem número / desconectado → só "Conectar". Nada a atualizar.
+     aguardando leitura        → QR + "Atualizar" em destaque.
+     conectado                 → número visível, "Atualizar" e "Desconectar".
+
    O QR EXPIRA EM ~40 SEGUNDOS e a tela diz isso. Sem o aviso, quem
    demora a pegar o celular acha que o pareamento falhou e clica de novo
    num laço — foi o que a tela do WhatsApp pessoal ensinou.
@@ -57,11 +67,14 @@ const APARENCIA: Record<Estado, { rotulo: string; classe: string }> = {
 
 export function ConnectionCard({
   client,
-  inicial,
+  conexao,
+  onConexao,
   bloqueio,
 }: {
   client: Pick<Client, "id" | "name" | "brand_primary">;
-  inicial: ConexaoDoCliente;
+  conexao: ConexaoDoCliente;
+  /** Devolve o estado novo ao painel, dono do filtro e do contador. */
+  onConexao: (conexao: ConexaoDoCliente) => void;
   /**
    * Por que parear está indisponível, ou `null` se está disponível.
    *
@@ -72,12 +85,12 @@ export function ConnectionCard({
    */
   bloqueio: string | null;
 }) {
-  const [conexao, setConexao] = useState(inicial);
   const [qr, setQr] = useState<string | null>(null);
   const [codigo, setCodigo] = useState<string | null>(null);
   const [ocupado, iniciar] = useTransition();
 
   const conectado = conexao.state === "open";
+  const pareando = conexao.state === "connecting";
   const aparencia = APARENCIA[conexao.state];
 
   /**
@@ -100,7 +113,7 @@ export function ConnectionCard({
       return;
     }
 
-    setConexao({ clientId: client.id, ...d });
+    onConexao({ clientId: client.id, ...d });
 
     /* Conectou: o QR na tela vira lixo visual e, pior, um convite a
        escanear de novo com outro aparelho. */
@@ -148,9 +161,7 @@ export function ConnectionCard({
 
         setQr(d.qrDataUri ?? null);
         setCodigo(d.pairingCode ?? null);
-        // Forma funcional: o `conexao` do closure é o de quando o clique
-        // começou, e entre ele e a resposta cabe outra atualização.
-        setConexao((c) => ({ ...c, state: "connecting" }));
+        onConexao({ ...conexao, state: "connecting" });
       } catch {
         toast.error("Falha de rede ao gerar o QR.");
       }
@@ -177,7 +188,7 @@ export function ConnectionCard({
           return;
         }
         toast.success("Número desconectado.");
-        setConexao({ clientId: client.id, state: "close" });
+        onConexao({ clientId: client.id, state: "close" });
         setQr(null);
         setCodigo(null);
       } catch {
@@ -187,7 +198,20 @@ export function ConnectionCard({
   }
 
   return (
-    <article className="surface-card flex flex-col gap-3 p-4">
+    <article
+      className={cn(
+        "flex flex-col gap-3 p-4",
+        /* CONTORNO TRACEJADO em vez de opacidade para a conta sem número.
+           Opacidade no cartão inteiro derruba junto o contraste do texto
+           — e o nome do cliente é a única coisa que se lê ali. O
+           tracejado ainda funciona nos dois temas: "fundo mais escuro"
+           inverteria de sentido no claro, onde a superfície elevada é
+           justamente a mais clara. */
+        conectado || pareando
+          ? "surface-card"
+          : "rounded-xl border border-dashed border-hairline",
+      )}
+    >
       <header className="flex items-start gap-2.5">
         <span
           aria-hidden
@@ -235,25 +259,27 @@ export function ConnectionCard({
       )}
 
       <div className="flex flex-wrap items-center gap-1.5">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-8"
-          onClick={atualizar}
-          disabled={ocupado}
-        >
-          {ocupado ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : (
-            <RefreshCw className="size-3.5" />
-          )}
-          Atualizar
-        </Button>
+        {/* ATUALIZAR É LEITURA, e o GET da rota libera para quem enxerga a
+            conta — inclusive colaborador. Ele não pode parear, mas
+            precisa conseguir ver que o administrador pareou.
 
-        {!bloqueio && !conectado && (
-          <Button size="sm" className="h-8" onClick={parear} disabled={ocupado}>
-            <QrCode className="size-3.5" />
-            {conexao.state === "absent" ? "Conectar número" : "Novo QR"}
+            Some num caso só: cartão sem número na mão de quem PODE
+            parear. Ali "Atualizar" reconsultaria a Evolution para
+            reconfirmar o que a página acabou de carregar, e disputaria
+            atenção com o único botão que importa. */}
+        {(conectado || pareando || bloqueio) && (
+          <Button
+            /* Em destaque enquanto aguarda leitura: quem está nessa
+               situação acabou de escanear e o passo que falta é
+               confirmar. */
+            variant={pareando ? "default" : "ghost"}
+            size="sm"
+            className="h-8"
+            onClick={atualizar}
+            disabled={ocupado}
+          >
+            <Icone ocupado={ocupado} padrao={RefreshCw} />
+            Atualizar
           </Button>
         )}
 
@@ -270,6 +296,29 @@ export function ConnectionCard({
           </Button>
         )}
 
+        {/* QR novo é o caminho de exceção — serve a quem deixou o
+            anterior expirar, por isso fica em `ghost` ao lado do
+            Atualizar. */}
+        {!bloqueio && pareando && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8"
+            onClick={parear}
+            disabled={ocupado}
+          >
+            <QrCode className="size-3.5" />
+            Novo QR
+          </Button>
+        )}
+
+        {!bloqueio && !conectado && !pareando && (
+          <Button size="sm" className="h-8" onClick={parear} disabled={ocupado}>
+            <Icone ocupado={ocupado} padrao={QrCode} />
+            {conexao.state === "absent" ? "Conectar número" : "Reconectar"}
+          </Button>
+        )}
+
         {bloqueio && (
           <span className="flex items-center gap-1 text-2xs text-muted-foreground">
             <Smartphone className="size-3" />
@@ -278,5 +327,20 @@ export function ConnectionCard({
         )}
       </div>
     </article>
+  );
+}
+
+/** Troca o ícone por um spinner enquanto a ação corre. */
+function Icone({
+  ocupado,
+  padrao: Padrao,
+}: {
+  ocupado: boolean;
+  padrao: typeof RefreshCw;
+}) {
+  return ocupado ? (
+    <Loader2 className="size-3.5 animate-spin" />
+  ) : (
+    <Padrao className="size-3.5" />
   );
 }

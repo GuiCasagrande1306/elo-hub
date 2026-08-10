@@ -1,12 +1,12 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import type { Metadata } from "next";
-import { Inbox } from "lucide-react";
+import { Inbox, Users } from "lucide-react";
 
 import { PageContainer, PageHeader } from "@/components/layout/page-header";
-import {
-  ConnectionCard,
-  type ConexaoDoCliente,
-} from "@/components/elozap/connection-card";
+import { Button } from "@/components/ui/button";
+import type { ConexaoDoCliente } from "@/components/elozap/connection-card";
+import { ConnectionsPanel } from "@/components/elozap/connections-panel";
 import { getClients } from "@/lib/data";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { isDemoMode } from "@/lib/env";
@@ -48,34 +48,52 @@ export default async function EloZapPage() {
      Resolvido com uma consulta só, reaproveitada por todos. */
   const conexoes = await estadoDosNumeros(clients.map((c) => c.id));
 
-  const conectados = conexoes.filter((c) => c.state === "open").length;
+  /* EM DEMONSTRAÇÃO OS BOTÕES CONTINUAM À VISTA, e a trava fica só na
+     rota — que recusa parear e desconectar porque a carteira é fictícia
+     e a Evolution do outro lado é a de produção.
 
-  /* A carteira da demo é fictícia; a Evolution do outro lado não é.
-     Parear na demo criaria a instância `cliente-verdi` de verdade no
-     Railway. A rota recusa — aqui o botão nem aparece, para o clique não
-     terminar num 403 sem explicação. */
-  const bloqueio = isDemoMode
-    ? "Modo demo: pareamento desativado"
-    : user.role !== "admin"
-      ? "Só administrador conecta"
-      : null;
+     Escondê-los aqui, como estava antes, tirava da demonstração metade
+     do que o módulo faz. E o clique não fica sem resposta: a rota devolve
+     "Modo demo: conectar e desconectar números está desativado" e o
+     cartão mostra essa frase no toast.
+
+     Colaborador é outro caso: para ele o botão some de vez, porque a
+     recusa é permanente e não tem nada a demonstrar. */
+  const bloqueio = user.role !== "admin" ? "Só administrador conecta" : null;
 
   return (
     <PageContainer>
       <PageHeader
         title="EloZap"
         description="Atendimento por WhatsApp, um número por cliente."
+        actions={
+          /* APONTA PARA `/configuracoes/equipe`, o cadastro de equipe que
+             já existe — e não para um `/atendimento` novo. Departamento,
+             fila e horário de atendimento não têm tabela nem roteamento
+             ainda; uma tela desses controles hoje mudaria rótulo sem
+             mudar comportamento nenhum.
+
+             Só para administrador: a página de equipe redireciona quem
+             não é, e um botão que leva a um redirect é uma promessa
+             quebrada. */
+          user.role === "admin" ? (
+            /* `nativeButton={false}` é obrigatório com `render`: sem ele
+               o Base UI acusa em runtime, porque o elemento renderizado
+               é uma âncora com semântica de botão. */
+            <Button
+              variant="outline"
+              size="sm"
+              nativeButton={false}
+              render={<Link href="/configuracoes/equipe" />}
+            >
+              <Users className="size-4" />
+              Cadastros de equipe
+            </Button>
+          ) : undefined
+        }
       />
 
       <div className="mt-7 flex flex-col gap-5">
-        <p className="text-sm text-muted-foreground">
-          <strong className="font-medium text-foreground tabular-nums">
-            {conectados} de {clients.length}
-          </strong>{" "}
-          {clients.length === 1 ? "conta com número" : "contas com número"}{" "}
-          conectado.
-        </p>
-
         {/* O QUE FALTA, dito na tela. Um módulo que promete atendimento e
             entrega só o pareamento precisa dizer onde está — senão
             alguém conecta o número e fica esperando mensagem aparecer. */}
@@ -97,21 +115,11 @@ export default async function EloZapPage() {
             Nenhuma conta ativa na carteira.
           </p>
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {clients.map((client) => (
-              <ConnectionCard
-                key={client.id}
-                client={client}
-                inicial={
-                  conexoes.find((c) => c.clientId === client.id) ?? {
-                    clientId: client.id,
-                    state: "absent",
-                  }
-                }
-                bloqueio={bloqueio}
-              />
-            ))}
-          </div>
+          <ConnectionsPanel
+            clients={clients}
+            iniciais={conexoes}
+            bloqueio={bloqueio}
+          />
         )}
       </div>
     </PageContainer>
@@ -127,9 +135,20 @@ export default async function EloZapPage() {
  */
 async function estadoDosNumeros(ids: string[]): Promise<ConexaoDoCliente[]> {
   if (ids.length === 0) return [];
-  /* Nenhum id da demo existe na Evolution — a consulta só gastaria uma
-     ida ao Railway para devolver "sem número" quatro vezes. */
-  if (isDemoMode) return [];
+
+  /* Nenhum id da demo existe na Evolution — consultar só gastaria uma
+     ida ao Railway para devolver "sem número" quatro vezes. O dataset de
+     demonstração cobre os três layouts do cartão; parear e desconectar
+     continuam recusados pela rota. */
+  if (isDemoMode) {
+    const { demoConnections } = await import("@/lib/mock/data");
+    return ids.map((clientId) => ({
+      clientId,
+      ...(Object.hasOwn(demoConnections, clientId)
+        ? demoConnections[clientId]
+        : { state: "absent" as const }),
+    }));
+  }
 
   try {
     const porNome = await statusDeVarias(ids.map(instanceNameForClient));
