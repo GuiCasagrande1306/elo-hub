@@ -105,7 +105,7 @@ function post(p: {
     client_id: cliente.id,
     title: p.title,
     caption: p.caption,
-    format: p.format ?? "feed",
+    format: p.format ?? "imagem",
     media_urls: [],
     scheduled_at: p.scheduled_at,
     status: p.status,
@@ -154,7 +154,7 @@ export const demoSocialPosts: SocialPostWithRelations[] = [
     title: "Reels — 3 erros que travam o primeiro lançamento",
     caption:
       "Os três erros que aparecem em quase todo primeiro lançamento — e o que fazer no lugar de cada um.",
-    format: "reels",
+    format: "video_vertical",
     scheduled_at: dia(-4, 18, 30),
     status: "aprovado",
     alvos: [{ network: "instagram", status: "publicado", url: "https://instagram.com/reel/exemplo" }],
@@ -194,7 +194,7 @@ export const demoSocialPosts: SocialPostWithRelations[] = [
     title: "Vídeo — aula aberta sobre funil",
     caption:
       "Aula aberta de 15 minutos: como montar um funil que não depende de anúncio caro.",
-    format: "video",
+    format: "video_vertical",
     scheduled_at: dia(-3, 7),
     status: "aprovado",
     alvos: [
@@ -275,7 +275,7 @@ export const demoSocialPosts: SocialPostWithRelations[] = [
     title: "Reels — bastidores da fábrica",
     caption:
       "De onde vem cada ingrediente do seu skincare. Um dia dentro da nossa fábrica em Blumenau.",
-    format: "reels",
+    format: "video_vertical",
     scheduled_at: dia(5, 18),
     status: "em_aprovacao",
     alvos: [{ network: "instagram" }, { network: "tiktok" }],
@@ -310,7 +310,7 @@ export const demoSocialPosts: SocialPostWithRelations[] = [
     cliente: "nord",
     title: "Reels — bastidores da gravação do módulo 4",
     caption: "",
-    format: "reels",
+    format: "video_vertical",
     scheduled_at: dia(12, 11),
     status: "rascunho",
     alvos: [{ network: "instagram" }],

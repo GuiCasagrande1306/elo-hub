@@ -37,12 +37,11 @@ const REDES = [
 ] as const;
 
 const FORMATOS = [
-  "feed",
-  "reels",
-  "stories",
+  "video_vertical",
+  "video_horizontal",
+  "imagem",
   "carrossel",
-  "video",
-  "shorts",
+  "stories",
   "artigo",
 ] as const;
 
@@ -73,7 +72,7 @@ const postSchema = z.object({
   clientId: id,
   title: z.string().trim().min(1, "Dê um nome à peça.").max(200),
   caption: z.string().max(20000).default(""),
-  format: z.enum(FORMATOS).default("feed"),
+  format: z.enum(FORMATOS).default("imagem"),
   /* `datetime({ offset: true })` exige o fuso na string. Sem isso, um
      "2026-08-14T10:00" chega ao Postgres e é lido como UTC — o post
      agendado para as 10h aparece às 7h para quem opera. O compositor

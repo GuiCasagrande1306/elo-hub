@@ -44,7 +44,9 @@ import {
 } from "@/app/(app)/midias-sociais/actions";
 import {
   FORMATOS,
+  FORMATO_POR_ID,
   REDES,
+  apelidoDoFormato,
   formatoEstranho,
   limiteDaLegenda,
   ordenarRedes,
@@ -110,7 +112,7 @@ export function PostComposer({
   );
   const [title, setTitle] = useState(post?.title ?? "");
   const [caption, setCaption] = useState(post?.caption ?? "");
-  const [format, setFormat] = useState<SocialFormat>(post?.format ?? "feed");
+  const [format, setFormat] = useState<SocialFormat>(post?.format ?? "video_vertical");
   const [status, setStatus] = useState<SocialPostStatus>(post?.status ?? "rascunho");
   const [data, setData] = useState(partes.data || diaPadrao || "");
   const [hora, setHora] = useState(partes.hora);
@@ -146,6 +148,9 @@ export function PostComposer({
 
   const limite = limiteDaLegenda(caption, redes);
   const estranhas = formatoEstranho(format, redes);
+  const apelidos = apelidoDoFormato(format, redes);
+  /** Redes escolhidas que aceitam este formato — as outras já viram aviso. */
+  const compativeis = redes.length - estranhas.length;
 
   function alternarRede(id: SocialNetwork) {
     if (travadas.has(id)) {
@@ -272,10 +277,13 @@ export function PostComposer({
               )}
 
               <div className="grid gap-4 sm:grid-cols-2">
-                <Campo label="Formato">
+                <Campo
+                  label="Formato"
+                  hint={FORMATO_POR_ID.get(format)?.detalhe}
+                >
                   <Select
                     value={format}
-                    onValueChange={(v) => setFormat((v as SocialFormat) ?? "feed")}
+                    onValueChange={(v) => setFormat((v as SocialFormat) ?? "video_vertical")}
                   >
                     <SelectTrigger className="w-full">
                       <SelectValue>
@@ -287,7 +295,16 @@ export function PostComposer({
                     <SelectContent>
                       {FORMATOS.map((f) => (
                         <SelectItem key={f.id} value={f.id}>
-                          {f.label}
+                          {/* Rótulo e explicação juntos: "Vídeo vertical"
+                              sozinho não diz que é o mesmo arquivo do
+                              Reels e do Shorts, que é a informação que
+                              faz escolher certo. */}
+                          <span className="flex flex-col">
+                            <span>{f.label}</span>
+                            <span className="text-2xs text-muted-foreground">
+                              {f.detalhe}
+                            </span>
+                          </span>
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -316,6 +333,32 @@ export function PostComposer({
                   </Select>
                 </Campo>
               </div>
+
+              {/* O MESMO ARQUIVO, OS NOMES DE CADA REDE. É o que responde
+                  "consigo mandar um 9:16 para as quatro?" sem obrigar a
+                  saber que Reels, Shorts e o vídeo do TikTok são a mesma
+                  coisa. Só aparece quando alguma rede escolhida dá um
+                  nome próprio ao formato. */}
+              {apelidos.length > 0 && (
+                <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 rounded-lg bg-surface-2/70 px-3 py-2 text-2xs text-muted-foreground">
+                  {/* A CONTAGEM, não só os apelidos. O TikTok não aparece
+                      na lista porque não dá nome próprio ao formato — e
+                      sem o número alguém leria "Reels · Reels · Shorts" e
+                      concluiria que ele ficou de fora. */}
+                  <span>
+                    Um arquivo para{" "}
+                    {compativeis === 1 ? "1 rede" : `as ${compativeis} redes`} — sai
+                    como
+                  </span>
+                  {apelidos.map(({ rede: r, apelido }, i) => (
+                    <span key={r.id} className="inline-flex items-center gap-1">
+                      <NetworkGlyph network={r.id} />
+                      <span className="font-medium text-foreground">{apelido}</span>
+                      {i < apelidos.length - 1 && <span>·</span>}
+                    </span>
+                  ))}
+                </p>
+              )}
 
               {estranhas.length > 0 && (
                 <Aviso tom="atencao">

@@ -86,12 +86,14 @@ create table if not exists public.social_posts (
      `social_post_targets.caption_override`. */
   caption      text not null default '',
 
-  /* Formato da peça. Muda o que é possível: Stories não tem legenda
-     longa, Reels tem trilha, carrossel tem N imagens. Por ora informa a
-     equipe e o cliente; não bloqueia nada. */
-  format       text not null default 'feed' check (format in (
-                 'feed', 'reels', 'stories', 'carrossel',
-                 'video', 'shorts', 'artigo'
+  /* Formato descrito pelo ATIVO — o que o arquivo é, não como cada rede
+     o chama. "Reels", "Shorts" e o vídeo do TikTok são o mesmo 9:16, e
+     tratá-los como formatos diferentes tornava impossível registrar um
+     vertical para as quatro redes sem um aviso falso. Ver a migration
+     34, que fez essa conversão. */
+  format       text not null default 'imagem' check (format in (
+                 'video_vertical', 'video_horizontal', 'imagem',
+                 'carrossel', 'stories', 'artigo'
                )),
 
   /* URLs das artes. `text[]` e não uma tabela: são referências para o

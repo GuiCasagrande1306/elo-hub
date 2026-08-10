@@ -461,13 +461,25 @@ export type SocialNetwork =
   | "threads"
   | "google_business";
 
+/**
+ * Formato da peça — descrito pelo ATIVO, não pelo nome comercial.
+ *
+ * A primeira versão listava `reels`, `shorts` e `video` como coisas
+ * diferentes. São o mesmo arquivo: um vídeo 9:16. O resultado é que
+ * NENHUM dos sete formatos servia para postar um vertical em Instagram,
+ * Facebook, TikTok e YouTube ao mesmo tempo — que é o fluxo mais comum
+ * que existe. Escolher "Reels" avisava sobre TikTok e YouTube; escolher
+ * "Vídeo" avisava sobre Instagram; "Shorts" avisava sobre três.
+ *
+ * Agora um formato é um ativo, e o nome que cada rede dá a ele é
+ * apelido — ver `apelidoDoFormato` em `@/lib/social/networks`.
+ */
 export type SocialFormat =
-  | "feed"
-  | "reels"
-  | "stories"
+  | "video_vertical"
+  | "video_horizontal"
+  | "imagem"
   | "carrossel"
-  | "video"
-  | "shorts"
+  | "stories"
   | "artigo";
 
 /**
