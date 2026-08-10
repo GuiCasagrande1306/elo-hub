@@ -3,9 +3,11 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 
 import { PrintWeeklyChart } from "./print-chart";
+import { PrintToolbar } from "./print-toolbar";
 import { getPrintReportData } from "@/lib/reports/print-data";
 import { verifyPrintToken } from "@/lib/reports/print-token";
 import { PLATFORM_LABELS } from "@/lib/metrics/kpi";
+import { resolvePeriod } from "@/lib/date-br";
 import {
   formatCurrency,
   formatNumber,
@@ -41,12 +43,32 @@ export default async function PrintReportPage({
 }) {
   const [{ clientId }, query] = await Promise.all([params, searchParams]);
 
-  // Sem token válido a página nem existe. 404 em vez de 403 de
-  // propósito: não confirma que aquele clientId é real.
-  const auth = verifyPrintToken(query.token ?? null);
-  if (!auth.valid || auth.payload.clientId !== clientId) notFound();
+  /* DOIS CAMINHOS DE ACESSO, e eles não são intercambiáveis.
+     ---------------------------------------------------------------
+     1. TOKEN — o Puppeteer. Chega sem cookie nenhum, então carrega um
+        HMAC de vida curta com cliente e período assinados dentro.
 
-  const { periodStart, periodEnd } = auth.payload;
+     2. SESSÃO — uma pessoa da equipe abrindo para revisar e salvar em
+        PDF pelo próprio navegador. Este caminho é novo e exigiu uma
+        checagem explícita: `getPrintReportData` usa o cliente ADMIN e
+        passa por cima do RLS — o que é correto para o Puppeteer e
+        perigoso para um humano. Sem a verificação abaixo, qualquer
+        colaborador logado abriria o relatório de qualquer conta
+        sabendo o UUID.
+
+     404 nos dois casos, nunca 403: um 403 confirmaria que aquele
+     clientId existe. */
+  const auth = verifyPrintToken(query.token ?? null);
+  const porToken = auth.valid && auth.payload.clientId === clientId;
+
+  if (!porToken && !(await equipePodeVer(clientId))) notFound();
+
+  /* Com token, o período vem assinado — não dá para trocar por query e
+     ver um intervalo que o gerador não autorizou. Sem token, quem manda
+     é a URL, e o RLS já limitou a conta. */
+  const { periodStart, periodEnd } = porToken
+    ? auth.payload
+    : periodoDaQuery(query.inicio, query.fim);
   const data = await getPrintReportData(clientId, periodStart, periodEnd);
   if (!data) notFound();
 
@@ -69,6 +91,11 @@ export default async function PrintReportPage({
            aqui: nas outras rotas a ferramenta continua disponível. */
         nextjs-portal { display: none; }
       `}</style>
+
+      {/* Só para quem abriu a página no navegador. O Puppeteer chega com
+          token e nunca chama `window.print()` — e mesmo que a barra
+          existisse no HTML dele, `print:hidden` a tira do PDF. */}
+      {!porToken && <PrintToolbar />}
 
       <main className="bg-white font-sans text-[#111827] antialiased">
         {/* ============================ CAPA ============================ */}
@@ -439,4 +466,58 @@ function sentimentColor(sentiment: string): string {
   if (sentiment === "positive") return "#1f7a4d";
   if (sentiment === "negative") return "#b03a2e";
   return "#64707d";
+}
+
+/**
+ * A pessoa logada enxerga esta conta?
+ *
+ * A consulta usa o cliente com a chave ANON e o JWT da sessão, então
+ * quem decide é a policy do Postgres — não uma regra escrita aqui. Um
+ * colaborador fora da carteira recebe zero linhas e cai no `notFound`.
+ *
+ * Existe porque `getPrintReportData` roda com o cliente ADMIN: aquele
+ * caminho ignora RLS de propósito (o Puppeteer não tem sessão), e sem
+ * esta porta o acesso humano herdaria o mesmo bypass.
+ */
+async function equipePodeVer(clientId: string): Promise<boolean> {
+  const { getCurrentUser, createSupabaseServerClient } = await import(
+    "@/lib/supabase/server"
+  );
+
+  const user = await getCurrentUser();
+  if (!user) return false;
+
+  const { isDemoMode } = await import("@/lib/env");
+  if (isDemoMode) return true;
+
+  const supabase = await createSupabaseServerClient();
+  const { data } = await supabase
+    .from("clients")
+    .select("id")
+    .eq("id", clientId)
+    .maybeSingle();
+
+  return Boolean(data);
+}
+
+/**
+ * Período quando o acesso é humano.
+ *
+ * Data malformada cai nos últimos 30 dias em vez de derrubar a página:
+ * quem abriu quer revisar um documento, e um erro aqui deixaria a aba
+ * em branco sem dizer o motivo. O intervalo aparece impresso na capa,
+ * então um padrão errado é visível, não silencioso.
+ */
+function periodoDaQuery(
+  inicio?: string,
+  fim?: string,
+): { periodStart: string; periodEnd: string } {
+  const DATA = /^\d{4}-\d{2}-\d{2}$/;
+
+  if (inicio && fim && DATA.test(inicio) && DATA.test(fim) && inicio <= fim) {
+    return { periodStart: inicio, periodEnd: fim };
+  }
+
+  const { start, end } = resolvePeriod("30d");
+  return { periodStart: start, periodEnd: end };
 }

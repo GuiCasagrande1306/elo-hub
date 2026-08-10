@@ -175,15 +175,48 @@ export function ultimosMeses(quantidade = 12, quando: Date = new Date()) {
    pergunta é justamente o parcial.
    ===================================================================== */
 
-export const PERIOD_PRESETS = [
+/**
+ * Lista COMPLETA de atalhos, usada pelo seletor de calendário.
+ *
+ * A toolbar de Performance mostra um subconjunto — ver `PERIOD_PRESETS`
+ * logo abaixo, que é DERIVADO daqui. Duas listas escritas à mão fariam
+ * "Últimos 30 dias" resolver para intervalos diferentes em duas telas,
+ * que é exatamente o que este arquivo existe para impedir.
+ */
+export const PRESETS_INTERVALO = [
   { value: "hoje", label: "Hoje" },
+  { value: "ontem", label: "Ontem" },
   { value: "7d", label: "Últimos 7 dias" },
+  { value: "14d", label: "Últimos 14 dias" },
   { value: "30d", label: "Últimos 30 dias" },
   { value: "mes", label: "Este mês" },
   { value: "mes_passado", label: "Mês passado" },
 ] as const;
 
-export type PeriodPreset = (typeof PERIOD_PRESETS)[number]["value"];
+export type IntervaloPreset = (typeof PRESETS_INTERVALO)[number]["value"];
+
+/**
+ * O que a toolbar de Performance oferece — um subconjunto.
+ *
+ * Escrito como união à mão porque `PeriodPreset` já é o tipo que aquela
+ * página usa no `searchParams`; acrescentar "ontem" e "14d" ali mudaria
+ * a tela de Performance, que não faz parte deste pedido.
+ */
+export type PeriodPreset = "hoje" | "7d" | "30d" | "mes" | "mes_passado";
+
+const NA_TOOLBAR: readonly string[] = [
+  "hoje",
+  "7d",
+  "30d",
+  "mes",
+  "mes_passado",
+];
+
+export const PERIOD_PRESETS: { value: PeriodPreset; label: string }[] =
+  PRESETS_INTERVALO.filter((p) => NA_TOOLBAR.includes(p.value)).map((p) => ({
+    value: p.value as PeriodPreset,
+    label: p.label,
+  }));
 
 export function isPeriodPreset(v: string | undefined): v is PeriodPreset {
   return PERIOD_PRESETS.some((p) => p.value === v);
@@ -201,7 +234,7 @@ export function periodLabel(preset: PeriodPreset): string {
  * Vercel roda em UTC, e das 21h à meia-noite "ontem" lá já é hoje aqui —
  * o que desloca a janela inteira em um dia por três horas por noite.
  */
-export function resolvePeriod(preset: PeriodPreset): {
+export function resolvePeriod(preset: IntervaloPreset): {
   start: string;
   end: string;
 } {
@@ -209,12 +242,26 @@ export function resolvePeriod(preset: PeriodPreset): {
 
   if (preset === "hoje") return { start: hoje, end: hoje };
 
+  if (preset === "ontem") {
+    const o = ontemBR();
+    return { start: o, end: o };
+  }
+
   if (preset === "mes") {
     const { start, end } = mesCorrenteBR();
     /* Corta em ontem: o fim do mês civil é futuro na maior parte dos
        dias, e pedir dado até lá devolve dias vazios que achatam o
-       gráfico. */
-    return { start, end: menorData(end, ontemBR()) };
+       gráfico.
+
+       ⚠️ COM PISO NO INÍCIO DO MÊS. No DIA 1, "ontem" é o último dia do
+       mês ANTERIOR, e cortar por ele devolvia um intervalo invertido —
+       `{ start: "2026-09-01", end: "2026-08-31" }`. Uma vez por mês:
+       em /performance a consulta casava zero linhas e a carteira
+       aparecia zerada o dia inteiro sem erro nenhum; no calendário de
+       relatórios o atalho "Este mês" ficava impossível de aplicar. No
+       dia 1, "este mês" é o próprio dia 1 — que é o que o Meta faz. */
+    const fim = menorData(end, ontemBR());
+    return { start, end: fim < start ? start : fim };
   }
 
   if (preset === "mes_passado") {
@@ -223,7 +270,7 @@ export function resolvePeriod(preset: PeriodPreset): {
     return intervaloDoMes(alvo);
   }
 
-  const dias = preset === "7d" ? 7 : 30;
+  const dias = preset === "7d" ? 7 : preset === "14d" ? 14 : 30;
   const fim = ontemBR();
   const inicio = new Date(`${fim}T12:00:00-03:00`);
   inicio.setUTCDate(inicio.getUTCDate() - (dias - 1));

@@ -1,11 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { Eye, Loader2, MessageCircle, Send } from "lucide-react";
+import { useState, useTransition } from "react";
+import { Eye, FileText, Loader2, MessageCircle, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -15,7 +14,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DateRangePicker,
+  rotuloDoIntervalo,
+  type Intervalo,
+} from "@/components/ui/date-range-picker";
+import { gerarAnaliseIA } from "@/app/(app)/relatorios/actions";
 import { resolverTemplate } from "@/lib/reports/template-resolver";
+import { resolvePeriod } from "@/lib/date-br";
 import { cn } from "@/lib/utils";
 import type { Client, ReportTemplate } from "@/types/database";
 
@@ -35,12 +41,6 @@ interface ReportComposerProps {
   defaultClientSlug?: string;
 }
 
-const PERIODS = [
-  { days: 7, label: "Últimos 7 dias" },
-  { days: 30, label: "Últimos 30 dias" },
-  { days: 90, label: "Últimos 90 dias" },
-];
-
 export function ReportComposer({
   clients,
   templates,
@@ -49,12 +49,20 @@ export function ReportComposer({
   const [clientSlug, setClientSlug] = useState(
     defaultClientSlug ?? clients[0]?.slug ?? "",
   );
-  const [days, setDays] = useState(30);
+
+  /* Abre em "últimos 30 dias" resolvido pelo MESMO `resolvePeriod` que a
+     tela de Performance usa — senão o relatório de 30 dias cobriria uma
+     janela e o painel outra, com um dia de diferença nas pontas. */
+  const [periodo, setPeriodo] = useState<Intervalo>(() => {
+    const { start, end } = resolvePeriod("30d");
+    return { inicio: start, fim: end };
+  });
+
   const [templateId, setTemplateId] = useState<string>("__auto__");
   const [insights, setInsights] = useState("");
   const [steps, setSteps] = useState("");
-  const [recipient, setRecipient] = useState("");
-  const [busy, setBusy] = useState<"preview" | "send" | "archive" | null>(null);
+  const [busy, setBusy] = useState<"preview" | "send" | null>(null);
+  const [escrevendo, iniciarEscrita] = useTransition();
 
   const client = clients.find((c) => c.slug === clientSlug);
 
@@ -69,30 +77,104 @@ export function ReportComposer({
       ? autoTemplate
       : templates.find((t) => t.id === templateId);
 
-  function periodRange() {
-    const end = new Date();
-    end.setDate(end.getDate() - 1); // ontem: hoje ainda não fechou
-    const start = new Date(end);
-    start.setDate(start.getDate() - (days - 1));
-    const iso = (d: Date) => d.toISOString().slice(0, 10);
-    return { periodStart: iso(start), periodEnd: iso(end) };
+  function escreverComIA() {
+    if (!clientSlug) return;
+
+    /* SUBSTITUI o que estava escrito — concatenar produziria dois
+       parágrafos contraditórios no PDF a cada clique repetido, e o texto
+       vai para o cliente. Por isso a confirmação, e por isso ANTES da
+       chamada: perguntar depois já teria gasto a requisição paga.
+
+       Os `Textarea` são controlados, então o `setState` apaga de vez: o
+       desfazer do navegador não recupera o que a pessoa digitou. */
+    if (
+      (insights.trim() || steps.trim()) &&
+      !window.confirm(
+        "Isso substitui a análise e os próximos passos que já estão escritos. Continuar?",
+      )
+    ) {
+      return;
+    }
+
+    iniciarEscrita(async () => {
+      try {
+        const r = await gerarAnaliseIA({
+          clientSlug,
+          periodStart: periodo.inicio,
+          periodEnd: periodo.fim,
+        });
+
+        if (!r.ok) {
+          toast.error(r.error);
+          return;
+        }
+
+        setInsights(r.insights);
+        setSteps(r.nextSteps.join("\n"));
+        toast.success("Rascunho escrito. Revise antes de gerar o PDF.");
+      } catch {
+        /* A action devolve erro como VALOR, então este catch só pega
+           falha de transporte: rede caída, 504 da Vercel, ou a action
+           some depois de um deploy com a aba antiga aberta. Sem ele a
+           promise rejeitada sobe para o error boundary e leva junto o
+           formulário inteiro — inclusive o texto já digitado. */
+        toast.error(
+          "Não deu para falar com o servidor. Recarregue a página e tente de novo.",
+        );
+      }
+    });
   }
 
   function handlePreview() {
     if (!clientSlug) return;
     setBusy("preview");
-    // Abre em nova aba: o PDF é servido inline pela própria rota.
-    window.open(
-      `/api/reports/preview?cliente=${clientSlug}&periodo=${days}`,
-      "_blank",
-      "noopener",
-    );
+
+    /* POST por formulário, não `window.open` com query.
+       ---------------------------------------------------------------
+       O preview existe para conferir o documento ANTES de mandar. Com
+       GET ele só levava cliente e datas: o template escolhido à mão era
+       ignorado (a rota resolvia pelo segmento) e a análise não ia junto.
+       Resultado — a pessoa conferia um PDF com outro layout e sem a
+       seção de análise, e aprovava um documento diferente do que o
+       cliente receberia.
+
+       A análise não cabe numa URL (2.200 caracteres de legenda contra
+       o limite prático de query), então o caminho é POST. `target`
+       numa nova aba mantém o comportamento de antes. */
+    const form = document.createElement("form");
+    form.method = "POST";
+    form.action = "/api/reports/preview";
+    form.target = "_blank";
+    form.rel = "noopener";
+    form.style.display = "none";
+
+    const campos: Record<string, string> = {
+      cliente: clientSlug,
+      inicio: periodo.inicio,
+      fim: periodo.fim,
+      template: templateId === "__auto__" ? "" : templateId,
+      insights: insights.trim(),
+      nextSteps: steps,
+    };
+
+    for (const [nome, valor] of Object.entries(campos)) {
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = nome;
+      input.value = valor;
+      form.appendChild(input);
+    }
+
+    document.body.appendChild(form);
+    form.submit();
+    form.remove();
+
     setTimeout(() => setBusy(null), 800);
   }
 
   async function handleGenerate(deliver: "whatsapp" | "none") {
     if (!clientSlug) return;
-    setBusy(deliver === "whatsapp" ? "send" : "archive");
+    setBusy(deliver === "whatsapp" ? "send" : null);
 
     try {
       const response = await fetch("/api/reports/generate", {
@@ -101,14 +183,14 @@ export function ReportComposer({
         body: JSON.stringify({
           clientSlug,
           templateId: templateId === "__auto__" ? undefined : templateId,
-          ...periodRange(),
+          periodStart: periodo.inicio,
+          periodEnd: periodo.fim,
           insights: insights.trim() || undefined,
           nextSteps: steps
             .split("\n")
             .map((line) => line.trim())
             .filter(Boolean),
           deliver,
-          recipient: recipient.trim() || undefined,
         }),
       });
 
@@ -196,26 +278,7 @@ export function ReportComposer({
             </Field>
 
             <Field label="Período" htmlFor="periodo">
-              <Select
-                value={String(days)}
-                onValueChange={(value) => setDays(Number(value))}
-              >
-                <SelectTrigger id="periodo" className="w-full">
-                  <SelectValue>
-                    {(value: string) =>
-                      PERIODS.find((p) => String(p.days) === value)?.label ??
-                      "Período"
-                    }
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {PERIODS.map((p) => (
-                    <SelectItem key={p.days} value={String(p.days)}>
-                      {p.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <DateRangePicker id="periodo" value={periodo} onChange={setPeriodo} />
             </Field>
 
             <Field
@@ -258,13 +321,36 @@ export function ReportComposer({
         </section>
 
         <section className="surface-card p-5">
-          <h2 className="text-base font-semibold tracking-[-0.01em]">
-            Leitura do time
-          </h2>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            O que os números não contam sozinhos. Entra como seção de análise
-            no PDF.
-          </p>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="text-base font-semibold tracking-[-0.01em]">
+                Leitura do time
+              </h2>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                O que os números não contam sozinhos. Entra como seção de
+                análise no PDF.
+              </p>
+            </div>
+
+            {/* RASCUNHO, e o rótulo diz isso. O texto sai dos mesmos
+                números do PDF, mas quem assina o relatório é a agência —
+                um botão chamado "Analisar" sugeriria que o trabalho
+                acabou aqui. */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 shrink-0"
+              disabled={escrevendo || !clientSlug}
+              onClick={escreverComIA}
+            >
+              {escrevendo ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Sparkles className="size-4" />
+              )}
+              Escrever rascunho com IA
+            </Button>
+          </div>
 
           <div className="mt-4 flex flex-col gap-4">
             <Field label="Análise do período" htmlFor="insights">
@@ -301,6 +387,7 @@ export function ReportComposer({
 
           <dl className="mt-4 flex flex-col gap-2.5 text-sm">
             <Summary label="Conta" value={client?.name ?? "—"} />
+            <Summary label="Período" value={rotuloDoIntervalo(periodo)} />
             <Summary
               label="Template"
               value={effectiveTemplate?.name ?? "—"}
@@ -319,21 +406,10 @@ export function ReportComposer({
             />
           </dl>
 
-          <div className="mt-4 border-t border-hairline pt-4">
-            <Field
-              label="Enviar para outro número"
-              htmlFor="recipient"
-              hint="Opcional. Deixe vazio para usar o cadastro."
-            >
-              <Input
-                id="recipient"
-                value={recipient}
-                onChange={(event) => setRecipient(event.target.value)}
-                placeholder="+55 48 99999-0000"
-              />
-            </Field>
-          </div>
-
+          {/* DOIS BOTÕES. O "Gerar e arquivar" saiu: arquivar sem enviar
+              era o caminho do cron, não desta tela — quem abre "Gerar
+              relatório" quer que o cliente receba. A rota continua
+              aceitando `deliver: "none"`, que é o que o job usa. */}
           <div className="mt-5 flex flex-col gap-2">
             <Button
               variant="outline"
@@ -346,26 +422,39 @@ export function ReportComposer({
               ) : (
                 <Eye className="size-4" />
               )}
-              Pré-visualizar PDF
+              Visualizar PDF
             </Button>
 
+            {/* ABRIR EM A4 é diferente de "Visualizar PDF", e a diferença
+                é quem monta o documento. O botão acima manda o servidor
+                gerar o mesmo arquivo que sai no envio. Este abre a folha
+                em HTML no navegador, para a equipe auditar os números e
+                os nomes de campanha na tela — e, se quiser, salvar pelo
+                próprio Chrome com Ctrl/⌘+P. */}
             <Button
-              variant="secondary"
+              variant="ghost"
               className="h-9 w-full"
-              disabled={busy !== null || !clientSlug}
-              onClick={() => handleGenerate("none")}
+              disabled={!client}
+              nativeButton={false}
+              render={
+                <a
+                  href={
+                    client
+                      ? `/reports/render/${client.id}?inicio=${periodo.inicio}&fim=${periodo.fim}`
+                      : "#"
+                  }
+                  target="_blank"
+                  rel="noopener noreferrer"
+                />
+              }
             >
-              {busy === "archive" ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Send className="size-4" />
-              )}
-              Gerar e arquivar
+              <FileText className="size-4" />
+              Abrir em A4 para revisar
             </Button>
 
             <Button
               className="h-9 w-full"
-              disabled={busy !== null || !clientSlug}
+              disabled={busy !== null || !clientSlug || !client?.whatsapp_phone}
               onClick={() => handleGenerate("whatsapp")}
             >
               {busy === "send" ? (
@@ -373,15 +462,27 @@ export function ReportComposer({
               ) : (
                 <MessageCircle className="size-4" />
               )}
-              Gerar e enviar no WhatsApp
+              Gerar e enviar
             </Button>
           </div>
         </section>
 
         <p className="px-1 text-xs leading-relaxed text-muted-foreground">
-          O envio gera o PDF, sobe no Supabase Storage e dispara a mensagem com
-          o resumo de investimento, resultados e CPA — o documento vai em
-          anexo.
+          {client && !client.whatsapp_phone ? (
+            <>
+              <strong className="font-medium text-warning">
+                Sem WhatsApp cadastrado.
+              </strong>{" "}
+              O envio precisa de um número ou grupo no cadastro da conta —
+              enquanto isso, dá para conferir o PDF pela pré-visualização.
+            </>
+          ) : (
+            <>
+              O envio gera o PDF, sobe no Supabase Storage e dispara a mensagem
+              com o resumo de investimento, resultados e CPA — o documento vai
+              em anexo, pelo seu WhatsApp.
+            </>
+          )}
         </p>
       </aside>
     </div>

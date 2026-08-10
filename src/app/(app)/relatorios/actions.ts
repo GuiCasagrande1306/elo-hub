@@ -24,6 +24,82 @@ export interface EnvioPendente {
   client: Client;
 }
 
+/* ------------------------------------------------------------------ */
+/* Rascunho da análise, por IA                                         */
+/* ------------------------------------------------------------------ */
+
+const analiseSchema = z.object({
+  clientSlug: z.string().min(1),
+  periodStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  periodEnd: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});
+
+export type AnaliseResult =
+  | { ok: true; insights: string; nextSteps: string[] }
+  | { ok: false; error: string };
+
+/**
+ * Escreve um rascunho da leitura do time a partir dos números do período.
+ *
+ * Monta o MESMO payload que o PDF usa — ver `analise-ia.ts` para o
+ * porquê. A leitura passa por `getClientBySlug`, que respeita a RLS:
+ * um colaborador não gera análise de conta alheia.
+ *
+ * Devolve o erro como VALOR e não como exceção: a falha aqui é sempre
+ * algo que a pessoa precisa ler (falta a chave, o período está zerado,
+ * o modelo recusou), e uma exceção viraria um toast genérico.
+ */
+export async function gerarAnaliseIA(input: {
+  clientSlug: string;
+  periodStart: string;
+  periodEnd: string;
+}): Promise<AnaliseResult> {
+  const parsed = analiseSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Período inválido." };
+
+  const { clientSlug, periodStart, periodEnd } = parsed.data;
+  if (periodEnd < periodStart) {
+    return { ok: false, error: "O fim do período é anterior ao início." };
+  }
+
+  const { getClientBySlug, getTemplateForClient } = await import("@/lib/data");
+  const { buildReportPayload } = await import("@/lib/reports/payload");
+  const { gerarAnalise, AnaliseIndisponivel } = await import(
+    "@/lib/reports/analise-ia"
+  );
+
+  const client = await getClientBySlug(clientSlug);
+  if (!client) {
+    return { ok: false, error: "Cliente não encontrado ou sem permissão." };
+  }
+
+  const template = await getTemplateForClient(client);
+  if (!template) return { ok: false, error: "Nenhum template configurado." };
+
+  try {
+    const payload = await buildReportPayload({
+      client,
+      template,
+      periodStart,
+      periodEnd,
+    });
+
+    const { insights, nextSteps } = await gerarAnalise(payload);
+    return { ok: true, insights, nextSteps };
+  } catch (erro) {
+    if (erro instanceof AnaliseIndisponivel) {
+      return { ok: false, error: erro.message };
+    }
+    return {
+      ok: false,
+      error:
+        erro instanceof Error
+          ? `Falha ao gerar a análise: ${erro.message}`
+          : "Falha ao gerar a análise.",
+    };
+  }
+}
+
 /**
  * Relatórios gerados e ainda não enviados.
  *
