@@ -5,6 +5,7 @@ import type { Metadata } from "next";
 import { PrintWeeklyChart } from "./print-chart";
 import { PrintToolbar } from "./print-toolbar";
 import { getPrintReportData } from "@/lib/reports/print-data";
+import { resolverAgencia } from "@/lib/reports/payload";
 import { verifyPrintToken } from "@/lib/reports/print-token";
 import { PLATFORM_LABELS } from "@/lib/metrics/kpi";
 import { resolvePeriod } from "@/lib/date-br";
@@ -31,7 +32,22 @@ import {
    fundos e cores de impressão e a capa sai branca.
    ===================================================================== */
 
-export const metadata: Metadata = { robots: { index: false, follow: false } };
+/**
+ * `title.absolute` NÃO é detalhe de SEO — é vazamento de marca.
+ *
+ * Sem título próprio, esta rota herda o `default` do layout raiz, que é
+ * "Elo Hub". Com `PDF_ENGINE=puppeteer`, o Chrome grava `document.title`
+ * no campo /Title do PDF: o arquivo que chega ao cliente de uma agência
+ * parceira sai chamado "Elo Hub" nas Propriedades. E não há a string
+ * "Elo" em arquivo nenhum do relatório para denunciar isso.
+ *
+ * `absolute` é obrigatório: sem ele o template "%s · Elo Hub" do layout
+ * recola a marca no fim.
+ */
+export const metadata: Metadata = {
+  title: { absolute: "Relatório de performance" },
+  robots: { index: false, follow: false },
+};
 
 const A4 = "w-[210mm] min-h-[297mm]";
 
@@ -75,7 +91,15 @@ export default async function PrintReportPage({
 
   const { client, kpis, platforms, platformDetail, creatives, weekly, totals } =
     data;
-  const brand = client.brand_primary ?? "#16466e";
+  const agency = await resolverAgencia(client.agency_partner);
+
+  /* Fallback NEUTRO, não o navy da Elo que estava aqui: sem cor do
+     cliente, o documento não deve herdar a marca de uma agência. */
+  const brand = client.brand_primary ?? agency?.brandPrimary ?? "#4A5568";
+
+  const assinatura = agency
+    ? `${agency.name} · Relatório de performance`
+    : "Relatório de performance";
   const periodo = formatPeriod(periodStart, periodEnd);
 
   return (
@@ -148,22 +172,35 @@ export default async function PrintReportPage({
               <div className="mt-8 h-[3px] w-16 rounded-full bg-white/60" />
             </div>
 
-            {/* Assinatura da agência no rodapé da capa. */}
+            {/* Assinatura de quem ATENDE esta conta, não de quem
+                escreveu o sistema. O monograma era um "E" desenhado no
+                código — a marca da Elo no relatório de toda agência
+                parceira. Agora sai do logo enviado, ou da inicial do
+                nome quando ainda não há arquivo. */}
             <footer className="flex items-end justify-between">
-              <div className="flex items-center gap-2.5">
-                <span className="relative flex size-7 items-center justify-center rounded-md bg-white">
-                  <span
-                    className="text-[13px] font-bold leading-none"
-                    style={{ color: brand }}
-                  >
-                    E
-                  </span>
-                </span>
-                <div className="leading-tight">
-                  <p className="text-[13px] font-semibold">Elo Marketing</p>
-                  <p className="text-[10px] opacity-70">Marketing de performance</p>
+              {agency && (
+                <div className="flex items-center gap-2.5">
+                  {agency.logoUrl ? (
+                    <img
+                      src={agency.logoUrl}
+                      alt={agency.name}
+                      className="h-7 max-w-[120px] object-contain"
+                    />
+                  ) : (
+                    <span className="relative flex size-7 items-center justify-center rounded-md bg-white">
+                      <span
+                        className="text-[13px] font-bold leading-none"
+                        style={{ color: agency.brandPrimary ?? brand }}
+                      >
+                        {agency.name.trim().charAt(0).toUpperCase()}
+                      </span>
+                    </span>
+                  )}
+                  <div className="leading-tight">
+                    <p className="text-[13px] font-semibold">{agency.name}</p>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <p className="text-[10px] opacity-60">
                 Gerado em {new Date().toLocaleDateString("pt-BR")}
@@ -268,7 +305,7 @@ export default async function PrintReportPage({
             </div>
           </div>
 
-          <PageFooter numero={2} />
+          <PageFooter numero={2} assinatura={assinatura} />
         </section>
 
         {/* ================== UMA PÁGINA POR PLATAFORMA ==================
@@ -382,7 +419,7 @@ export default async function PrintReportPage({
               </div>
             )}
 
-            <PageFooter numero={3 + i} />
+            <PageFooter numero={3 + i} assinatura={assinatura} />
           </section>
         ))}
 
@@ -483,7 +520,10 @@ export default async function PrintReportPage({
           </div>
 
           {/* Depois das páginas por plataforma — a numeração acompanha. */}
-          <PageFooter numero={3 + platformDetail.length} />
+          <PageFooter
+            numero={3 + platformDetail.length}
+            assinatura={assinatura}
+          />
         </section>
       </main>
     </>
@@ -516,7 +556,13 @@ function PageHeader({
   );
 }
 
-function PageFooter({ numero }: { numero: number }) {
+function PageFooter({
+  numero,
+  assinatura,
+}: {
+  numero: number;
+  assinatura: string;
+}) {
   return (
     <>
       {/* Empurra o rodapé para a base da folha. Sem isto ele fica logo
@@ -527,7 +573,7 @@ function PageFooter({ numero }: { numero: number }) {
           não sobra nada, que é o caso da página cheia de criativos. */}
       <div className="min-h-6 flex-1" />
       <footer className="flex items-center justify-between border-t border-[#e6e8ec] pt-3 text-[9px] text-[#8b95a1]">
-        <span>Elo Marketing · Relatório de performance</span>
+        <span>{assinatura}</span>
         <span className="tabular-nums">{numero}</span>
       </footer>
     </>

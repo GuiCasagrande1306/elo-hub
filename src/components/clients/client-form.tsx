@@ -68,9 +68,12 @@ export function ClientForm({
   /* Dentro do diálogo o card viraria caixa dentro de caixa, e o título
      repetiria o do próprio diálogo. */
   semMoldura = false,
+  agencias,
 }: {
   client: Client;
   semMoldura?: boolean;
+  /** Vem do cadastro, não de uma lista fixa no código. */
+  agencias: string[];
 }) {
   const router = useRouter();
   const [aba, setAba] = useState<"perfil" | "operacional">("perfil");
@@ -309,7 +312,7 @@ export function ClientForm({
                         <SelectValue>{(v: string) => v}</SelectValue>
                       </SelectTrigger>
                       <SelectContent>
-                        {AGENCY_PARTNERS.map((a) => (
+                        {agencias.map((a) => (
                           <SelectItem key={a} value={a}>
                             {a}
                           </SelectItem>

@@ -73,10 +73,13 @@ const STATUS_LABELS: Record<Client["status"], string> = {
 };
 
 export function ClientsDirectory({
+  agencias,
   rows,
   month,
   agency,
 }: {
+  /** Vem do cadastro de agências, não de lista fixa. */
+  agencias: string[];
   rows: DirectoryRow[];
   /** Mês exibido, "YYYY-MM". Vem da URL, resolvido no servidor. */
   month: string;
@@ -210,7 +213,7 @@ export function ClientsDirectory({
         {/* Junto do mês porque os dois vivem na URL e recarregam do
             servidor — status e nicho apenas escondem linhas já
             carregadas. */}
-        <AgencyFilter value={agency} month={month} />
+        <AgencyFilter agencias={agencias} value={agency} month={month} />
 
         <Select
           value={statusFilter}

@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { AGENCY_PARTNERS } from "@/lib/validation/client";
+
 import { buildClientsUrl } from "./filter-url";
 import { mesCorrenteBR } from "@/lib/date-br";
 
@@ -29,10 +29,13 @@ const TODAS = "__todas__";
 export function AgencyFilter({
   value,
   month,
+  agencias,
 }: {
   /** "" = todas. */
   value: string;
   month: string;
+  /** Vem do cadastro, não de uma lista fixa no código. */
+  agencias: string[];
 }) {
   const router = useRouter();
   const [carregando, startTransition] = useTransition();
@@ -68,7 +71,7 @@ export function AgencyFilter({
 
       <SelectContent>
         <SelectItem value={TODAS}>Todas as agências</SelectItem>
-        {AGENCY_PARTNERS.map((a) => (
+        {agencias.map((a) => (
           <SelectItem key={a} value={a}>
             {a}
           </SelectItem>

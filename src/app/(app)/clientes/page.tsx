@@ -8,7 +8,7 @@ import { ClientsDirectory } from "@/components/clients/clients-directory";
 import { NewClientSheet } from "@/components/clients/new-client-sheet";
 import { getClientsWithGoals } from "@/lib/data";
 import { mesCorrenteBR, nomeDoMes } from "@/lib/date-br";
-import { AGENCY_PARTNERS } from "@/lib/validation/client";
+import { getAgencies } from "@/lib/data";
 import { formatCurrency, formatNumber } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Clientes" };
@@ -40,12 +40,14 @@ export default async function ClientsPage({
   const mesAtual = mesCorrenteBR().referencia;
   const mes = mesValido ?? mesAtual;
 
-  /* Só valores conhecidos chegam à query. Um `agency` arbitrário da
-     URL não causaria dano — a RLS já limita o que é visível —, mas
+  /* A lista vem do CADASTRO agora, não de uma const do código: agência
+     nova aparece aqui sem deploy.
+
+     Só valores conhecidos chegam à query. Um `agency` arbitrário da URL
+     não causaria dano — a RLS já limita o que é visível —, mas
      devolveria lista vazia com cara de carteira sem clientes. */
-  const agenciaValida = AGENCY_PARTNERS.includes(
-    agency as (typeof AGENCY_PARTNERS)[number],
-  )
+  const nomesDeAgencia = (await getAgencies()).map((a) => a.agency);
+  const agenciaValida = nomesDeAgencia.includes(agency ?? "")
     ? agency
     : undefined;
 
@@ -93,7 +95,7 @@ export default async function ClientsPage({
               <Archive className="size-3.5" />
               Encerrados
             </Button>
-            <NewClientSheet />
+            <NewClientSheet agencias={nomesDeAgencia} />
           </div>
         }
       />
@@ -125,7 +127,8 @@ export default async function ClientsPage({
       )}
 
       <div className="mt-7">
-        <ClientsDirectory rows={rows} month={mes} agency={agenciaValida ?? ""} />
+        <ClientsDirectory
+            agencias={nomesDeAgencia} rows={rows} month={mes} agency={agenciaValida ?? ""} />
       </div>
     </PageContainer>
   );

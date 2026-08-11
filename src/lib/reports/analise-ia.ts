@@ -41,7 +41,11 @@ export function iaConfigurada(): boolean {
 
 const MODELO = "claude-opus-5";
 
-const SISTEMA = `Você escreve a seção de análise de relatórios mensais de tráfego pago da Elo Marketing, uma agência brasileira. O texto vai direto para o cliente final — um empresário, não um profissional de mídia.
+/* SEM O NOME DA AGÊNCIA no prompt: o mesmo texto é gerado para contas
+   de agências parceiras, e citar uma delas ali faria o documento de uma
+   assinar o trabalho de outra. O modelo não precisa saber quem assina
+   para escrever sobre os números. */
+const SISTEMA = `Você escreve a seção de análise de relatórios mensais de tráfego pago de uma agência brasileira. O texto vai direto para o cliente final — um empresário, não um profissional de mídia.
 
 REGRAS DO TEXTO
 

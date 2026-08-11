@@ -51,6 +51,8 @@ import type { AdCreative, Client } from "@/types/database";
 
 export interface ClientDashboardProps {
   client: Client;
+  /** Agências do cadastro, para o seletor do diálogo de configurações. */
+  agencias: string[];
   /** Investimento, Resultados e Custo por Resultado — nesta ordem. */
   kpis: KpiResult[];
   /** Séries de sparkline por chave de métrica. */
@@ -90,6 +92,7 @@ export interface ClientDashboardProps {
 }
 
 export function ClientDashboard({
+  agencias,
   client,
   kpis,
   sparklines,
@@ -174,6 +177,7 @@ export function ClientDashboard({
                   <a>: sem ele, o Base UI assume semântica de <button> e
                   aplica ARIA que não corresponde ao elemento real. */}
               <ClientSettingsDialog
+                agencias={agencias}
                 client={client}
                 integrations={integrations}
                 segment={client.segment}

@@ -12,6 +12,7 @@ import {
   getCurrentGoals,
   getMetricsWithComparison,
   lastNDays,
+  getAgencies,
 } from "@/lib/data";
 import {
   buildTrend,
@@ -102,6 +103,7 @@ export default async function ClientPage({
     goalStatus,
     goalHistory,
     goalProgress,
+    agencias,
   ] = await Promise.all([
     getMetricsWithComparison(client.id, start, end),
     getCreatives(client.id, 6),
@@ -114,7 +116,10 @@ export default async function ClientPage({
        graça e daria uma projeção calculada sobre 90 dias de gasto para
        responder onde o MÊS fecha. */
     getClientGoalProgress(client),
+    getAgencies(),
   ]);
+
+  const nomesDeAgencia = agencias.map((a) => a.agency);
 
   const metaAtual = goals.get(client.id) ?? null;
 
@@ -164,6 +169,7 @@ export default async function ClientPage({
   return (
     <ClientDashboard
       client={client}
+      agencias={nomesDeAgencia}
       kpis={kpis}
       sparklines={sparklines}
       trend={trend}

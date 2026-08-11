@@ -40,10 +40,13 @@ export function ClientSettingsDialog({
   client,
   integrations,
   segment,
+  agencias,
 }: {
   client: Client;
   integrations: IntegrationStatus[];
   segment: ClientSegment;
+  /** Vem do cadastro de agências, não de lista fixa. */
+  agencias: string[];
 }) {
   const [aberto, setAberto] = useState(false);
 
@@ -99,7 +102,7 @@ export function ClientSettingsDialog({
               </TabsContent>
 
               <TabsContent value="cadastro" className="mt-4">
-                <ClientForm client={client} semMoldura />
+                <ClientForm client={client} semMoldura agencias={agencias} />
               </TabsContent>
             </Tabs>
           )}

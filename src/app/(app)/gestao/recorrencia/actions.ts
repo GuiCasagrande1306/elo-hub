@@ -5,7 +5,7 @@ import { z } from "zod";
 
 import { isDemoMode } from "@/lib/env";
 import { createSupabaseServerClient, getCurrentUser } from "@/lib/supabase/server";
-import { AGENCIA_PROPRIA, AGENCY_PARTNERS } from "@/lib/validation/client";
+import { AGENCIA_PROPRIA } from "@/lib/validation/client";
 import { materializarMes, isMesValido } from "@/lib/finance/recurrence";
 import type { ResultadoMaterializacao } from "@/lib/finance/recurrence";
 
@@ -109,7 +109,10 @@ const contratoAgenciaSchema = z.object({
      nome fora da lista, que é o que impede um contrato órfão — uma
      linha "Bagno" nunca casaria com os clientes de "Bagano" e o mês
      sairia sem a cobrança dos 11. */
-  agency: z.enum(AGENCY_PARTNERS),
+  /* Texto pelo mesmo motivo do formulário de cliente: a lista virou
+     cadastro, e um enum compilado recusaria agência criada depois do
+     deploy. */
+  agency: z.string().trim().min(1),
   monthlyFeeCents: z.number().int().min(0).max(100_000_000),
   billingDay: z.number().int().min(1).max(28).nullable(),
 });

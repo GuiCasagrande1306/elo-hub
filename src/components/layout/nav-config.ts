@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  Building2,
   CheckSquare,
   FileText,
   Landmark,
@@ -107,6 +108,12 @@ export const navGroups: NavGroup[] = [
         // `/gestao/recorrencia` é subpágina: sem o prefixo, o item da
         // sidebar apagaria ao entrar nela.
         matchPrefix: true,
+      },
+      {
+        href: "/gestao/agencias",
+        label: "Agências",
+        icon: Building2,
+        adminOnly: true,
       },
       { href: "/configuracoes/equipe", label: "Equipe", icon: Users, adminOnly: true },
       { href: "/configuracoes", label: "Configurações", icon: Settings, adminOnly: true },

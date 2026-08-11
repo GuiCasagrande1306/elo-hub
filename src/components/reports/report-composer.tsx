@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Eye, FileText, Loader2, MessageCircle, Sparkles } from "lucide-react";
+import { Eye, Loader2, MessageCircle, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -439,32 +439,17 @@ export function ReportComposer({
               Visualizar PDF
             </Button>
 
-            {/* ABRIR EM A4 é diferente de "Visualizar PDF", e a diferença
-                é quem monta o documento. O botão acima manda o servidor
-                gerar o mesmo arquivo que sai no envio. Este abre a folha
-                em HTML no navegador, para a equipe auditar os números e
-                os nomes de campanha na tela — e, se quiser, salvar pelo
-                próprio Chrome com Ctrl/⌘+P. */}
-            <Button
-              variant="ghost"
-              className="h-9 w-full"
-              disabled={!client}
-              nativeButton={false}
-              render={
-                <a
-                  href={
-                    client
-                      ? `/reports/render/${client.id}?inicio=${periodo.inicio}&fim=${periodo.fim}`
-                      : "#"
-                  }
-                  target="_blank"
-                  rel="noopener noreferrer"
-                />
-              }
-            >
-              <FileText className="size-4" />
-              Abrir em A4 para revisar
-            </Button>
+            {/* O botão "Abrir em A4 para revisar" saiu daqui.
+                Ele mostrava um documento DIFERENTE do que era enviado: a
+                rota levava só cliente e datas, sem o template escolhido à
+                mão nem a análise escrita — a pessoa aprovava uma folha e
+                o cliente recebia outra. "Visualizar PDF" acima gera o
+                arquivo de verdade, com tudo o que está no formulário.
+
+                A rota `/reports/render` continua existindo porque é a
+                FONTE do motor Puppeteer (ver `pdf/render.ts`), mas deixou
+                de ser superfície de uso. */}
+
 
             <Button
               className="h-9 w-full"

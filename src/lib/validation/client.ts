@@ -133,7 +133,12 @@ export const newClientSchema = z.object({
     .max(120, "Máximo de 120 caracteres."),
 
   segment: z.enum(CLIENT_SEGMENTS, { message: "Selecione o nicho." }),
-  agencyPartner: z.enum(AGENCY_PARTNERS, {
+  /* TEXTO, não `z.enum`: a lista de agências virou cadastro e um enum
+     compilado recusaria toda agência criada depois do deploy. Quem
+     garante que o nome existe é a tela, que só oferece o que está
+     cadastrado, e o banco, onde `agency_partner` casa com
+     `agency_contracts.agency`. */
+  agencyPartner: z.string().trim().min(1, {
     message: "Selecione a agência.",
   }),
   status: z.enum(CREATABLE_STATUSES, { message: "Selecione o status." }),
@@ -298,7 +303,12 @@ export const clientFormSchema = z
 
     segment: z.enum(CLIENT_SEGMENTS, { message: "Selecione o nicho." }),
     status: z.enum(EDITABLE_STATUSES, { message: "Selecione o status." }),
-    agencyPartner: z.enum(AGENCY_PARTNERS, { message: "Selecione a agência." }),
+    /* TEXTO, não `z.enum`: a lista de agências virou cadastro e um enum
+     compilado recusaria toda agência criada depois do deploy. Quem
+     garante que o nome existe é a tela, que só oferece o que está
+     cadastrado, e o banco, onde `agency_partner` casa com
+     `agency_contracts.agency`. */
+  agencyPartner: z.string().trim().min(1, { message: "Selecione a agência." }),
 
     website: optionalText(200, "Site"),
     contactName: optionalText(120, "Contato"),

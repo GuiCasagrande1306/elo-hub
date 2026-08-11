@@ -275,9 +275,16 @@ export function ReportDocument({ payload }: { payload: ReportPayload }) {
   return (
     <Document
       title={`${payload.client.name} — ${period}`}
-      author="Elo Marketing"
-      subject={payload.meta.templateName}
-      creator="Elo Hub"
+      /* METADADO TAMBÉM É MARCA. Tirar o nome impresso e deixar
+         author="Elo Marketing" no arquivo só esconde: quem recebe abre
+         as Propriedades do PDF e lê o nome de outra agência. `author` é
+         quem assina; `creator` some, porque o nome do sistema interno
+         não diz nada a quem recebe e denuncia a ferramenta. */
+      author={payload.agency?.name ?? payload.client.name}
+      /* `templateName` é nomenclatura INTERNA de operação ("E-commerce
+         — Receita & ROAS"). Não denuncia agência, mas expõe como a casa
+         organiza o trabalho para quem abrir as propriedades. */
+      subject={`Relatório de performance — ${period}`}
     >
       {/* ============================= CAPA ============================= */}
       <Page size="A4" style={styles.cover}>
@@ -288,17 +295,34 @@ export function ReportDocument({ payload }: { payload: ReportPayload }) {
           <Text style={styles.coverTitle}>{payload.client.name}</Text>
           <Text style={styles.coverPeriod}>{period}</Text>
 
-          {/* Faixa de acento: uma barra fina que amarra a capa à marca
-              da agência sem competir com a cor do cliente. */}
-          <View
-            style={{
-              width: 64,
-              height: 4,
-              backgroundColor: accent,
-              marginTop: 22,
-              borderRadius: 2,
-            }}
-          />
+          {/* ASSINATURA DA AGÊNCIA na capa: logo quando existe, barra de
+              acento quando não. As duas ocupam o mesmo lugar e o mesmo
+              respiro, então a capa não muda de composição conforme a
+              agência tenha ou não enviado o arquivo.
+
+              O logo é RASTER por contrato (a migration 38 recusa SVG na
+              entrada): o react-pdf não rasteriza vetor, e uma imagem que
+              ele não consegue abrir ABORTA o documento inteiro. Um logo
+              faltando não pode custar o relatório do cliente. */}
+          {payload.agency?.logoUrl ? (
+            // Mesmo falso positivo do thumb de criativo: este `Image` é
+            // do @react-pdf/renderer e não existe `alt` no PDF.
+            // eslint-disable-next-line jsx-a11y/alt-text
+            <Image
+              src={payload.agency.logoUrl}
+              style={{ height: 26, marginTop: 22, objectFit: "contain" }}
+            />
+          ) : (
+            <View
+              style={{
+                width: 64,
+                height: 4,
+                backgroundColor: accent,
+                marginTop: 22,
+                borderRadius: 2,
+              }}
+            />
+          )}
         </View>
 
         <View style={styles.coverBody}>
@@ -306,7 +330,11 @@ export function ReportDocument({ payload }: { payload: ReportPayload }) {
         </View>
 
         <View style={styles.footer} fixed>
-          <Text>Elo Marketing · Relatório de performance</Text>
+          <Text>
+            {payload.agency
+              ? `${payload.agency.name} · Relatório de performance`
+              : "Relatório de performance"}
+          </Text>
           <Text>
             Gerado em {formatDate(payload.meta.generatedAt)}
           </Text>
@@ -354,7 +382,7 @@ export function ReportDocument({ payload }: { payload: ReportPayload }) {
         })}
 
         <View style={styles.footer} fixed>
-          <Text>Elo Marketing</Text>
+          <Text>{payload.agency?.name ?? ""}</Text>
           <Text
             render={({ pageNumber, totalPages }) =>
               `${pageNumber} / ${totalPages}`

@@ -192,7 +192,7 @@ export const demoClients: Client[] = [
     logo_url: null,
     brand_primary: "#111827",
     agency_partner: "Elo Marketing",
-    brand_secondary: "#7BF178",
+    brand_secondary: null,
     brand_font: "Inter",
     website: "https://nordperformance.com",
     contact_name: "Camila Nord",
@@ -518,7 +518,7 @@ export const demoCreatives: AdCreative[] = [
     external_ad_id: "23861234567893",
     campaign_name: "[CAPTAÇÃO] Turma Q3 — Lookalike 1%",
     ad_name: "VSL Camila 90s",
-    thumbnail_url: thumb("#111827", "#7BF178", "Turma Q3", "VSL 90 segundos"),
+    thumbnail_url: thumb("#111827", "#4A5568", "Turma Q3", "VSL 90 segundos"),
     storage_path: null,
     destination_url: "https://nordperformance.com/inscricao",
     headline: "De atendimento a dados em 6 meses",
@@ -579,7 +579,7 @@ export const demoProjects: Project[] = [
     name: "Lançamento Turma Q3",
     description: "Captação, aquecimento e carrinho.",
     status: "active",
-    color: "#7BF178",
+    color: null,
     starts_at: daysAgo(30),
     ends_at: daysAgo(-15),
     owner_id: "u-admin",
@@ -981,7 +981,7 @@ export const demoTemplates: ReportTemplate[] = [
       { type: "insights", title: "Leitura do time" },
       { type: "next_steps", title: "Próximos passos" },
     ],
-    theme: { accent: "#7BF178", cover: "gradient" },
+    theme: { cover: "gradient" },
     is_default: true,
     is_archived: false,
   },
@@ -1003,7 +1003,7 @@ export const demoTemplates: ReportTemplate[] = [
       { type: "insights", title: "O que observamos" },
       { type: "next_steps", title: "Plano para o próximo ciclo" },
     ],
-    theme: { accent: "#7BF178", cover: "solid" },
+    theme: { cover: "solid" },
     is_default: true,
     is_archived: false,
   },
@@ -1027,7 +1027,7 @@ export const demoTemplates: ReportTemplate[] = [
       { type: "insights", title: "Diagnóstico" },
       { type: "next_steps", title: "Ajustes recomendados" },
     ],
-    theme: { accent: "#7BF178", cover: "gradient" },
+    theme: { cover: "gradient" },
     is_default: true,
     is_archived: false,
   },
@@ -1045,7 +1045,7 @@ export const demoTemplates: ReportTemplate[] = [
       { type: "ad_gallery", title: "Anúncios ativos", options: { limit: 4 } },
       { type: "next_steps", title: "Próximos passos" },
     ],
-    theme: { accent: "#7BF178", cover: "solid" },
+    theme: { cover: "solid" },
     is_default: true,
     is_archived: false,
   },
@@ -1194,3 +1194,29 @@ export const demoConnections: Record<
   },
   "c-atlas": { state: "connecting" },
 };
+
+
+/* ------------------------------------------------------------------ */
+/* Identidade das agências                                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Marca de cada agência, para o relatório da demonstração sair assinado.
+ *
+ * Cores fictícias de propósito: a demo não deve reproduzir a identidade
+ * de nenhuma agência real, e o ponto aqui é mostrar que o documento
+ * troca de cara conforme quem atende a conta.
+ *
+ * `logo_url` fica nulo: o dataset não carrega binário, e o documento
+ * precisa saber cair no nome em texto quando não há logo — que é
+ * justamente o caminho mais comum no começo.
+ */
+export const demoAgencies: {
+  agency: string;
+  brand_primary: string | null;
+  logo_url: string | null;
+}[] = [
+  { agency: "Elo Marketing", brand_primary: "#16466E", logo_url: null },
+  { agency: "Brava Reels", brand_primary: "#B23A48", logo_url: null },
+  { agency: "Bagano", brand_primary: "#2F6F4E", logo_url: null },
+];

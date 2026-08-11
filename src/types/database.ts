@@ -236,6 +236,12 @@ export interface AgencyContract {
   /** 1–28, ou `null` para "sem cobrança recorrente" — o job pula. */
   billing_day: number | null;
   notes: string | null;
+  /** Cor da marca em #rrggbb. Pinta o acento do relatório dos clientes. */
+  brand_primary?: string | null;
+  /** Logo RASTER (png/jpg/webp). SVG aborta a geração do PDF. */
+  logo_url?: string | null;
+  /** A agência que opera o painel. Só uma linha é true. */
+  is_own?: boolean;
 }
 
 /** Uma linha do gráfico de fluxo de caixa. */

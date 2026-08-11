@@ -11,6 +11,8 @@ import {
   type TrendPoint,
 } from "@/lib/metrics/kpi";
 import { sessionSource, type ReportSource } from "./source";
+import { isDemoMode } from "@/lib/env";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   buildPlatformDetail,
   type PlatformDetail,
@@ -44,6 +46,13 @@ import type {
 /* Reexportados: o documento PDF e a página A4 importam daqui. */
 export type { PlatformCampaign, PlatformDetail } from "./platform-detail";
 
+/**
+ * Acento quando ninguém definiu cor: um grafite frio, não uma cor de
+ * marca. Serve de fundo para texto branco e não compete com a cor do
+ * cliente na capa.
+ */
+const ACENTO_NEUTRO = "#4A5568";
+
 export interface ReportPayload {
   meta: {
     generatedAt: string;
@@ -52,8 +61,33 @@ export interface ReportPayload {
     /** Dias na janela — a comparação usa período anterior equivalente. */
     days: number;
     templateName: string;
+    /**
+     * Cor do acento do documento.
+     *
+     * PRECEDÊNCIA: `template.theme.accent` vence, se o template fixar
+     * uma; senão vem da agência que assina; e sem ela, um cinza neutro.
+     * Antes era o verde da Elo por padrão — a marca de uma agência
+     * aparecia no relatório de todas as outras.
+     */
     accent: string;
   };
+  /**
+   * Quem ASSINA o relatório: a agência que atende esta conta.
+   *
+   * Vem de `clients.agency_partner` cruzado com `agency_contracts`. O
+   * pipeline não lia esse campo — o documento tinha "Elo Marketing"
+   * escrito no código, e o relatório de conta terceirizada saía com a
+   * marca de outra empresa.
+   *
+   * `null` quando a conta não aponta para agência nenhuma: aí o
+   * documento sai sem assinatura, que é melhor que assinar errado.
+   */
+  agency: {
+    name: string;
+    brandPrimary: string | null;
+    /** Raster (png/jpg). SVG aborta o react-pdf — ver a migration 38. */
+    logoUrl: string | null;
+  } | null;
   client: {
     id: string;
     name: string;
@@ -141,6 +175,8 @@ export async function buildReportPayload(options: {
     return rotulo ? { ...kpi, label: rotulo } : kpi;
   });
 
+  const agency = await resolverAgencia(client.agency_partner);
+
   return {
     meta: {
       generatedAt: new Date().toISOString(),
@@ -148,8 +184,10 @@ export async function buildReportPayload(options: {
       periodEnd,
       days: metrics.period.days,
       templateName: template.name,
-      accent: template.theme.accent ?? "#7BF178",
+      /* Neutro no fim da fila, nunca a cor de uma agência específica. */
+      accent: template.theme.accent ?? agency?.brandPrimary ?? ACENTO_NEUTRO,
     },
+    agency,
     client: {
       id: client.id,
       name: client.name,
@@ -283,4 +321,52 @@ export function payloadHeadline(payload: ReportPayload) {
     totals,
     roas: deriveMetric("roas", totals),
   };
+}
+
+
+/**
+ * Identidade da agência que assina o relatório desta conta.
+ *
+ * Uma consulta por relatório, e não um join no carregamento do cliente:
+ * o payload é montado uma vez por documento, e `agency_contracts` tem
+ * uma linha por agência — são unidades, não milhares.
+ *
+ * FALHA PARA O LADO DE EMITIR. Sem linha, sem permissão de leitura ou
+ * com erro de rede, devolve o NOME em texto e nenhuma identidade visual:
+ * o relatório sai assinado, sem cor nem logo. Um documento sem enfeite é
+ * melhor que um documento que não existe — e a leitura é feita com a
+ * chave anon sob RLS, então uma policy restritiva sobre
+ * `agency_contracts` derrubaria a geração se isto lançasse.
+ */
+export async function resolverAgencia(
+  nome: string | null,
+): Promise<ReportPayload["agency"]> {
+  if (!nome) return null;
+
+  if (isDemoMode) {
+    const { demoAgencies } = await import("@/lib/mock/data");
+    const a = demoAgencies.find((x) => x.agency === nome);
+    return {
+      name: nome,
+      brandPrimary: a?.brand_primary ?? null,
+      logoUrl: a?.logo_url ?? null,
+    };
+  }
+
+  try {
+    const supabase = await createSupabaseServerClient();
+    const { data } = await supabase
+      .from("agency_contracts")
+      .select("agency, brand_primary, logo_url")
+      .eq("agency", nome)
+      .maybeSingle();
+
+    return {
+      name: nome,
+      brandPrimary: (data?.brand_primary as string | null) ?? null,
+      logoUrl: (data?.logo_url as string | null) ?? null,
+    };
+  } catch {
+    return { name: nome, brandPrimary: null, logoUrl: null };
+  }
 }

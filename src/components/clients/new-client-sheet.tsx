@@ -11,7 +11,6 @@ import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { defaultGoalMetricFor } from "@/lib/metrics/goal-metric";
 import { cn } from "@/lib/utils";
 import {
-  AGENCY_PARTNERS,
   CLIENT_SEGMENTS,
   CREATABLE_STATUSES,
   SEGMENT_LABELS,
@@ -68,7 +67,7 @@ import {
    significaria dois sistemas de notificação empilhados na tela.
    ===================================================================== */
 
-export function NewClientSheet() {
+export function NewClientSheet({ agencias }: { agencias: string[] }) {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
 
@@ -357,7 +356,7 @@ export function NewClientSheet() {
                             }
                           />
                           <SelectContent>
-                            {AGENCY_PARTNERS.map((a) => (
+                            {agencias.map((a) => (
                               <SelectItem key={a} value={a}>
                                 {a}
                               </SelectItem>

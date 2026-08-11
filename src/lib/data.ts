@@ -1624,3 +1624,77 @@ export async function getSocialComments(
   if (error) throw error;
   return (data ?? []) as unknown as SocialPostComment[];
 }
+
+
+/* ------------------------------------------------------------------ */
+/* Agências                                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Cadastro das agências — a lista que antes era `const` no código.
+ *
+ * Ordenada com a agência PRÓPRIA primeiro e o resto por nome: nos
+ * seletores, a conta da casa é a escolha mais frequente e não deve exigir
+ * rolagem para ser encontrada.
+ */
+export async function getAgencies(): Promise<AgencyContract[]> {
+  if (isDemoMode) {
+    const { demoAgencies } = await import("@/lib/mock/data");
+    return demoAgencies.map((a) => ({
+      agency: a.agency,
+      monthly_fee_cents: 0,
+      billing_day: null,
+      notes: null,
+      brand_primary: a.brand_primary,
+      logo_url: a.logo_url,
+      is_own: a.agency === "Elo Marketing",
+    }));
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  /* A CONSULTA NÃO CITA `is_own`, e isso é deliberado: enquanto a
+     migration 39 não roda, referenciar a coluna no `.order()` faz o
+     PostgREST recusar a consulta inteira — e o seletor de agência do
+     cadastro de cliente ficaria VAZIO, impedindo criar conta. A
+     ordenação por conta própria acontece em memória, sobre um campo que
+     simplesmente não vem antes da migration. */
+  const { data, error } = await supabase
+    .from("agency_contracts")
+    .select("*")
+    .order("agency");
+
+  const linhas = (data ?? []) as AgencyContract[];
+
+  if (!error && linhas.length > 0) {
+    // Própria primeiro: nos seletores é a escolha mais frequente.
+    return [...linhas].sort(
+      (a, b) => Number(Boolean(b.is_own)) - Number(Boolean(a.is_own)),
+    );
+  }
+
+  /* ÚLTIMO RECURSO: os nomes que os próprios clientes já usam. Serve a
+     dois casos — a tabela ainda não existir com as colunas novas, e uma
+     carteira que aponta para agência que ninguém cadastrou. Um seletor
+     vazio impediria cadastrar cliente; um seletor com os nomes em uso
+     mantém a tela funcionando enquanto o cadastro não é preenchido. */
+  const { data: usados } = await supabase
+    .from("clients")
+    .select("agency_partner")
+    .not("agency_partner", "is", null);
+
+  const nomes = [
+    ...new Set(
+      (usados ?? [])
+        .map((c) => (c as { agency_partner: string | null }).agency_partner)
+        .filter((n): n is string => Boolean(n)),
+    ),
+  ].sort();
+
+  return nomes.map((agency) => ({
+    agency,
+    monthly_fee_cents: 0,
+    billing_day: null,
+    notes: null,
+  }));
+}
