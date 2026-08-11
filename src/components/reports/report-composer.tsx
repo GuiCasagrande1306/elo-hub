@@ -46,9 +46,23 @@ export function ReportComposer({
   templates,
   defaultClientSlug,
 }: ReportComposerProps) {
-  const [clientSlug, setClientSlug] = useState(
-    defaultClientSlug ?? clients[0]?.slug ?? "",
-  );
+  /* Aceita SLUG ou ID no parâmetro da URL, e normaliza para slug.
+     A estação de comando mandava o id e o compositor abria em branco —
+     com "Visualizar PDF" habilitado, porque o parâmetro era truthy, e o
+     POST devolvia o JSON de erro numa aba nova. Normalizar aqui protege
+     de qualquer chamador futuro que erre de novo. */
+  const [clientSlug, setClientSlug] = useState(() => {
+    const pedido = defaultClientSlug;
+
+    // Sem parâmetro: abre na primeira conta, como sempre abriu.
+    if (!pedido) return clients[0]?.slug ?? "";
+
+    /* COM parâmetro que não resolve, fica VAZIO — não cai na primeira
+       conta. Escolher outra conta em silêncio é o pior desfecho possível
+       aqui: o documento sai com o nome errado e vai para o cliente. Com
+       vazio, o seletor mostra "Selecione" e os botões ficam desligados. */
+    return clients.find((c) => c.slug === pedido || c.id === pedido)?.slug ?? "";
+  });
 
   /* Abre em "últimos 30 dias" resolvido pelo MESMO `resolvePeriod` que a
      tela de Performance usa — senão o relatório de 30 dias cobriria uma
@@ -78,7 +92,7 @@ export function ReportComposer({
       : templates.find((t) => t.id === templateId);
 
   function escreverComIA() {
-    if (!clientSlug) return;
+    if (!client) return;
 
     /* SUBSTITUI o que estava escrito — concatenar produziria dois
        parágrafos contraditórios no PDF a cada clique repetido, e o texto
@@ -126,7 +140,7 @@ export function ReportComposer({
   }
 
   function handlePreview() {
-    if (!clientSlug) return;
+    if (!client) return;
     setBusy("preview");
 
     /* POST por formulário, não `window.open` com query.
@@ -173,7 +187,7 @@ export function ReportComposer({
   }
 
   async function handleGenerate(deliver: "whatsapp" | "none") {
-    if (!clientSlug) return;
+    if (!client) return;
     setBusy(deliver === "whatsapp" ? "send" : null);
 
     try {
@@ -340,7 +354,7 @@ export function ReportComposer({
               variant="outline"
               size="sm"
               className="h-9 shrink-0"
-              disabled={escrevendo || !clientSlug}
+              disabled={escrevendo || !client}
               onClick={escreverComIA}
             >
               {escrevendo ? (
@@ -414,7 +428,7 @@ export function ReportComposer({
             <Button
               variant="outline"
               className="h-9 w-full"
-              disabled={busy !== null || !clientSlug}
+              disabled={busy !== null || !client}
               onClick={handlePreview}
             >
               {busy === "preview" ? (
@@ -454,7 +468,7 @@ export function ReportComposer({
 
             <Button
               className="h-9 w-full"
-              disabled={busy !== null || !clientSlug || !client?.whatsapp_phone}
+              disabled={busy !== null || !client || !client.whatsapp_phone}
               onClick={() => handleGenerate("whatsapp")}
             >
               {busy === "send" ? (

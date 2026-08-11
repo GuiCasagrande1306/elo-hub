@@ -6,48 +6,70 @@ import { API_VERSION, exchangeRefreshToken } from "./google-ads";
 import { microsToCents, normalizeCustomerId } from "./normalize";
 
 /* =====================================================================
-   Saldo do Google Ads — `account_budget`
+   Verba de fatura do Google Ads — NÃO é saldo de conta pré-paga
    ---------------------------------------------------------------------
-   Diferente da Meta, aqui a API DEVOLVE o número. Medido em 07/08/2026
-   nas 7 contas ligadas do Elo Hub.
+   ⚠️ LEIA ISTO ANTES DE "CONSERTAR" A FÓRMULA.
 
-   ⚠️ A FÓRMULA ÓBVIA ESTÁ ERRADA.
+   A GOOGLE ADS API NÃO EXPÕE O SALDO DE UMA CONTA PRÉ-PAGA. Não é
+   limitação de query nem de versão: o dado não existe na API. Resposta
+   do time da API em 18/03/2025 — "There is no service or method
+   currently available through the Google Ads API to retrieve account
+   balance alerts" — e a mesma resposta se repete desde 2015 ("there is
+   no officially supported method of programmatically obtaining an
+   account's balance"). `billing_setup` e `payments_account` devolvem só
+   identificação; `invoice` exige faturamento mensal e é retrospectiva.
 
-   `approved_spending_limit_micros − amount_served_micros` parece a
-   conta certa e produz saldo NEGATIVO em conta saudável. Medido no
-   Atacado de Pratas:
+   O QUE ESTE ARQUIVO LÊ é `account_budget`, que é a superfície de
+   FATURAMENTO MENSAL: "The payments setting in your Google Ads account
+   must be configured for monthly invoicing in order to manage billing
+   workflows with the API." Ou seja, o número aqui é quanto ainda cabe
+   dentro da verba contratada de fatura — dinheiro que a conta pode
+   gastar antes de estourar o teto, não dinheiro depositado.
 
-       approved  R$ 218.780,00
-       served    R$ 219.547,09   →  approved − served = −R$ 767,09
-       adjusted  R$ 220.297,52   →  adjusted − served = +R$ 750,43
+   Os dois conceitos se parecem o suficiente para enganar: medido no
+   Atacado de Pratas, o limite aprovado era R$ 218.780,00, que é perfil
+   de verba de fatura e não de carteira. Por isso o tipo devolvido e o
+   rótulo na tela dizem VERBA, não saldo.
 
-   O que falta é `total_adjustments_micros` (R$ 1.517,52 nessa conta):
-   créditos, estornos e ajustes de fatura aplicados depois da aprovação.
-   `adjusted_spending_limit_micros` já é `approved + adjustments`, ou
-   seja, o limite EFETIVO. É ele que entra na conta.
+   PARA CONTA PRÉ-PAGA o caminho é o mesmo da Meta, e é o que o próprio
+   Google recomenda desde 2015: registrar a recarga à mão e descontar o
+   gasto acumulado. `client_integrations.funds_cents` já existe para as
+   duas plataformas — ver `balances.ts`.
 
-   Com a fórmula ingênua o alerta apareceria como "zerado" numa conta
-   com R$ 750 de folga — o mesmo tipo de inversão que o `balance` da
-   Meta causava, e a razão de este arquivo existir separado.
+   ⚠️ O ORÇAMENTO ENCERRADO CONTINUA `APPROVED`. O enum
+   `AccountBudgetStatus` tem só UNSPECIFIED, UNKNOWN, PENDING, APPROVED e
+   CANCELLED — não existe ENDED. Encerrar mexe na DATA ("you can set the
+   end time to the current time"), não no status. Filtrar só por status,
+   como este arquivo fazia, somava a sobra de verbas velhas como se
+   fosse dinheiro de hoje: numa conta que renova verba todo mês, o
+   número exibido crescia indefinidamente.
 
-   ⚠️ SEGUNDA ARMADILHA: `approved_spending_limit_type = 'INFINITE'`.
-   Quatro das sete contas medidas (todas pós-pagas) não têm limite
-   nenhum — o campo numérico simplesmente não vem. `undefined − served`
-   vira NaN, e defaultar para zero produziria "−R$ 86.943,01" na Clínica
-   Mustafa, marcando como crítica a conta que nunca pode acabar. Conta
-   ilimitada devolve `unlimited: true` e NÃO é projetada.
+   ⚠️ NÃO SE SOMA MAIS DE UM. "Only one active account budget is allowed
+   per customer." As duas linhas APPROVED medidas na Brazzo Pizza eram um
+   vigente e um encerrado, não duas verbas acumuláveis. Depois do filtro
+   de vigência sobra no máximo uma; se sobrar mais, é bug de filtro.
 
-   O que NÃO foi verificado: se `adjusted − served` bate com o saldo que
-   o painel do Google mostra. Isso exige comparar com a tela, como foi
-   feito no Nuur para a Meta. Até lá o número aparece rotulado como
-   vindo da API, para quem lê poder julgar.
+   ⚠️ MOEDA. Os micros vêm na moeda DA CONTA, e `account_budget` não tem
+   campo de moeda — `customer.currency_code` é recurso atribuído e cabe
+   no mesmo SELECT, sem custo. Sem essa guarda, US$ 100 virava "R$
+   100,00" na tela: o número não é convertido, só re-rotulado.
    ===================================================================== */
 
-export interface SaldoGoogle {
-  /** Centavos restantes. `null` quando ilimitado ou indisponível. */
+/** Moeda em que o painel sabe apresentar valor. */
+const MOEDA_BASE = "BRL";
+
+export interface VerbaGoogle {
+  /**
+   * Centavos que ainda cabem na verba de fatura vigente.
+   * `null` = sem teto, moeda não suportada, ou nenhuma verba vigente.
+   */
   balanceCents: number | null;
-  /** Conta em faturamento sem teto — não há saldo a esgotar. */
+  /** Faturamento sem teto — não há verba a esgotar. */
   unlimited: boolean;
+  /** Moeda da conta, quando a API informou. */
+  currency: string | null;
+  /** A conta opera em moeda que o painel não sabe exibir. */
+  moedaNaoSuportada: boolean;
 }
 
 interface LinhaOrcamento {
@@ -56,7 +78,15 @@ interface LinhaOrcamento {
     approvedSpendingLimitMicros?: string;
     approvedSpendingLimitType?: string;
     adjustedSpendingLimitMicros?: string;
+    adjustedSpendingLimitType?: string;
     amountServedMicros?: string;
+    approvedStartDateTime?: string;
+    approvedEndDateTime?: string;
+    approvedEndTimeType?: string;
+  };
+  customer?: {
+    currencyCode?: string;
+    timeZone?: string;
   };
 }
 
@@ -65,22 +95,34 @@ interface Chunk {
   error?: { message?: string };
 }
 
-/* Só orçamentos APROVADOS. Um budget PENDING ainda não vale, e um
-   CANCELLED já não vale — somar qualquer um dos dois inflaria o saldo e
-   adiaria o alerta de recarga. */
+/* As datas APROVADAS, não as propostas: proposto é o que se pediu,
+   aprovado é o que valeu. `customer.currency_code` e `customer.time_zone`
+   são recursos atribuídos de `account_budget` e entram no mesmo SELECT —
+   a moeda para não exibir dólar como real, o fuso para saber o que é
+   "agora" na conta.
+
+   A vigência é resolvida no CÓDIGO e não no WHERE: o literal de data do
+   GAQL teria de ser montado no fuso da conta, que só se descobre nesta
+   mesma resposta. */
 const QUERY = `
   SELECT
     account_budget.status,
     account_budget.approved_spending_limit_micros,
     account_budget.approved_spending_limit_type,
     account_budget.adjusted_spending_limit_micros,
-    account_budget.amount_served_micros
+    account_budget.adjusted_spending_limit_type,
+    account_budget.amount_served_micros,
+    account_budget.approved_start_date_time,
+    account_budget.approved_end_date_time,
+    account_budget.approved_end_time_type,
+    customer.currency_code,
+    customer.time_zone
   FROM account_budget
   WHERE account_budget.status = 'APPROVED'
 `;
 
 /**
- * Saldo das contas do Google Ads, indexado por `client_id`.
+ * Verba de fatura das contas do Google Ads, indexada por `client_id`.
  *
  * `service_role`: o refresh token vive em `integration_secrets`, tabela
  * com RLS ligada e zero policies — nenhuma sessão de usuário alcança.
@@ -88,8 +130,8 @@ const QUERY = `
  * Falha de uma conta não derruba as outras: a tela mostra o que
  * conseguiu, e a que falhou aparece sem projeção em vez de sumir.
  */
-export async function fetchGoogleBalances(): Promise<Map<string, SaldoGoogle>> {
-  const saldos = new Map<string, SaldoGoogle>();
+export async function fetchGoogleBalances(): Promise<Map<string, VerbaGoogle>> {
+  const saldos = new Map<string, VerbaGoogle>();
 
   if (!serverEnv.googleAdsDeveloperToken || !serverEnv.googleAdsClientId) {
     return saldos;
@@ -128,12 +170,12 @@ export async function fetchGoogleBalances(): Promise<Map<string, SaldoGoogle>> {
       const token = await tokens.get(refresh)!;
       if (!token.ok) return;
 
-      const saldo = await consultarOrcamento(
+      const verba = await consultarOrcamento(
         normalizeCustomerId(linha.external_account_id),
         token.accessToken,
       );
 
-      if (saldo) saldos.set(linha.client_id, saldo);
+      if (verba) saldos.set(linha.client_id, verba);
     }),
   );
 
@@ -145,7 +187,7 @@ export async function fetchGoogleBalances(): Promise<Map<string, SaldoGoogle>> {
 async function consultarOrcamento(
   customerId: string,
   accessToken: string,
-): Promise<SaldoGoogle | null> {
+): Promise<VerbaGoogle | null> {
   /* Uma repetição, com respiro. Medido: `UNSUPPORTED_VERSION` aparece de
      forma intermitente no v21 — a mesma consulta que falha numa conta
      passa na tentativa seguinte. Não é versão morta (essa devolve HTML
@@ -189,7 +231,7 @@ async function consultarOrcamento(
       const linhas = chunks.flatMap((c) => c.results ?? []);
       if (linhas.length === 0) return null;
 
-      return somarOrcamentos(linhas);
+      return resolverVerba(linhas);
     } catch {
       // Rede ou timeout: tenta de novo, depois desiste.
     }
@@ -199,47 +241,114 @@ async function consultarOrcamento(
 }
 
 /**
- * Consolida os orçamentos aprovados de uma conta.
+ * "Agora" no fuso da conta, no mesmo formato das datas da API
+ * (`yyyy-MM-dd HH:mm:ss`), para comparar como texto.
  *
- * Uma conta pode ter mais de um: medido na Brazzo Pizza, com dois. O
- * restante SOMA — são verbas que a conta ainda pode consumir.
- *
- * Mas um único orçamento ilimitado torna a conta inteira ilimitada, e
- * isso é checado ANTES da soma: somar os finitos e ignorar o infinito
- * produziria um teto que não existe, e um alerta de recarga para uma
- * conta que nunca vai parar por falta de saldo.
+ * Comparação por string funciona porque o formato é de largura fixa e
+ * os campos vão do mais significativo ao menos. Comparar em UTC erraria
+ * na virada do dia em toda conta que não esteja em UTC.
  */
-export function somarOrcamentos(linhas: LinhaOrcamento[]): SaldoGoogle {
-  let total = 0;
-  let algumFinito = false;
+function agoraNaConta(fuso: string | undefined): string {
+  const partes = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: fuso || "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(new Date());
 
-  for (const linha of linhas) {
-    const b = linha.accountBudget;
-    if (!b) continue;
+  // `sv-SE` já devolve "2026-08-11 14:03:07".
+  return partes.replace("T", " ");
+}
 
-    const ilimitado =
-      b.approvedSpendingLimitType === "INFINITE" ||
-      (b.approvedSpendingLimitMicros === undefined &&
-        b.adjustedSpendingLimitMicros === undefined);
+/**
+ * A verba VIGENTE de uma conta.
+ *
+ * Não soma: a API garante "only one active account budget per customer".
+ * O que existia antes era uma soma de tudo que estava `APPROVED`, e como
+ * orçamento encerrado permanece nesse status, a sobra de verbas velhas
+ * entrava no total. Aqui sobra no máximo uma linha.
+ */
+export function resolverVerba(linhas: LinhaOrcamento[]): VerbaGoogle {
+  const moeda =
+    linhas.find((l) => l.customer?.currencyCode)?.customer?.currencyCode ?? null;
+  const fuso = linhas.find((l) => l.customer?.timeZone)?.customer?.timeZone;
 
-    if (ilimitado) return { balanceCents: null, unlimited: true };
+  const base = { currency: moeda, moedaNaoSuportada: false };
 
-    /* `adjusted` primeiro: é `approved` + ajustes, o limite que vale.
-       `approved` sozinho ignora estorno e crédito, e foi o que produziu
-       −R$ 767,09 numa conta com folga. */
-    const limite = b.adjustedSpendingLimitMicros ?? b.approvedSpendingLimitMicros;
-    if (limite === undefined) continue;
-
-    const servido = b.amountServedMicros ?? "0";
-    algumFinito = true;
-
-    /* Piso em zero por orçamento, não no total: um budget estourado é
-       zero de folga, não um crédito negativo que abateria a sobra de
-       outro orçamento da mesma conta. */
-    total += Math.max(0, microsToCents(limite) - microsToCents(servido));
+  /* MOEDA ANTES DE TUDO. Sem esta guarda, uma conta em dólar exibia
+     "R$ 100,00" para US$ 100 — o valor não é convertido, só recebe outro
+     símbolo. Preferimos não mostrar número a mostrar um errado com cara
+     de certo, que é a mesma regra que `normalize.ts` já aplica na
+     sincronização. */
+  if (moeda && moeda.toUpperCase() !== MOEDA_BASE) {
+    return {
+      balanceCents: null,
+      unlimited: false,
+      currency: moeda,
+      moedaNaoSuportada: true,
+    };
   }
 
-  return algumFinito
-    ? { balanceCents: total, unlimited: false }
-    : { balanceCents: null, unlimited: false };
+  const agora = agoraNaConta(fuso);
+
+  const vigentes = linhas.filter((l) => {
+    const b = l.accountBudget;
+    if (!b) return false;
+
+    // Ainda não começou.
+    if (b.approvedStartDateTime && b.approvedStartDateTime > agora) return false;
+
+    // Sem fim declarado = vale para sempre.
+    if (b.approvedEndTimeType === "FOREVER" || !b.approvedEndDateTime) return true;
+
+    return b.approvedEndDateTime >= agora;
+  });
+
+  if (vigentes.length === 0) {
+    return { ...base, balanceCents: null, unlimited: false };
+  }
+
+  /* Se houver mais de uma vigente — que a doc diz não acontecer — vale a
+     que começou por último, e não a soma: somar duas verbas seria
+     inventar teto que a conta não tem. */
+  const b = vigentes.sort((x, y) =>
+    (y.accountBudget?.approvedStartDateTime ?? "").localeCompare(
+      x.accountBudget?.approvedStartDateTime ?? "",
+    ),
+  )[0].accountBudget!;
+
+  const ilimitado =
+    b.approvedSpendingLimitType === "INFINITE" ||
+    b.adjustedSpendingLimitType === "INFINITE" ||
+    (b.approvedSpendingLimitMicros === undefined &&
+      b.adjustedSpendingLimitMicros === undefined);
+
+  if (ilimitado) return { ...base, balanceCents: null, unlimited: true };
+
+  /* `adjusted` primeiro: é o limite depois dos ajustes (créditos,
+     estornos, compensação de overdelivery), ou seja, o que vale de fato.
+     `approved` sozinho ignora tudo isso e produziu −R$ 767,09 numa conta
+     com folga, medido no Atacado de Pratas.
+
+     A doc NÃO enuncia `adjusted = approved + adjustments` — isso foi
+     inferido daquela medição, e vale como observação, não como regra. */
+  const limite = b.adjustedSpendingLimitMicros ?? b.approvedSpendingLimitMicros;
+  if (limite === undefined) {
+    return { ...base, balanceCents: null, unlimited: false };
+  }
+
+  /* A subtração acontece em MICROS e só depois vira centavos: arredondar
+     os dois lados antes de subtrair dobra o erro possível à toa. */
+  const restante = Number(limite) - Number(b.amountServedMicros ?? "0");
+
+  return {
+    ...base,
+    // Piso em zero: verba estourada é zero de folga, não crédito negativo.
+    balanceCents: Math.max(0, microsToCents(restante)),
+    unlimited: false,
+  };
 }

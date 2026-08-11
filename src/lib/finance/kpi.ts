@@ -1,3 +1,4 @@
+import { dataNoBrasil } from "@/lib/date-br";
 import { ehTerceirizado } from "@/lib/validation/client";
 import type {
   AgencyContract,
@@ -66,7 +67,11 @@ export interface FinanceSnapshot {
   defaultRate: number;
 }
 
-const todayISO = () => new Date().toISOString().slice(0, 10);
+/* `dataNoBrasil()` e não `toISOString()`: em UTC, das 21h às 24h de
+   Brasília o "hoje" já é amanhã, e `isOverdue` marcaria como VENCIDA uma
+   cobrança que ainda vence hoje — três horas de "atraso" falso por dia,
+   na tela de dinheiro. */
+const todayISO = () => dataNoBrasil();
 
 export function buildFinanceSnapshot(
   transactions: FinancialTransaction[],

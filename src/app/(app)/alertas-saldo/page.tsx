@@ -92,25 +92,27 @@ export default async function BalanceAlertsPage() {
         </p>
 
         <p className="mt-3 text-xs text-muted-foreground">
-          <strong>Google:</strong> lido direto da API, do orçamento da conta
-          (limite ajustado menos o valor já servido). Não precisa ser anotado
-          à mão.
+          <strong>Google:</strong> igual à Meta — saldo informado na recarga
+          menos o gasto desde então, anotado em Contas de mídia.
         </p>
         <p className="mt-1 text-2xs text-muted-foreground">
-          Usamos o limite <em>ajustado</em>, não o aprovado: o aprovado ignora
-          créditos e estornos. Medido no Atacado de Pratas, ele devolvia
-          −R$ 767,09 numa conta com R$ 750,43 de folga. Conta em faturamento
-          sem teto aparece como &ldquo;sem teto&rdquo;, sem projeção.
-        </p>
-        <p className="mt-1 text-2xs text-warning">
-          Ainda não conferimos o número do Google contra o painel do Google
-          Ads. Antes de usá-lo para decidir recarga, compare uma conta.
+          A API do Google <strong>não expõe o saldo</strong> de conta
+          pré-paga: o dado não existe nela, e o próprio Google recomenda
+          desde 2015 registrar a recarga e descontar o gasto. O que a API
+          devolve é a <em>verba de faturamento mensal</em>, que só existe em
+          conta faturada e mede outra coisa — quanto ainda cabe no teto
+          contratado. Onde não há recarga anotada e a conta é faturada, esse
+          número aparece rotulado como &ldquo;verba de fatura&rdquo;, nunca
+          como saldo.
         </p>
 
         <p className="mt-3 text-2xs text-muted-foreground">
           Só entram aqui as contas marcadas como pré-pagas na página do
-          cliente. O ritmo é a média dos dias em que a conta gastou na última
-          semana — não dos 7 dias corridos, que subestimaria conta nova.
+          cliente. O ritmo olha os <strong>7 dias completos até ontem</strong>{" "}
+          — o dia de hoje ainda está sendo veiculado e entraria pela metade,
+          fazendo o saldo parecer durar mais. Dentro dessa janela, a média é
+          dos dias em que a conta <em>gastou</em>, não dos 7 corridos: conta
+          nova, ligada há dois dias, queima no ritmo desses dois.
         </p>
       </div>
 
@@ -128,8 +130,8 @@ export default async function BalanceAlertsPage() {
         </div>
       ) : (
         <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {alerts.map((a) => (
-            <AlertCard key={`${a.clientId}-${a.platform}`} alert={a} />
+          {agruparPorCliente(alerts).map((conta) => (
+            <AlertCard key={conta.clientId} conta={conta} />
           ))}
         </div>
       )}
@@ -137,6 +139,76 @@ export default async function BalanceAlertsPage() {
   );
 }
 
+
+
+/* =====================================================================
+   Uma conta, um cartão
+   ---------------------------------------------------------------------
+   Meta e Google da MESMA conta ficam juntos. Em cartões separados, a
+   carteira aparecia duas vezes na lista e a mesma marca surgia em dois
+   lugares com estados diferentes — "Blue Wave crítico" perto de
+   "Blue Wave sem saldo" —, e quem varria a tela precisava lembrar que
+   eram a mesma empresa.
+
+   O CARTÃO HERDA O PIOR ESTADO das plataformas. Uma conta com Google
+   zerado e Meta folgado é uma conta com problema: mostrar o cartão em
+   verde porque metade está bem esconderia exatamente o que a tela
+   existe para achar.
+   ===================================================================== */
+
+export interface ContaAgrupada {
+  clientId: string;
+  clientName: string;
+  clientSlug: string;
+  /** Ordenadas: a mais urgente primeiro. */
+  plataformas: BalanceAlert[];
+  pior: BalanceStatus;
+}
+
+/** Urgência de cada estado. Menor = mais urgente. */
+const PESO_STATUS: Record<BalanceStatus, number> = {
+  critical: 0,
+  warning: 1,
+  unknown: 2,
+  healthy: 3,
+  unlimited: 4,
+};
+
+function agruparPorCliente(alerts: BalanceAlert[]): ContaAgrupada[] {
+  const porCliente = new Map<string, ContaAgrupada>();
+
+  for (const a of alerts) {
+    const atual = porCliente.get(a.clientId);
+
+    if (!atual) {
+      porCliente.set(a.clientId, {
+        clientId: a.clientId,
+        clientName: a.clientName,
+        clientSlug: a.clientSlug,
+        plataformas: [a],
+        pior: a.status,
+      });
+      continue;
+    }
+
+    atual.plataformas.push(a);
+    if (PESO_STATUS[a.status] < PESO_STATUS[atual.pior]) atual.pior = a.status;
+  }
+
+  /* `alerts` já chega ordenado por urgência, então a ordem das
+     plataformas dentro do cartão sai de graça. Falta ordenar os cartões
+     entre si — e o critério é o pior estado, com desempate pelos dias da
+     plataforma mais apertada. */
+  const menorDias = (c: ContaAgrupada) =>
+    Math.min(
+      ...c.plataformas.map((p) => p.daysLeft ?? Number.MAX_SAFE_INTEGER),
+    );
+
+  return [...porCliente.values()].sort(
+    (a, b) =>
+      PESO_STATUS[a.pior] - PESO_STATUS[b.pior] || menorDias(a) - menorDias(b),
+  );
+}
 
 /* =====================================================================
    O cartão
@@ -182,8 +254,8 @@ const ESTILO: Record<
   },
 };
 
-function AlertCard({ alert }: { alert: BalanceAlert }) {
-  const { texto, borda, Icone } = ESTILO[alert.status];
+function AlertCard({ conta }: { conta: ContaAgrupada }) {
+  const { borda } = ESTILO[conta.pior];
 
   return (
     <Card className={cn("border-l-4", borda)}>
@@ -192,108 +264,154 @@ function AlertCard({ alert }: { alert: BalanceAlert }) {
           <div className="min-w-0">
             <CardTitle className="truncate text-base">
               <Link
-                href={`/clientes/${alert.clientSlug}`}
+                href={`/clientes/${conta.clientSlug}`}
                 className="hover:underline"
               >
-                {alert.clientName}
+                {conta.clientName}
               </Link>
             </CardTitle>
-            <CardDescription>{PLATAFORMA[alert.platform]}</CardDescription>
+            <CardDescription>
+              {conta.plataformas.map((p) => PLATAFORMA[p.platform]).join(" · ")}
+            </CardDescription>
           </div>
 
-          <Badge variant={alert.status === "critical" ? "destructive" : "outline"}>
-            {rotuloCurto(alert)}
+          <Badge variant={conta.pior === "critical" ? "destructive" : "outline"}>
+            {rotuloCurto(pioresPrimeiro(conta)[0])}
           </Badge>
         </div>
       </CardHeader>
 
-      <CardContent>
-        <p className={cn("flex items-start gap-1.5 text-sm font-semibold", texto)}>
-          <Icone className="mt-px size-4 shrink-0" />
-          <span>{diagnostico(alert)}</span>
-        </p>
-
-        {/* A linha dos três números. Só aparece quando há projeção: com
-            saldo desconhecido, "Ritmo: R$ 100/dia | Restam: —" ocuparia
-            espaço para não dizer nada. */}
-        {alert.currentBalance !== null && (
-          <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-hairline pt-3 text-xs tabular-nums">
-            {/* Cada par rótulo+valor é um `nowrap` só. Solto, o wrap
-                quebrava entre "Ritmo:" e o número, deixando o rótulo no
-                fim de uma linha e o valor no começo da outra — que é
-                exatamente o tipo de leitura errada que juntar os três
-                números pretendia evitar. */}
-            <span className="whitespace-nowrap">
-              <span className="text-muted-foreground">Saldo atual: </span>
-              <strong className={cn("font-semibold", texto)}>
-                {formatCurrency(alert.currentBalance)}
-              </strong>
-            </span>
-
-            <span aria-hidden className="text-hairline">|</span>
-
-            <span className="whitespace-nowrap">
-              <span className="text-muted-foreground">Ritmo: </span>
-              <strong className="font-medium">
-                {formatCurrency(alert.burnRate)}/dia
-              </strong>
-            </span>
-
-            <span aria-hidden className="text-hairline">|</span>
-
-            <span className="whitespace-nowrap">
-              <span className="text-muted-foreground">Restam: </span>
-              <strong className={cn("font-semibold", texto)}>
-                {alert.daysLeft === null
-                  ? "indefinido"
-                  : alert.daysLeft === 1
-                    ? "1 dia"
-                    : `${alert.daysLeft} dias`}
-              </strong>
-            </span>
-          </p>
-        )}
-
-        <dl className="mt-3 flex flex-col gap-2 border-t border-hairline pt-3 text-2xs text-muted-foreground">
-          <div className="flex items-center justify-between gap-2">
-            <dt>Origem do saldo</dt>
-            <dd className="text-right font-medium">{ORIGEM[alert.balanceSource]}</dd>
-          </div>
-
-          {/* O divisor do ritmo fica visível: "R$ 100/dia" calculado
-              sobre 2 dias merece menos confiança que sobre 7, e quem lê
-              precisa poder descontar isso. */}
-          {alert.burnRate > 0 && (
-            <div className="flex items-center justify-between gap-2">
-              <dt>Base do ritmo</dt>
-              <dd className="text-right font-medium tabular-nums">
-                {alert.diasDeRitmo}{" "}
-                {alert.diasDeRitmo === 1 ? "dia com gasto" : "dias com gasto"}
-              </dd>
-            </div>
-          )}
-
-          {/* A forma de pagamento fica ao lado do saldo de propósito: em
-              conta paga por cartão, `balance` na Meta é dívida acumulada
-              e não crédito restante — quem lê precisa poder julgar. */}
-          {alert.fundingLabel && (
-            <div className="flex items-center justify-between gap-2">
-              <dt>Pagamento</dt>
-              <dd className="text-right font-medium">{alert.fundingLabel}</dd>
-            </div>
-          )}
-
-          {alert.fundsRecordedAt && (
-            <div className="flex items-center justify-between gap-2">
-              <dt>Saldo informado em</dt>
-              <dd className="text-right font-medium tabular-nums">
-                {formatDate(`${alert.fundsRecordedAt}T12:00:00`)}
-              </dd>
-            </div>
-          )}
-        </dl>
+      <CardContent className="flex flex-col gap-4">
+        {conta.plataformas.map((alert, i) => (
+          <BlocoPlataforma
+            key={alert.platform}
+            alert={alert}
+            /* Separador só entre blocos. O primeiro encosta no cabeçalho,
+               que já é a divisória dele. */
+            comSeparador={i > 0}
+          />
+        ))}
       </CardContent>
     </Card>
+  );
+}
+
+/** A plataforma mais urgente primeiro — é dela que sai o selo do topo. */
+function pioresPrimeiro(conta: ContaAgrupada): BalanceAlert[] {
+  return [...conta.plataformas].sort(
+    (a, b) => PESO_STATUS[a.status] - PESO_STATUS[b.status],
+  );
+}
+
+/**
+ * Um bloco por plataforma dentro do cartão da conta.
+ *
+ * Repete o nome da plataforma em cima dos números porque, com dois
+ * blocos, "R$ 146,48" sem etiqueta não diz de qual conta de anúncio é —
+ * e recarregar a errada é o erro que esta tela deveria impedir.
+ */
+function BlocoPlataforma({
+  alert,
+  comSeparador,
+}: {
+  alert: BalanceAlert;
+  comSeparador: boolean;
+}) {
+  const { texto, Icone } = ESTILO[alert.status];
+
+  return (
+    <section
+      className={cn(comSeparador && "border-t border-hairline pt-4")}
+    >
+      <p className="text-2xs font-medium tracking-wide text-muted-foreground uppercase">
+        {PLATAFORMA[alert.platform]}
+      </p>
+
+      <p className={cn("mt-1.5 flex items-start gap-1.5 text-sm font-semibold", texto)}>
+        <Icone className="mt-px size-4 shrink-0" />
+        <span>{diagnostico(alert)}</span>
+      </p>
+
+      {/* A linha dos três números. Só aparece quando há projeção: com
+          saldo desconhecido, "Ritmo: R$ 100/dia | Restam: —" ocuparia
+          espaço para não dizer nada. */}
+      {alert.currentBalance !== null && (
+        <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs tabular-nums">
+          {/* Cada par rótulo+valor é um `nowrap` só. Solto, o wrap
+              quebrava entre "Ritmo:" e o número, deixando o rótulo no
+              fim de uma linha e o valor no começo da outra — que é
+              exatamente o tipo de leitura errada que juntar os três
+              números pretendia evitar. */}
+          <span className="whitespace-nowrap">
+            <span className="text-muted-foreground">Saldo atual: </span>
+            <strong className={cn("font-semibold", texto)}>
+              {formatCurrency(alert.currentBalance)}
+            </strong>
+          </span>
+
+          <span aria-hidden className="text-hairline">|</span>
+
+          <span className="whitespace-nowrap">
+            <span className="text-muted-foreground">Ritmo: </span>
+            <strong className="font-medium">
+              {formatCurrency(alert.burnRate)}/dia
+            </strong>
+          </span>
+
+          <span aria-hidden className="text-hairline">|</span>
+
+          <span className="whitespace-nowrap">
+            <span className="text-muted-foreground">Restam: </span>
+            <strong className={cn("font-semibold", texto)}>
+              {alert.daysLeft === null
+                ? "indefinido"
+                : alert.daysLeft === 1
+                  ? "1 dia"
+                  : `${alert.daysLeft} dias`}
+            </strong>
+          </span>
+        </p>
+      )}
+
+      <dl className="mt-2.5 flex flex-col gap-1.5 text-2xs text-muted-foreground">
+        <div className="flex items-center justify-between gap-2">
+          <dt>Origem do saldo</dt>
+          <dd className="text-right font-medium">{ORIGEM[alert.balanceSource]}</dd>
+        </div>
+
+        {/* O divisor do ritmo fica visível: "R$ 100/dia" calculado
+            sobre 2 dias merece menos confiança que sobre 7, e quem lê
+            precisa poder descontar isso. */}
+        {alert.burnRate > 0 && (
+          <div className="flex items-center justify-between gap-2">
+            <dt>Base do ritmo</dt>
+            <dd className="text-right font-medium tabular-nums">
+              {alert.diasDeRitmo}{" "}
+              {alert.diasDeRitmo === 1 ? "dia com gasto" : "dias com gasto"}
+            </dd>
+          </div>
+        )}
+
+        {/* A forma de pagamento fica ao lado do saldo de propósito: em
+            conta paga por cartão, `balance` na Meta é dívida acumulada
+            e não crédito restante — quem lê precisa poder julgar. */}
+        {alert.fundingLabel && (
+          <div className="flex items-center justify-between gap-2">
+            <dt>Pagamento</dt>
+            <dd className="text-right font-medium">{alert.fundingLabel}</dd>
+          </div>
+        )}
+
+        {alert.fundsRecordedAt && (
+          <div className="flex items-center justify-between gap-2">
+            <dt>Saldo informado em</dt>
+            <dd className="text-right font-medium tabular-nums">
+              {formatDate(`${alert.fundsRecordedAt}T12:00:00`)}
+            </dd>
+          </div>
+        )}
+      </dl>
+    </section>
   );
 }
 
@@ -301,7 +419,12 @@ function AlertCard({ alert }: { alert: BalanceAlert }) {
 
 const ORIGEM: Record<BalanceAlert["balanceSource"], string> = {
   manual: "Informado na recarga",
-  google_api: "API do Google Ads",
+  /* "Verba de fatura" e não "API do Google Ads": o rótulo antigo dizia
+     de ONDE o número vinha e deixava o leitor supor O QUE ele era. A API
+     não expõe saldo de conta pré-paga; `account_budget` é o teto
+     contratado de faturamento mensal. */
+  verba_fatura: "Verba de fatura (não é saldo)",
+  moeda_nao_suportada: "Conta em moeda estrangeira",
   indisponivel: "Não disponível",
 };
 

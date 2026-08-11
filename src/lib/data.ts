@@ -231,9 +231,18 @@ export async function getCreatives(
 /* Metas                                                               */
 /* ------------------------------------------------------------------ */
 
-/** Meta vigente hoje para cada cliente acessível, indexada por client_id. */
+/**
+ * Meta vigente hoje para cada cliente acessível, indexada por client_id.
+ *
+ * `dataNoBrasil()` e não `toISOString()`: a Vercel roda em UTC, então das
+ * 21h às 24h de Brasília o `toISOString()` já devolve o dia seguinte.
+ * Medido — às 21:30 BRT de 31/08 o "hoje" saía `2026-09-01`, a meta de
+ * agosto (01/08 a 31/08) deixava de casar e a de setembro ainda não
+ * existia: o Map voltava VAZIO. Toda meta da carteira sumia da tela nas
+ * três horas finais do último dia de cada mês, em silêncio.
+ */
 export async function getCurrentGoals(): Promise<Map<string, ClientGoal>> {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = dataNoBrasil();
 
   if (isDemoMode) {
     const { demoGoals } = await import("@/lib/mock/data");
@@ -426,14 +435,18 @@ export async function getClientGoalProgress(client: Client): Promise<{
   };
 }
 
+/* MESMA ARMADILHA de `getCurrentGoals`: a Vercel roda em UTC e das 21h
+   às 24h de Brasília o `toISOString()` já é o dia seguinte. Como estes
+   dois são o fallback do período quando não há meta, o painel passava a
+   somar a partir do mês ERRADO nas últimas horas do último dia do mês —
+   `setDate(1)` sobre uma data que o UTC já virou aponta para o mês que
+   vem. `dataNoBrasil()` e `mesCorrenteBR()` resolvem os dois. */
 function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+  return dataNoBrasil();
 }
 
 function monthStartISO() {
-  const d = new Date();
-  d.setDate(1);
-  return d.toISOString().slice(0, 10);
+  return mesCorrenteBR().start;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1215,6 +1228,16 @@ async function getOptimizationHistorySince(
   const supabase = await createSupabaseServerClient();
   const { data } = await supabase
     .from("optimization_history")
+    /* SEM junção para o editor, de propósito.
+       ---------------------------------------------------------------
+       Buscar `editor:profiles!optimization_history_edited_by_fkey`
+       amarraria esta leitura a uma chave estrangeira que só passa a
+       existir depois da migration 36 — e, enquanto ela não rodasse, o
+       PostgREST derrubaria a consulta inteira e a esteira sairia do ar.
+
+       `edited_by` vem no `*` quando a coluna existe, e o nome é
+       resolvido na tela contra a lista da equipe, que a página já
+       carrega. Assim o código funciona antes e depois da migration. */
     .select("*, collaborator:profiles(id, full_name)")
     .gte("created_at", inicioDoDiaBR(desdeISO))
     .order("created_at", { ascending: false });
@@ -1238,6 +1261,16 @@ export async function getClientOptimizations(
   const supabase = await createSupabaseServerClient();
   const { data } = await supabase
     .from("optimization_history")
+    /* SEM junção para o editor, de propósito.
+       ---------------------------------------------------------------
+       Buscar `editor:profiles!optimization_history_edited_by_fkey`
+       amarraria esta leitura a uma chave estrangeira que só passa a
+       existir depois da migration 36 — e, enquanto ela não rodasse, o
+       PostgREST derrubaria a consulta inteira e a esteira sairia do ar.
+
+       `edited_by` vem no `*` quando a coluna existe, e o nome é
+       resolvido na tela contra a lista da equipe, que a página já
+       carrega. Assim o código funciona antes e depois da migration. */
     .select("*, collaborator:profiles(id, full_name)")
     .eq("client_id", clientId)
     .order("created_at", { ascending: false })

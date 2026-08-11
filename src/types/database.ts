@@ -111,6 +111,10 @@ export interface OptimizationEntry {
   report_sent: boolean;
   goal_projection: number | null;
   created_at: string;
+  /** Quando foi editado pela última vez. `null` = nunca. */
+  edited_at?: string | null;
+  /** Quem editou por último. Carimbado por trigger, nunca pelo cliente. */
+  edited_by?: string | null;
   /** Resolvido na leitura, para a lista mostrar quem fez. */
   collaborator?: Pick<Profile, "id" | "full_name"> | null;
 }

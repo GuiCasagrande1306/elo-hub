@@ -109,6 +109,7 @@ export default async function PipelinePage() {
           pipeline={pipeline.clients}
           team={team}
           currentUserId={user.id}
+          ehAdmin={user.role === "admin"}
           historyByClient={historyByClient}
           todayWeekday={pipeline.todayWeekday}
         />

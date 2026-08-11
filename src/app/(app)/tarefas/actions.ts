@@ -355,7 +355,19 @@ export async function createTask(input: {
     .select("id")
     .single();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) {
+    /* 42501 = recusa de policy. Sem esta tradução chega à tela o texto
+       cru do Postgres — "new row violates row-level security policy for
+       table tasks" —, que não diz a quem pedir nem o que fazer. */
+    if (error.code === "42501") {
+      return {
+        ok: false,
+        error:
+          "Sem permissão para criar tarefa nesta conta. Se isso não faz sentido, avise um administrador.",
+      };
+    }
+    return { ok: false, error: error.message };
+  }
 
   revalidatePath("/tarefas");
   return { ok: true, taskId: (data as { id: string }).id };

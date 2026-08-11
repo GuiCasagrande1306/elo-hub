@@ -56,6 +56,10 @@ export default async function ReportsPage() {
 
   const resumos = comMetricas.map((linha) => ({
     id: linha.client.id,
+    /* O compositor identifica a conta pelo SLUG, não pelo id — é o slug
+       que vai na URL e o que `getClientBySlug` resolve. Mandar o id daqui
+       abria o compositor em branco. */
+    slug: linha.client.slug,
     name: linha.client.name,
     spendCents: linha.computedSpendCents,
     /* O resultado já vem na unidade da conta: faturamento numa loja,

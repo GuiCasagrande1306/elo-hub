@@ -1,10 +1,10 @@
 import "server-only";
 
-import { dataNoBrasil } from "@/lib/date-br";
+import { resolvePeriod } from "@/lib/date-br";
 import { isDemoMode } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { fetchPrepaidBalances, type ContaSaldo } from "./meta-balance";
-import { fetchGoogleBalances, type SaldoGoogle } from "./google-balance";
+import { fetchGoogleBalances, type VerbaGoogle } from "./google-balance";
 import type { AdPlatform, Client } from "@/types/database";
 
 /* =====================================================================
@@ -48,7 +48,12 @@ export const DIAS_DE_ATENCAO = 7;
 /** Janela do ritmo de gasto. */
 const JANELA_DIAS = 7;
 
-export type BalanceSource = "manual" | "google_api" | "indisponivel";
+export type BalanceSource =
+  | "manual"
+  /** Verba de fatura lida da API — NÃO é saldo de conta pré-paga. */
+  | "verba_fatura"
+  | "moeda_nao_suportada"
+  | "indisponivel";
 
 /**
  * Estado da conta. Mais largo que crítico/atenção/saudável de propósito:
@@ -210,14 +215,42 @@ export async function getBalanceAlerts(): Promise<BalanceAlert[]> {
       let balanceSource: BalanceSource;
 
       if (platform === "google_ads") {
-        /* Direto da API. Os dois "sem número" ficam distintos: conta sem
-           orçamento localizável (`indisponivel`) e conta sem teto
-           (`unlimited`) — a segunda está bem, a primeira precisa de
-           atenção humana. */
+        /* A ÂNCORA MANUAL VEM PRIMEIRO, e isso é o oposto do que era.
+           -----------------------------------------------------------
+           A Google Ads API não expõe saldo de conta pré-paga — o dado
+           não existe, e o próprio Google recomenda desde 2015 registrar
+           a recarga e descontar o gasto. O que a API devolve é
+           `account_budget`, verba de FATURAMENTO MENSAL, que só existe
+           em conta faturada e mede outra coisa: quanto ainda cabe no
+           teto contratado.
+
+           Como o número da API tem cara de saldo, ele estava ocupando o
+           lugar do saldo. Agora: se alguém informou a recarga, é ela que
+           manda; a verba de fatura só aparece quando não há âncora, e
+           rotulada pelo que é. Mesmo caminho da Meta, mesmo campo no
+           banco (`funds_cents`), que já aceita as duas plataformas. */
         const google = saldosGoogle.get(client.id);
-        balanceCents = google?.balanceCents ?? null;
-        unlimited = google?.unlimited ?? false;
-        balanceSource = google ? "google_api" : "indisponivel";
+
+        if (informado) {
+          balanceCents = Math.max(
+            0,
+            informado.cents - (gastoDesdeRecarga.get(chave) ?? 0),
+          );
+          balanceSource = "manual";
+        } else if (google?.moedaNaoSuportada) {
+          /* Conta em moeda estrangeira: o valor viria em micros de outra
+             moeda e a tela imprimiria "R$" em cima. Melhor não mostrar
+             número do que mostrar um errado com aparência de certo. */
+          balanceCents = null;
+          balanceSource = "moeda_nao_suportada";
+        } else {
+          balanceCents = google?.balanceCents ?? null;
+          unlimited = google?.unlimited ?? false;
+          balanceSource =
+            google && (google.balanceCents !== null || google.unlimited)
+              ? "verba_fatura"
+              : "indisponivel";
+        }
       } else {
         /* Meta: âncora manual MENOS o gasto desde então. Só a leitura
            inicial é manual; o desconto vem de `daily_metrics`, que
@@ -291,28 +324,34 @@ async function carregar(): Promise<{
   /** `balance` do Meta (acumulado a pagar), por `client_id`. */
   saldos: Map<string, ContaSaldo>;
   /** Saldo do Google vindo da API, por `client_id`. */
-  saldosGoogle: Map<string, SaldoGoogle>;
+  saldosGoogle: Map<string, VerbaGoogle>;
   /** Saldo informado à mão, por `clientId:platform`. */
   fundos: Map<string, { cents: number; desde: string }>;
   /** Gasto acumulado desde a data da recarga. */
   gastoDesdeRecarga: Map<string, number>;
 }> {
-  /* Janela de exatamente 7 dias, ancorada no fuso de São Paulo.
+  /* Janela de 7 dias COMPLETOS, terminando ONTEM — e vinda de
+     `resolvePeriod`, não recalculada aqui.
 
-     Duas correções em relação ao que estava aqui:
+     A JANELA TERMINAVA HOJE, e isso subestimava o ritmo. O cron roda às
+     06:20 BRT pedindo o mês corrente inteiro, então as duas APIs
+     devolvem uma linha do DIA EM CURSO com o gasto de umas seis horas.
+     Ela entrava na soma com valor parcial e no `Set` de dias com gasto
+     como se fosse um dia inteiro: numerador incompleto, denominador
+     cheio. Medido com os números reais da tela — Nuur exibia R$ 34,31/dia
+     e 4 dias restantes quando o ritmo real era ~R$ 38,50 e restavam 3;
+     Atacado exibia 2 dias quando restava 1. Numa tela cujo limiar de
+     crítico é 3 dias, um dia de otimismo é a diferença entre o cartão
+     vermelho e o amarelo.
 
-     1. `- JANELA_DIAS` com `.gte()` incluía as DUAS pontas e produzia 8
-        dias — a tela chegou a exibir "8 dias com gasto" numa janela
-        chamada de semanal.
-
-     2. `new Date().toISOString()` recorta a data em UTC. Na Vercel, das
-        21h à meia-noite o "hoje" já é o dia seguinte, e a janela
-        deslizava um dia antes da hora. Mesmo motivo de `date-br`
-        existir. */
-  const fim = new Date(`${dataNoBrasil()}T12:00:00-03:00`);
-  const inicio = new Date(fim);
-  inicio.setUTCDate(inicio.getUTCDate() - (JANELA_DIAS - 1));
-  const desdeISO = dataNoBrasil(inicio);
+     Usar `resolvePeriod("7d")` em vez de recalcular também acaba com a
+     divergência: "últimos 7 dias" em /performance e aqui passam a ser o
+     mesmo conjunto de datas. O módulo `date-br` já diz, em caixa alta,
+     que todo preset termina ontem porque o dia corrente ainda está
+     sendo veiculado — esta página era a única exceção. */
+  const { start: desdeISO, end: ateISO } = resolvePeriod(
+    `${JANELA_DIAS}d` as "7d",
+  );
 
   if (isDemoMode) {
     const { demoClients, demoMetrics } = await import("@/lib/mock/data");
@@ -320,7 +359,7 @@ async function carregar(): Promise<{
     const dias = new Map<string, Set<string>>();
 
     for (const m of demoMetrics) {
-      if (m.metric_date < desdeISO) continue;
+      if (m.metric_date < desdeISO || m.metric_date > ateISO) continue;
       const chave = `${m.client_id}:${m.platform}`;
       mapa.set(chave, (mapa.get(chave) ?? 0) + m.spend_cents);
       if (m.spend_cents > 0) {
@@ -371,12 +410,22 @@ async function carregar(): Promise<{
 
     /* Google no demo: metade das contas ilimitada, para a interface
        mostrar os dois estados. Determinístico pelo id. */
-    const saldosGoogle = new Map<string, SaldoGoogle>(
+    const saldosGoogle = new Map<string, VerbaGoogle>(
       demoClients.map((c, i) => [
         c.id,
         i % 2 === 0
-          ? { balanceCents: ((i * 7919) % 90_000) + 1_000, unlimited: false }
-          : { balanceCents: null, unlimited: true },
+          ? {
+              balanceCents: ((i * 7919) % 90_000) + 1_000,
+              unlimited: false,
+              currency: "BRL",
+              moedaNaoSuportada: false,
+            }
+          : {
+              balanceCents: null,
+              unlimited: true,
+              currency: "BRL",
+              moedaNaoSuportada: false,
+            },
       ]),
     );
 
@@ -407,7 +456,9 @@ async function carregar(): Promise<{
            data não dá para saber se os 7 dias de gasto vieram de 7 dias
            ou de 2. Ver `calcularRitmo`. */
         .select("client_id, platform, spend_cents, metric_date")
-        .gte("metric_date", desdeISO),
+        .gte("metric_date", desdeISO)
+        // Sem o `.lte` a linha parcial de hoje entrava na janela.
+        .lte("metric_date", ateISO),
       supabase
         .from("client_integrations")
         .select("client_id, platform, funds_cents, funds_recorded_at")
@@ -436,25 +487,57 @@ async function carregar(): Promise<{
      aquela subtrairia só a última semana e inflaria o saldo. */
   const gastoDesdeRecarga = new Map<string, number>();
   if (fundos.size > 0) {
-    const maisAntiga = [...fundos.values()]
-      .map((f) => f.desde)
-      .sort()[0];
+    const maisAntiga = [...fundos.values()].map((f) => f.desde).sort()[0];
 
-    const { data: desdeRecarga } = await supabase
-      .from("daily_metrics")
-      .select("client_id, platform, spend_cents, metric_date")
-      .gt("metric_date", maisAntiga);
+    /* FILTRADA E PAGINADA, e isso não é otimização — é correção.
+       ---------------------------------------------------------------
+       `daily_metrics` é granular por CAMPANHA (`unique (client_id,
+       platform, metric_date, campaign_id)`, e a Meta é lida com
+       `level=campaign`), então são N linhas por conta POR DIA. A
+       consulta anterior era aberta: sem filtro de cliente, sem filtro de
+       plataforma, sem `order` e sem `range`, varrendo desde a recarga
+       mais antiga de TODA a carteira.
 
-    for (const m of desdeRecarga ?? []) {
-      const chave = `${m.client_id}:${m.platform}`;
-      const f = fundos.get(chave);
-      // `>` e não `>=`: o gasto do dia da recarga já estava refletido no
-      // número que a pessoa leu no painel.
-      if (!f || (m.metric_date as string) <= f.desde) continue;
-      gastoDesdeRecarga.set(
-        chave,
-        (gastoDesdeRecarga.get(chave) ?? 0) + (m.spend_cents as number),
-      );
+       `max_rows = 1000` está declarado em `supabase/config.toml`. Ao
+       bater no teto, o PostgREST corta em silêncio — e o gasto que não
+       veio simplesmente não é subtraído, então o saldo da Meta aparece
+       MAIOR do que é e a conta parece saudável já vazia. Sem `order`,
+       ainda por cima, quais linhas se perdem muda a cada carregamento.
+
+       Ordenação por `id` porque `metric_date` não é único: com chave
+       ambígua, o `range` pode repetir ou pular linha na virada da
+       página, e aqui isso vira gasto contado duas vezes ou nenhuma. */
+    const contas = [...fundos.keys()].map((k) => k.split(":"));
+    const idsComFundo = [...new Set(contas.map(([id]) => id))];
+    const plataformasComFundo = [...new Set(contas.map(([, p]) => p))];
+
+    const PAGINA = 1000;
+
+    for (let inicio = 0; ; inicio += PAGINA) {
+      const { data: pagina, error } = await supabase
+        .from("daily_metrics")
+        .select("client_id, platform, spend_cents, metric_date")
+        .in("client_id", idsComFundo)
+        .in("platform", plataformasComFundo)
+        .gt("metric_date", maisAntiga)
+        .order("id")
+        .range(inicio, inicio + PAGINA - 1);
+
+      if (error) throw error;
+
+      for (const m of pagina ?? []) {
+        const chave = `${m.client_id}:${m.platform}`;
+        const f = fundos.get(chave);
+        // `>` e não `>=`: o gasto do dia da recarga já estava refletido
+        // no número que a pessoa leu no painel.
+        if (!f || (m.metric_date as string) <= f.desde) continue;
+        gastoDesdeRecarga.set(
+          chave,
+          (gastoDesdeRecarga.get(chave) ?? 0) + (m.spend_cents as number),
+        );
+      }
+
+      if ((pagina?.length ?? 0) < PAGINA) break;
     }
   }
 

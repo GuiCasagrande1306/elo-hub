@@ -149,7 +149,14 @@ export function ConnectionsPanel({
                   era enfeite. */}
               <Icone className="hidden size-3.5 sm:block" />
               {rotulo}
-              <span className="tabular-nums opacity-60">{tamanhos[id]}</span>
+              {/* SEM `opacity`. Medido no chip inativo: com `opacity-60` o
+                  número caía para 2,97:1 no tema escuro contra os 5,53:1
+                  do rótulo ao lado — menos da metade do contraste da
+                  palavra que ele qualifica, e abaixo dos 4,5:1 que 12px
+                  exige. Justamente o número, que é a informação nova do
+                  chip. A hierarquia agora vem do peso da fonte, que não
+                  custa legibilidade. */}
+              <span className="font-normal tabular-nums">{tamanhos[id]}</span>
             </button>
           );
         })}

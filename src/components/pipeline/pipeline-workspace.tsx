@@ -36,12 +36,15 @@ export function PipelineWorkspace({
   pipeline,
   team,
   currentUserId,
+  ehAdmin,
   historyByClient,
   todayWeekday,
 }: {
   pipeline: PipelineClient[];
   team: Profile[];
   currentUserId: string;
+  /** Admin edita otimização de qualquer pessoa; colaborador, só a sua. */
+  ehAdmin: boolean;
   historyByClient: Record<string, OptimizationEntry[]>;
   /** Dia útil de hoje (1-5), ou null no fim de semana. */
   todayWeekday: number | null;
@@ -214,6 +217,9 @@ export function PipelineWorkspace({
       <OptimizationSheet
         client={aberta}
         history={aberta ? (historyByClient[aberta.id] ?? []) : []}
+        usuarioId={currentUserId}
+        ehAdmin={ehAdmin}
+        equipe={team}
         open={Boolean(aberta)}
         onOpenChange={(o) => {
           if (!o) setAberta(null);

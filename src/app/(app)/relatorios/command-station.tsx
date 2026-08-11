@@ -42,6 +42,8 @@ import { formatGoalValue, type GoalMetric } from "@/lib/metrics/goal-metric";
 
 export interface ClientSummary {
   id: string;
+  /** Identificador da conta na URL. O compositor resolve por ele. */
+  slug: string;
   name: string;
   spendCents: number;
   /** Já na unidade de `metric` — resolvido no servidor. */
@@ -217,7 +219,7 @@ export function CommandStation({ clients }: { clients: ClientSummary[] }) {
               render={
                 <Link
                   href={
-                    cliente ? `/relatorios/novo?cliente=${cliente.id}` : "#"
+                    cliente ? `/relatorios/novo?cliente=${cliente.slug}` : "#"
                   }
                 />
               }
