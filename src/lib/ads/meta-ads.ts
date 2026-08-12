@@ -422,6 +422,14 @@ export async function fetchAdInsights(
   since: string,
   until: string,
   conversionActionTypes: string[],
+  /**
+   * Teto de espera. O padrão de 25s serve à sincronização, que roda sem
+   * ninguém olhando. No caminho do RELATÓRIO ele é maior que o orçamento
+   * inteiro da rodada do cron (37s para todos os clientes do dia) — uma
+   * conta lenta comeria a vez das outras, e cliente adiado não tem
+   * repescagem. Quem chama de lá passa um valor curto.
+   */
+  timeoutMs = 25_000,
 ): Promise<Map<string, AdInsight>> {
   const accountId = externalAccountId.startsWith("act_")
     ? externalAccountId
@@ -445,7 +453,7 @@ export async function fetchAdInsights(
     const response = await fetch(url.toString(), {
       headers: { Authorization: `Bearer ${accessToken}` },
       cache: "no-store",
-      signal: AbortSignal.timeout(25_000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
 
     if (!response.ok) return mapa;

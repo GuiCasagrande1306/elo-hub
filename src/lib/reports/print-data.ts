@@ -1,6 +1,7 @@
 import "server-only";
 
 import { isDemoMode } from "@/lib/env";
+import { metricasDeCriativosNoPeriodo } from "./creative-insights";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   buildTrend,
@@ -80,6 +81,8 @@ export interface PrintReportData {
    */
   platformDetail: PlatformDetail[];
   creatives: AdCreative[];
+  /** Se os números da galeria foram apurados para o período. */
+  creativesDoPeriodo: boolean;
   /** Agregado por semana — o gráfico do resumo executivo. */
   weekly: { label: string; spend: number; results: number }[];
   totals: { spendCents: number; results: number };
@@ -103,18 +106,25 @@ export async function getPrintReportData(
 
     const prev = previousPeriod(periodStart, periodEnd);
 
-    return assemble(
-      client,
-      demoMetrics.filter((m) => inRange(m, periodStart, periodEnd)),
-      demoMetrics.filter((m) => inRange(m, prev.start, prev.end)),
-      demoCreatives
-        .filter((c) => c.client_id === clientId && c.is_active)
-        .sort((a, b) => b.spend_cents - a.spend_cents)
-        .slice(0, 6),
-      periodStart,
-      periodEnd,
-      await rotulosDoTemplate(client),
-    );
+    return {
+      ...assemble(
+        client,
+        demoMetrics.filter((m) => inRange(m, periodStart, periodEnd)),
+        demoMetrics.filter((m) => inRange(m, prev.start, prev.end)),
+        demoCreatives
+          .filter((c) => c.client_id === clientId && c.is_active)
+          .sort((a, b) => b.spend_cents - a.spend_cents)
+          .slice(0, 6),
+        periodStart,
+        periodEnd,
+        await rotulosDoTemplate(client),
+      ),
+      /* A demonstração não chama a Graph API — os números vêm da
+         fixture, que não tem janela. Marcar como "não apurado" faz a
+         tela exibir a mesma ressalva que a produção exibiria, o que é o
+         ponto de ter modo demo. */
+      creativesDoPeriodo: false,
+    };
   }
 
   const admin = createSupabaseAdminClient();
@@ -139,23 +149,81 @@ export async function getPrintReportData(
       .select("*")
       .eq("client_id", clientId)
       .eq("is_active", true)
+      /* Sem `limit(6)` aqui: o corte passou a acontecer depois de
+         aplicar as métricas do período, senão os seis escolhidos seriam
+         os que mais gastaram em OUTRA janela. Mesmo motivo de
+         `payload.ts` — as duas superfícies têm de concordar, e foi para
+         isso que `platform-detail` e `resolverTemplate` existem. */
       .order("spend_cents", { ascending: false })
-      .limit(6),
+      .limit(48),
   ]);
 
   if (!clientRes.data) return null;
 
   const client = clientRes.data as Client;
 
-  return assemble(
-    client,
-    (current.data ?? []) as DailyMetric[],
-    (previous.data ?? []) as DailyMetric[],
-    (creatives.data ?? []) as AdCreative[],
+  /* MESMA apuração do PDF. Sem isto a folha A4 — que é a fonte do motor
+     Puppeteer — mostraria os números da última sincronização enquanto o
+     react-pdf mostraria os do período: dois documentos, duas verdades,
+     para o mesmo cliente e o mesmo mês. */
+  const metricasDoPeriodo = await metricasDeCriativosNoPeriodo(
+    clientId,
     periodStart,
     periodEnd,
-    await rotulosDoTemplate(client),
   );
+
+  const criativos = aplicarMetricas(
+    (creatives.data ?? []) as AdCreative[],
+    metricasDoPeriodo,
+    6,
+  );
+
+  return {
+    ...assemble(
+      client,
+      (current.data ?? []) as DailyMetric[],
+      (previous.data ?? []) as DailyMetric[],
+      criativos,
+      periodStart,
+      periodEnd,
+      await rotulosDoTemplate(client),
+    ),
+    creativesDoPeriodo: metricasDoPeriodo !== null,
+  };
+}
+
+/**
+ * Aplica as métricas do período aos criativos e reordena.
+ *
+ * UMA função para as duas superfícies. O PDF (`payload.ts`) e a folha
+ * A4 faziam o corte em seis no banco, ordenados por `spend_cents` — a
+ * coluna com o gasto da ÚLTIMA sincronização. Números de uma janela em
+ * cards escolhidos por outra.
+ *
+ * `null` = não deu para apurar: mantém o que veio do banco, sem zerar.
+ */
+export function aplicarMetricas(
+  criativos: AdCreative[],
+  metricas: Map<string, { spendCents: number; conversions: number; impressions: number; clicks: number }> | null,
+  limite: number,
+): AdCreative[] {
+  if (!metricas) return criativos.slice(0, limite);
+
+  return [...criativos]
+    .map((ad) => {
+      const m = metricas.get(ad.external_ad_id);
+      /* Sem linha nos insights = não veiculou na janela. Zero aqui é
+         verdade, porque o mapa veio preenchido. */
+      return {
+        ...ad,
+        spend_cents: m?.spendCents ?? 0,
+        conversions: m?.conversions ?? 0,
+        impressions: m?.impressions ?? 0,
+        clicks: m?.clicks ?? 0,
+      };
+    })
+    .sort((a, b) => b.spend_cents - a.spend_cents)
+    .slice(0, limite);
 }
 
 function assemble(
@@ -166,7 +234,7 @@ function assemble(
   periodStart: string,
   periodEnd: string,
   rotulos: Partial<Record<MetricKey, string>> = {},
-): PrintReportData {
+): Omit<PrintReportData, "creativesDoPeriodo"> {
   const currentTotals = sumMetrics(current);
   const previousTotals = sumMetrics(previous);
 

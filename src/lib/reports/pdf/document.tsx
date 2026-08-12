@@ -259,6 +259,15 @@ const styles = StyleSheet.create({
     fontStyle: "italic",
     paddingVertical: 8,
   },
+  /* Ressalva sob o título da galeria. Compacta de propósito: a seção
+     com seis cartões já ocupa quase a folha inteira, e cada ponto
+     gasto aqui aproxima o corte do último cartão. */
+  ressalva: {
+    fontSize: 7.5,
+    color: INK_SOFT,
+    fontStyle: "italic",
+    marginBottom: 4,
+  },
 });
 
 export function ReportDocument({ payload }: { payload: ReportPayload }) {
@@ -368,6 +377,20 @@ export function ReportDocument({ payload }: { payload: ReportPayload }) {
           return (
             <View key={`${section.type}-${index}`} style={styles.section} wrap={false}>
               <Text style={styles.h2}>{section.title}</Text>
+
+              {/* RESSALVA SÓ QUANDO É EXCEÇÃO. Quando os números foram
+                  apurados para o período, nada é impresso — a seção já
+                  está no limite da folha e uma linha permanente
+                  agravaria o corte do último cartão. Aqui a linha só
+                  aparece quando o documento estaria mentindo sem ela:
+                  a apuração falhou e os valores são da última
+                  sincronização, não do período da capa. */}
+              {section.type === "ad_gallery" && !payload.creativesDoPeriodo && (
+                <Text style={styles.ressalva}>
+                  Desempenho da última sincronização — não foi possível
+                  apurar estes anúncios no período do relatório.
+                </Text>
+              )}
               {/* Gráficos usam a cor da marca DO CLIENTE, não o acento da
                   agência: o documento é lido por ele, e o neon do template
                   tem contraste ruim sobre papel branco. O acento fica

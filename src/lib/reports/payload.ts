@@ -11,6 +11,8 @@ import {
   type TrendPoint,
 } from "@/lib/metrics/kpi";
 import { sessionSource, type ReportSource } from "./source";
+import { metricasDeCriativosNoPeriodo } from "./creative-insights";
+import { aplicarMetricas } from "./print-data";
 import { isDemoMode } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
@@ -96,6 +98,15 @@ export interface ReportPayload {
     logoUrl: string | null;
     website: string | null;
   };
+  /**
+   * Se os números da galeria foram apurados PARA O PERÍODO do relatório.
+   *
+   * `false` quando a consulta à Meta não pôde ser feita: os valores
+   * então vêm da última sincronização, e o documento precisa dizer isso.
+   * Sem essa marca, número de outra janela sai sob o cabeçalho do
+   * período como se fosse dele.
+   */
+  creativesDoPeriodo: boolean;
   kpis: KpiResult[];
   trend: TrendPoint[];
   platforms: PlatformSplit[];
@@ -158,10 +169,27 @@ export async function buildReportPayload(options: {
   const gallery = template.sections.find((s) => s.type === "ad_gallery");
   const creativeLimit = Number(gallery?.options?.limit ?? 6);
 
-  const [metrics, creatives] = await Promise.all([
+  /* PEDE MAIS DO QUE VAI MOSTRAR, de propósito. O corte em 6 acontecia
+     no banco, ordenado por `spend_cents` — a coluna que guarda o gasto
+     da ÚLTIMA sincronização, não o do período do relatório. Com isso a
+     galeria mostrava "os 6 que mais gastaram" segundo outra janela: os
+     números errados vinham em cards errados. Buscando um conjunto maior
+     dá para reordenar aqui, depois de aplicar as métricas certas. */
+  const [metrics, candidatos, metricasDoPeriodo] = await Promise.all([
     source.metrics(client.id, periodStart, periodEnd),
-    source.creatives(client.id, creativeLimit),
+    source.creatives(client.id, Math.max(creativeLimit * 8, 48)),
+    metricasDeCriativosNoPeriodo(client.id, periodStart, periodEnd),
   ]);
+
+  /* `null` = não deu para apurar (conta sem Meta, token vencido, rede).
+     Nesse caso NÃO zeramos nada: ficam os números do banco, e o
+     documento diz de que janela eles são. Zerar seria reproduzir o
+     defeito que este caminho conserta. */
+  /* MESMA função que a folha A4 usa. Duas cópias da regra divergiriam
+     no primeiro ajuste, e o cliente receberia um PDF discordando da
+     folha que a equipe revisou — foi para evitar isso que
+     `platform-detail` e `resolverTemplate` já existem. */
+  const creatives = aplicarMetricas(candidatos, metricasDoPeriodo, creativeLimit);
 
   /* O template define QUAIS KPIs aparecem, em que ordem e COMO SE
      CHAMAM. O rótulo é do template, não da métrica: o mesmo
@@ -196,6 +224,7 @@ export async function buildReportPayload(options: {
       logoUrl: client.logo_url,
       website: client.website,
     },
+    creativesDoPeriodo: metricasDoPeriodo !== null,
     kpis,
     trend: buildTrend(metrics.current),
     platforms: splitByPlatform(metrics.current),

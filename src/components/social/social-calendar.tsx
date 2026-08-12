@@ -156,13 +156,24 @@ export function SocialCalendar({
       </header>
 
       {/* ------------------------ Grade (desktop) ---------------------
-          `xl` e não `lg`. Em 1024px cada uma das sete células fica com
-          ~89px úteis, e o conteúdo fixo do chip — bolinha, hora, dois
-          glifos de rede e três vãos — come ~81px deles. Sobravam 8px
-          para o título, que é o único item flexível: na prática a peça
-          aparecia SEM NOME na grade. De 1024 a 1279 vale a agenda em
-          lista, que mostra tudo. */}
-      <div className="surface-card hidden overflow-hidden xl:block">
+          `lg`, e o caminho até aqui vale registrar porque eu errei duas
+          vezes.
+
+          A grade já esteve em `xl` (1280px) com esta justificativa: a
+          1024px sobrariam 8px para o título e a peça apareceria sem
+          nome. A medida estava certa QUANDO foi feita — e envelheceu,
+          porque depois disso a hora passou a sumir abaixo de 1536px e
+          aqueles 31px voltaram para o título. Medido de novo a 1024:
+          célula de 100px, título de 29px. Melhor, ainda inútil.
+
+          O que destravou foi esconder os glifos de rede abaixo de 1280:
+          o título vai a 69px, treze caracteres, o bastante para
+          distinguir "Carrossel — …" de "Reels — …".
+
+          `md` foi testado e recusado: a 768px a célula cai para 66px e o
+          título para 35px, seis caracteres. Abaixo de `lg` vale a
+          agenda em lista, que mostra tudo. */}
+      <div className="surface-card hidden overflow-hidden lg:block">
         <div className="grid grid-cols-7 border-b border-hairline">
           {DIAS_SEMANA.map((d) => (
             <span
@@ -270,7 +281,7 @@ export function SocialCalendar({
       </div>
 
       {/* ------------------------ Agenda (celular) -------------------- */}
-      <div className="flex flex-col gap-3 xl:hidden">
+      <div className="flex flex-col gap-3 lg:hidden">
         {comPeca.length === 0 ? (
           <p className="surface-card p-6 text-center text-sm text-muted-foreground">
             Nenhuma peça agendada em {MESES[mes]}.
@@ -458,11 +469,22 @@ function ChipDoPost({
         {horaDoPost(post.scheduled_at)}
       </span>
       <span className="min-w-0 flex-1 truncate">{post.title}</span>
-      <NetworkRow
-        networks={post.targets.map((t) => t.network)}
-        max={2}
-        colorida={situacao !== "arquivado"}
-      />
+      {/* GLIFOS DE REDE SÓ A PARTIR DE 1280px. Medido em 1024: a célula
+          dá 100px, o chip 87, e os dois glifos comem 36 — sobravam 29px
+          para o título, cinco caracteres, o suficiente para "Carro…".
+          Sem eles o título vai a ~65px.
+
+          A rede não se perde: aparece ao abrir a peça, e na fila e na
+          agenda, que é onde se compara destino. O que a grade responde é
+          "o que sai neste dia" — e para isso o nome vale mais que o
+          ícone. */}
+      <span className="hidden xl:contents">
+        <NetworkRow
+          networks={post.targets.map((t) => t.network)}
+          max={2}
+          colorida={situacao !== "arquivado"}
+        />
+      </span>
     </button>
   );
 }

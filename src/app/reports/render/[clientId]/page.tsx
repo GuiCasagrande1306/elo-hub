@@ -89,8 +89,16 @@ export default async function PrintReportPage({
   const data = await getPrintReportData(clientId, periodStart, periodEnd);
   if (!data) notFound();
 
-  const { client, kpis, platforms, platformDetail, creatives, weekly, totals } =
-    data;
+  const {
+    client,
+    kpis,
+    platforms,
+    platformDetail,
+    creatives,
+    weekly,
+    totals,
+    creativesDoPeriodo,
+  } = data;
   const agency = await resolverAgencia(client.agency_partner);
 
   /* Fallback NEUTRO, não o navy da Elo que estava aqui: sem cor do
@@ -430,13 +438,22 @@ export default async function PrintReportPage({
           <h2 className="mt-8 text-[26px] font-bold tracking-[-0.025em]">
             Anúncios que rodaram
           </h2>
+          {/* A frase anterior afirmava "criativos ativos NO PERÍODO, com o
+              desempenho individual de cada um" — e os números vinham da
+              última sincronização, não do período da capa. O texto agora
+              descreve o que é: anúncios NO AR, cujo desempenho é apurado
+              para a janela do relatório. A diferença importa porque a
+              seleção continua sendo por status atual, então um anúncio
+              que rodou no período e já foi pausado não aparece aqui. */}
           <p className="mt-1 text-[12px] text-[#64707d]">
-            Criativos ativos no período, com o desempenho individual de cada um.
+            {creativesDoPeriodo
+              ? "Anúncios no ar, com o desempenho de cada um apurado no período deste relatório."
+              : "Anúncios no ar, com o desempenho da última sincronização — não foi possível apurar estes anúncios no período deste relatório."}
           </p>
 
           {creatives.length === 0 ? (
             <p className="mt-10 rounded-xl border border-dashed border-[#d8dce2] py-14 text-center text-[12px] text-[#8b95a1]">
-              Nenhum criativo sincronizado neste período.
+              Nenhum anúncio no ar sincronizado para esta conta.
             </p>
           ) : (
             <div className="mt-6 grid grid-cols-3 gap-3">

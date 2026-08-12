@@ -405,11 +405,17 @@ async function syncCreatives(
       .eq("client_id", integration.client_id)
       .eq("platform", "meta_ads");
 
-    const periodo = rows.length
-      ? {
-          start: rows[0].metricDate,
-          end: rows[rows.length - 1].metricDate,
-        }
+    /* A MESMA `janela` que foi pedida à API, não as pontas do array cru.
+       Vinte linhas acima o comentário explica que as linhas vêm
+       agrupadas por campanha e não por data — e este trecho repetia
+       justamente o erro descrito, gravando um período possivelmente
+       invertido ou arbitrário.
+
+       Importa porque estas colunas dizem A QUE JANELA os números do
+       criativo se referem. Com elas erradas, qualquer tela que as
+       exiba mente com cara de precisão, que é pior que não dizer nada. */
+    const periodo = janela
+      ? { start: janela.since, end: janela.until }
       : { start: null, end: null };
 
     await admin.from("ad_creatives").upsert(
