@@ -17,7 +17,7 @@ import {
 } from "@/lib/data";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { mesCorrente, proximoMes, rotuloMes } from "@/lib/finance/recurrence";
-import { ehTerceirizado } from "@/lib/validation/client";
+import { agenciaPropriaDe, ehTerceirizado } from "@/lib/validation/client";
 import { formatCurrency } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Recorrência" };
@@ -68,8 +68,9 @@ export default async function RecorrenciaPage() {
   /* A carteira se parte em dois: quem a Elo fatura e quem a agência
      paga. `ehTerceirizado` é a mesma função que o job usa — a lista e o
      mês emitido não têm como divergir. */
-  const diretos = ativos.filter((c) => !ehTerceirizado(c));
-  const terceirizados = ativos.filter(ehTerceirizado);
+  const propria = agenciaPropriaDe(agencies);
+  const diretos = ativos.filter((c) => !ehTerceirizado(c, propria));
+  const terceirizados = ativos.filter((c) => ehTerceirizado(c, propria));
 
   /* Toda agência que aparece na carteira, tenha contrato cadastrado ou
      não: a que não tem é justamente a que precisa aparecer, porque os

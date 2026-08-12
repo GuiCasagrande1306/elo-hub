@@ -2,7 +2,7 @@ import "server-only";
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { mesCorrenteBR } from "@/lib/date-br";
-import { ehTerceirizado } from "@/lib/validation/client";
+import { agenciaPropriaDe, ehTerceirizado } from "@/lib/validation/client";
 import type {
   AgencyContract,
   Client,
@@ -153,6 +153,21 @@ export function planejarMes(
   const linhas: LinhaPrevista[] = [];
   const pulados: Pulado[] = [];
 
+  /* Quem é a agência da casa vem do cadastro, não de um literal. */
+  const agenciaPropria = agenciaPropriaDe(agencias);
+
+  /* SEM PRÓPRIA MARCADA o plano ainda sai — `ehTerceirizado` devolve
+     falso e todo mundo é faturado direto —, mas o mês precisa DIZER
+     isso. Silêncio aqui viraria cobrança duplicada dos terceirizados,
+     descoberta só quando o cliente reclamasse. */
+  if (!agenciaPropria) {
+    pulados.push({
+      quem: "Cadastro de agências",
+      motivo:
+        "nenhuma agência está marcada como própria — todos os clientes foram tratados como faturamento direto",
+    });
+  }
+
   /* Quantos clientes ativos cada agência cobre. Não é estatística: é o
      que transforma "Bagano sem honorário" em "Bagano sem honorário, 11
      clientes sem cobrança" — a diferença entre um aviso e um alarme. */
@@ -169,13 +184,14 @@ export function planejarMes(
        valor só que cobre todos os clientes dela, e cobrar os dois lados
        seria faturar a mesma operação duas vezes.
 
-       O teste é contra `AGENCIA_PROPRIA` e não contra a existência de
+       O teste é contra a agência PRÓPRIA do cadastro, e não contra a
+       existência de
        contrato: agência recém-criada, ainda sem linha em
        `agency_contracts`, precisa cair aqui do mesmo jeito — e vai
        aparecer logo abaixo em `pulados`, com o número de clientes que
        ficaram sem cobrança. Amarrar o desvio ao contrato faria a agência
        nova faturar cliente a cliente sem ninguém perceber. */
-    if (ehTerceirizado(cliente)) {
+    if (ehTerceirizado(cliente, agenciaPropria)) {
       const agencia = cliente.agency_partner;
       cobertos.set(agencia, (cobertos.get(agencia) ?? 0) + 1);
       continue;

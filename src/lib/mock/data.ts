@@ -270,6 +270,16 @@ export const demoClientFinancials: ClientFinancials[] = [
    reservado para agência com cliente ativo e sem honorário, que é
    receita sumindo. */
 export const demoAgencyContracts: AgencyContract[] = [
+  /* A PRÓPRIA precisa existir aqui: sem ela `agenciaPropriaDe` devolve
+     null, todo cliente vira faturamento direto e a demo mostraria um MRR
+     que a produção não tem. */
+  {
+    agency: "Elo Marketing",
+    monthly_fee_cents: 0,
+    billing_day: null,
+    notes: null,
+    is_own: true,
+  },
   {
     agency: "Bagano",
     monthly_fee_cents: 1_200_000,

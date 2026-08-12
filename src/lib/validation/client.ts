@@ -52,12 +52,21 @@ export const AGENCY_PARTNERS = [
 export type AgencyPartner = (typeof AGENCY_PARTNERS)[number];
 
 /**
- * Conta própria da Elo — cliente que a agência atende e FATURA direto.
+ * Nome da agência PRÓPRIA, tirado do cadastro.
  *
- * Os demais são terceirizados: quem paga é a agência parceira, um valor
- * só, e o cliente não gera cobrança individual.
+ * Substitui a constante `AGENCIA_PROPRIA`, que era o literal
+ * "Elo Marketing" no código. Com o cadastro de agências, renomear a
+ * conta própria pela tela passaria a mentir para a régua de faturamento:
+ * os clientes dela virariam terceirizados de um dia para o outro e
+ * sairiam da cobrança individual, sem nada apontando a mudança.
+ *
+ * `null` quando ninguém está marcado — ver `ehTerceirizado`.
  */
-export const AGENCIA_PROPRIA: AgencyPartner = "Elo Marketing";
+export function agenciaPropriaDe(
+  agencias: { agency: string; is_own?: boolean }[],
+): string | null {
+  return agencias.find((a) => a.is_own)?.agency ?? null;
+}
 
 /**
  * Cliente atendido por agência parceira — NÃO gera cobrança própria.
@@ -69,9 +78,27 @@ export const AGENCIA_PROPRIA: AgencyPartner = "Elo Marketing";
  * trocasse de agência — a lista mostraria 27 contratos e o mês sairia
  * com 26, sem nada apontando a diferença.
  */
-export function ehTerceirizado(cliente: { agency_partner: string }): boolean {
-  return Boolean(cliente.agency_partner) &&
-    cliente.agency_partner !== AGENCIA_PROPRIA;
+export function ehTerceirizado(
+  cliente: { agency_partner: string },
+  /** Nome da agência própria. Ver `agenciaPropriaDe`. */
+  agenciaPropria: string | null,
+): boolean {
+  /* SEM AGÊNCIA PRÓPRIA DEFINIDA, NINGUÉM É TERCEIRIZADO.
+     ------------------------------------------------------------------
+     A alternativa — tratar todos como terceirizados — faria o motor de
+     recorrência não gerar cobrança nenhuma, e a receita do mês
+     desapareceria em silêncio. Aqui o erro é para o lado de faturar:
+     cobrança a mais aparece na tela e alguém cancela; cobrança a menos
+     só é notada quando o dinheiro não entra.
+
+     Esse estado não deveria acontecer: a migration 39 semeia a própria e
+     tem índice único garantindo no máximo uma. Quem chama mesmo assim
+     precisa saber — o motor registra em `pulados`. */
+  if (!agenciaPropria) return false;
+
+  return (
+    Boolean(cliente.agency_partner) && cliente.agency_partner !== agenciaPropria
+  );
 }
 
 export const CLIENT_SEGMENTS = [
@@ -199,7 +226,12 @@ export type NewClientValues = z.infer<typeof newClientSchema>;
 export const newClientDefaults: NewClientValues = {
   name: "",
   segment: "ecommerce",
-  agencyPartner: "Elo Marketing",
+  /* VAZIO, não um nome fixo. A lista de agências virou cadastro: um
+     literal aqui abriria o formulário apontando para uma agência que
+     pode ter sido renomeada ou removida, e o seletor mostraria um valor
+     que não está entre as opções. Quem monta o formulário preenche com
+     a primeira do cadastro — ver `new-client-sheet`. */
+  agencyPartner: "",
   status: "onboarding",
   optimizationDay: "",
   contactName: "",

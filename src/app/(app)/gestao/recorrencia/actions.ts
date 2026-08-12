@@ -5,7 +5,7 @@ import { z } from "zod";
 
 import { isDemoMode } from "@/lib/env";
 import { createSupabaseServerClient, getCurrentUser } from "@/lib/supabase/server";
-import { AGENCIA_PROPRIA } from "@/lib/validation/client";
+
 import { materializarMes, isMesValido } from "@/lib/finance/recurrence";
 import type { ResultadoMaterializacao } from "@/lib/finance/recurrence";
 
@@ -129,13 +129,28 @@ export async function salvarContratoDeAgencia(input: {
 
   const { agency, monthlyFeeCents, billingDay } = parsed.data;
 
-  /* A Elo não cobra de si mesma. O formulário nem oferece essa linha,
-     mas a ação é pública para qualquer sessão de admin. */
-  if (agency === AGENCIA_PROPRIA) {
-    return {
-      ok: false,
-      error: "Cliente da Elo é cobrado direto, não por contrato de agência.",
-    };
+  /* A agência PRÓPRIA não cobra de si mesma. Quem é a própria vem do
+     cadastro (`is_own`), não de um nome fixo: com a tela de Agências,
+     renomear a conta da casa faria a comparação por literal parar de
+     bater e liberaria um contrato que não deveria existir.
+
+     A checagem é no banco porque esta ação é pública para qualquer
+     sessão de admin — o formulário nem oferece essa linha. */
+  if (!isDemoMode) {
+    const checagem = await createSupabaseServerClient();
+    const { data: propria } = await checagem
+      .from("agency_contracts")
+      .select("agency")
+      .eq("is_own", true)
+      .maybeSingle();
+
+    if (propria?.agency === agency) {
+      return {
+        ok: false,
+        error:
+          "Cliente da agência própria é cobrado direto, não por contrato de agência.",
+      };
+    }
   }
 
   if (isDemoMode) {

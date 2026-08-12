@@ -755,7 +755,12 @@ export async function getAgencyContracts(): Promise<AgencyContract[]> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("agency_contracts")
-    .select("agency, monthly_fee_cents, billing_day, notes")
+    /* `*` e não a lista de colunas: `is_own` decide quem é a agência da
+       casa na régua de faturamento, e uma seleção explícita esquecida
+       faria a própria sair nula — todo cliente terceirizado passaria a
+       ser faturado direto, em silêncio. Com `*`, coluna nova entra
+       sozinha. */
+    .select("*")
     .order("agency");
 
   lancarSeSchemaPendente(error);

@@ -75,7 +75,11 @@ export function NewClientSheet({ agencias }: { agencias: string[] }) {
   // lib/validation/client.ts), então um genérico basta.
   const form = useForm<NewClientValues>({
     resolver: zodResolver(newClientSchema),
-    defaultValues: newClientDefaults,
+    /* A agência inicial sai do CADASTRO, não de um literal: o padrão do
+       schema é vazio de propósito. `agencias[0]` é a própria, porque
+       `getAgencies` ordena com ela na frente — e é ela a escolha mais
+       frequente ao cadastrar cliente novo. */
+    defaultValues: { ...newClientDefaults, agencyPartner: agencias[0] ?? "" },
     // Valida ao sair do campo, não a cada tecla: erro aparecendo na
     // segunda letra do nome é hostil.
     mode: "onBlur",
@@ -100,7 +104,7 @@ export function NewClientSheet({ agencias }: { agencias: string[] }) {
      deixaria para trás — e o arquivo do cliente anterior subiria para o
      próximo cadastro. Os dois caminhos de limpeza passam por aqui. */
   function limparFormulario() {
-    form.reset(newClientDefaults);
+    form.reset({ ...newClientDefaults, agencyPartner: agencias[0] ?? "" });
     escolherLogo(undefined);
   }
 

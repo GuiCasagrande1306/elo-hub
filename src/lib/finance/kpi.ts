@@ -1,5 +1,5 @@
 import { dataNoBrasil } from "@/lib/date-br";
-import { ehTerceirizado } from "@/lib/validation/client";
+import { agenciaPropriaDe, ehTerceirizado } from "@/lib/validation/client";
 import type {
   AgencyContract,
   Client,
@@ -80,9 +80,11 @@ export function buildFinanceSnapshot(
      de uma coluna em `clients`, que hoje é legível por toda a equipe.
      Indexado por client_id para não custar O(n²) na soma. */
   fees: Map<string, number>,
-  /* Honorário das agências parceiras. Lista e não `Map` porque a soma
-     não olha o nome — só precisa dos valores. */
-  agencias: Pick<AgencyContract, "monthly_fee_cents">[],
+  /* Honorário das agências parceiras. Passou a carregar `agency` e
+     `is_own` além do valor: a soma continua olhando só os valores, mas
+     é daqui que sai QUEM é a agência própria — antes um literal no
+     código, agora dado do cadastro. */
+  agencias: Pick<AgencyContract, "monthly_fee_cents" | "agency" | "is_own">[],
   today = todayISO(),
 ): FinanceSnapshot {
   let paidIncome = 0;
@@ -120,7 +122,8 @@ export function buildFinanceSnapshot(
      direto, e somá-lo contaria a mesma receita duas vezes — uma na linha
      dele, outra no contrato da agência. */
   const ativos = clients.filter((c) => c.status === "active");
-  const diretos = ativos.filter((c) => !ehTerceirizado(c));
+  const propria = agenciaPropriaDe(agencias);
+  const diretos = ativos.filter((c) => !ehTerceirizado(c, propria));
 
   const mrrClientes = diretos.reduce(
     (acc, c) => acc + (fees.get(c.id) ?? 0),
