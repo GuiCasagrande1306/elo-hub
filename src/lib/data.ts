@@ -538,8 +538,12 @@ export interface ReportSetupRow {
   brandPrimary: string | null;
   /** Telefone ou JID de grupo. `null` = sem destino cadastrado. */
   whatsappPhone: string | null;
-  /** Dia do mês do envio automático, 1–28. */
+  /** Dia do mês do envio automático, 1–28. Só na cadência mensal. */
   reportDay: number | null;
+  /** 'monthly' (dia do mês) ou 'weekly' (dia da semana). */
+  reportFrequency: "monthly" | "weekly";
+  /** 0=domingo a 6=sábado. Só na cadência semanal. */
+  reportWeekday: number | null;
   reportEnabled: boolean;
 }
 
@@ -567,6 +571,10 @@ export async function getReportSetup(): Promise<ReportSetupRow[]> {
       brandPrimary: c.brand_primary,
       whatsappPhone: c.whatsapp_phone,
       reportDay: c.report_day,
+      /* Linha anterior à migration 40 não tem a coluna: cai em mensal,
+         que é o default do banco e o que ela sempre foi. */
+      reportFrequency: c.report_frequency === "weekly" ? "weekly" : "monthly",
+      reportWeekday: c.report_weekday ?? null,
       reportEnabled: c.report_enabled,
     }));
 }

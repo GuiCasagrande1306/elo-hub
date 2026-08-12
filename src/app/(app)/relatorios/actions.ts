@@ -317,6 +317,11 @@ const agendaSchema = z.object({
   /* `null` = sem envio recorrente. 28 é o teto pelo mesmo motivo do
      banco e do faturamento: fevereiro existe, e dia 30 nunca chegaria. */
   reportDay: z.number().int().min(1).max(28).nullable(),
+  /* Cadência do envio. 'weekly' usa `reportWeekday` e janela de 7 dias;
+     'monthly' usa `reportDay` e janela de 30. */
+  frequency: z.enum(["monthly", "weekly"]),
+  /** 0=domingo a 6=sábado, como `Date.getDay()`. */
+  reportWeekday: z.number().int().min(0).max(6).nullable(),
   enabled: z.boolean(),
   /* Telefone OU JID de grupo (`...@g.us`). Vazio limpa o destino. */
   whatsapp: z.string().trim().max(120),
@@ -339,6 +344,8 @@ const agendaSchema = z.object({
 export async function salvarAgendaDeRelatorio(input: {
   clientId: string;
   reportDay: number | null;
+  frequency: "monthly" | "weekly";
+  reportWeekday: number | null;
   enabled: boolean;
   whatsapp: string;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -353,16 +360,23 @@ export async function salvarAgendaDeRelatorio(input: {
     };
   }
 
-  const { clientId, reportDay, enabled, whatsapp } = parsed.data;
+  const { clientId, reportDay, frequency, reportWeekday, enabled, whatsapp } =
+    parsed.data;
+
+  const semQuando =
+    frequency === "weekly" ? reportWeekday === null : reportDay === null;
 
   /* LIGADO SEM DIA NUNCA DISPARA. O job procura `report_day = <dia de
      hoje>`, então um cliente marcado como ativo e sem dia fica para
      sempre em silêncio, parecendo configurado. Recusar aqui é o que
      impede a tela de mostrar "pronto" para quem não está. */
-  if (enabled && reportDay === null) {
+  if (enabled && semQuando) {
     return {
       ok: false,
-      error: "Escolha o dia do envio antes de ligar o automático.",
+      error:
+        frequency === "weekly"
+          ? "Escolha o dia da semana antes de ligar o automático."
+          : "Escolha o dia do envio antes de ligar o automático.",
     };
   }
 
@@ -378,6 +392,8 @@ export async function salvarAgendaDeRelatorio(input: {
     const alvo = demoClients.find((c) => c.id === clientId);
     if (alvo) {
       alvo.report_day = reportDay;
+      alvo.report_frequency = frequency;
+      alvo.report_weekday = reportWeekday;
       alvo.report_enabled = enabled;
       alvo.whatsapp_phone = whatsapp || null;
     }
@@ -386,14 +402,50 @@ export async function salvarAgendaDeRelatorio(input: {
   }
 
   const supabase = await createSupabaseServerClient();
-  const { error } = await supabase
+
+  /* A coluna da OUTRA cadência vai a null: deixar o valor antigo
+     guardado faria a linha parecer agendada duas vezes para quem lesse o
+     banco, e a constraint permite os dois preenchidos. */
+  const completo = {
+    report_day: frequency === "monthly" ? reportDay : null,
+    report_frequency: frequency,
+    report_weekday: frequency === "weekly" ? reportWeekday : null,
+    report_enabled: enabled,
+    whatsapp_phone: whatsapp || null,
+  };
+
+  let { error } = await supabase
     .from("clients")
-    .update({
-      report_day: reportDay,
-      report_enabled: enabled,
-      whatsapp_phone: whatsapp || null,
-    })
+    .update(completo)
     .eq("id", clientId);
+
+  /* 42703 = coluna inexistente. Acontece entre o deploy e a migration 40:
+     sem este caminho, gravar a agenda falharia para TODO mundo, inclusive
+     os mensais que já funcionavam — uma tela que funcionava pararia por
+     causa de um recurso novo que ninguém ainda usa.
+
+     Repete sem os campos novos e avisa quem escolheu semanal, em vez de
+     dizer "salvo" para um agendamento que não existe no banco. */
+  if (error?.code === "42703") {
+    const retorno = await supabase
+      .from("clients")
+      .update({
+        report_day: reportDay,
+        report_enabled: enabled,
+        whatsapp_phone: whatsapp || null,
+      })
+      .eq("id", clientId);
+
+    error = retorno.error;
+
+    if (!error && frequency === "weekly") {
+      return {
+        ok: false,
+        error:
+          "O envio semanal ainda não está disponível neste banco. O destino foi salvo; rode a migration 40 para liberar a cadência semanal.",
+      };
+    }
+  }
 
   if (error) {
     return {

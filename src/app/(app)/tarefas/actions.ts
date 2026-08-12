@@ -356,14 +356,19 @@ export async function createTask(input: {
     .single();
 
   if (error) {
-    /* 42501 = recusa de policy. Sem esta tradução chega à tela o texto
-       cru do Postgres — "new row violates row-level security policy for
-       table tasks" —, que não diz a quem pedir nem o que fazer. */
+    /* 42501 = recusa de policy. A tradução diz o que fazer, mas PRESERVA
+       qual tabela recusou: sem isso, o relato vira "não deixa criar" e
+       não dá para distinguir a policy de `tasks` da de `task_assignees`
+       — que é exatamente a informação que resolve o caso. A frase crua do
+       Postgres nomeia a tabela; guardá-la entre parênteses custa nada e
+       poupa uma rodada inteira de investigação. */
     if (error.code === "42501") {
+      const tabela = /table "([^"]+)"/.exec(error.message)?.[1];
       return {
         ok: false,
         error:
-          "Sem permissão para criar tarefa nesta conta. Se isso não faz sentido, avise um administrador.",
+          "Sem permissão para criar tarefa nesta conta. Avise um administrador" +
+          (tabela ? ` — a regra que recusou é a da tabela "${tabela}".` : "."),
       };
     }
     return { ok: false, error: error.message };

@@ -101,7 +101,18 @@ export async function dispatchScheduledReports(options?: {
 
   const ontem = new Date(`${hoje}T12:00:00Z`);
   ontem.setUTCDate(ontem.getUTCDate() - 1);
-  const periodo = janelaAte(ontem.toISOString().slice(0, 10), 30);
+  const ontemISO = ontem.toISOString().slice(0, 10);
+
+  /* UMA JANELA POR CADÊNCIA. O mensal continua em 30 dias; o semanal
+     cobre 7. Manter os 30 para quem recebe toda sexta produziria quatro
+     relatórios quase idênticos por mês — mesmos números, mesmas
+     campanhas, variando só as pontas. O `periodo` de topo permanece o
+     mensal porque é ele que rotula a rodada no relatório de execução. */
+  const periodo = janelaAte(ontemISO, 30);
+  const janelaSemanal = janelaAte(ontemISO, 7);
+
+  const janelaDe = (c: Client) =>
+    (c.report_frequency ?? "monthly") === "weekly" ? janelaSemanal : periodo;
 
   const base: RelatorioDeDisparo = {
     executadoEm: new Date().toISOString(),
@@ -114,7 +125,12 @@ export async function dispatchScheduledReports(options?: {
     adiados: [],
   };
 
-  const clientes = await clientesDoDia(diaDoMes);
+  /* `getUTCDay()` sobre o meio-dia UTC da data brasileira: o meio-dia
+     evita que o deslocamento de fuso jogue a data para o dia anterior ou
+     seguinte, que é o mesmo cuidado das outras contas de data aqui. */
+  const diaDaSemana = new Date(`${hoje}T12:00:00Z`).getUTCDay();
+
+  const clientes = await clientesDoDia(diaDoMes, diaDaSemana);
   base.agendados = clientes.length;
 
   /* Custo do pior relatório JÁ MEDIDO nesta rodada.
@@ -148,10 +164,13 @@ export async function dispatchScheduledReports(options?: {
 
     const antes = Date.now();
 
+    // A janela é a da CADÊNCIA deste cliente, não a da rodada.
+    const janela = janelaDe(cliente);
+
     const resultado = await generateAndDeliverReport({
       clientSlug: cliente.slug,
-      periodStart: periodo.start,
-      periodEnd: periodo.end,
+      periodStart: janela.start,
+      periodEnd: janela.end,
       // Gera e ARQUIVA. O envio é manual, por uma pessoa, pelo
       // WhatsApp dela — ver `sendReportFromUser`.
       deliver: "none",
@@ -192,22 +211,87 @@ export async function dispatchScheduledReports(options?: {
 }
 
 /** Clientes com envio automático ligado para este dia do mês. */
-async function clientesDoDia(dia: number): Promise<Client[]> {
+/**
+ * Quem recebe hoje: os mensais do dia do mês E os semanais deste dia da
+ * semana.
+ *
+ * DUAS CONSULTAS, não um `or` — o PostgREST monta `or` como texto e uma
+ * expressão com dois pares de condições fica ilegível e frágil. Duas
+ * consultas com índice cada, unidas em memória, custam o mesmo e dizem o
+ * que fazem.
+ *
+ * Cliente sem `report_frequency` (linha anterior à migration 40) é
+ * tratado como mensal, que é o default da coluna — o `is` cobre o nulo
+ * junto do valor explícito, senão a carteira inteira sumiria da agenda
+ * entre o deploy e a migration.
+ */
+async function clientesDoDia(
+  diaDoMes: number,
+  diaDaSemana: number,
+): Promise<Client[]> {
+  const ehMensal = (c: Client) => (c.report_frequency ?? "monthly") === "monthly";
+
   if (isDemoMode) {
     const { demoClients } = await import("@/lib/mock/data");
     return demoClients.filter(
-      (c) => c.report_enabled && c.report_day === dia,
+      (c) =>
+        c.report_enabled &&
+        (ehMensal(c)
+          ? c.report_day === diaDoMes
+          : c.report_weekday === diaDaSemana),
     );
   }
 
-  const { data, error } = await createSupabaseAdminClient()
+  const admin = createSupabaseAdminClient();
+
+  const mensais = await admin
     .from("clients")
     .select("*")
     .eq("report_enabled", true)
-    .eq("report_day", dia)
-    .eq("status", "active")
-    .order("name");
+    .eq("report_day", diaDoMes)
+    .eq("status", "active");
 
-  if (error) throw error;
-  return (data ?? []) as Client[];
+  /* 42703 = a coluna ainda não existe (deploy antes da migration 40).
+     Nesse estado toda conta é mensal por definição, então a consulta sem
+     o filtro de frequência JÁ é a resposta certa — e insistir nela
+     derrubaria a rodada inteira do cron por um recurso que ninguém
+     conseguiu configurar ainda. */
+  if (mensais.error) {
+    if (mensais.error.code === "42703") {
+      const semColuna = await admin
+        .from("clients")
+        .select("*")
+        .eq("report_enabled", true)
+        .eq("report_day", diaDoMes)
+        .eq("status", "active")
+        .order("name");
+
+      if (semColuna.error) throw semColuna.error;
+      return (semColuna.data ?? []) as Client[];
+    }
+    throw mensais.error;
+  }
+
+  const semanais = await admin
+    .from("clients")
+    .select("*")
+    .eq("report_enabled", true)
+    .eq("report_weekday", diaDaSemana)
+    .eq("report_frequency", "weekly")
+    .eq("status", "active");
+
+  if (semanais.error && semanais.error.code !== "42703") throw semanais.error;
+
+  /* O filtro de mensal exclui os semanais em MEMÓRIA: com a coluna
+     recém-criada e nula nas linhas antigas, um `.neq("report_frequency",
+     "weekly")` no banco descartaria justamente essas — o Postgres trata
+     `null <> 'weekly'` como desconhecido, não como verdadeiro, e a
+     carteira inteira sumiria da agenda. */
+  const soMensais = ((mensais.data ?? []) as Client[]).filter(
+    (c) => (c.report_frequency ?? "monthly") !== "weekly",
+  );
+
+  return [...soMensais, ...((semanais.data ?? []) as Client[])].sort((a, b) =>
+    a.name.localeCompare(b.name, "pt-BR"),
+  );
 }

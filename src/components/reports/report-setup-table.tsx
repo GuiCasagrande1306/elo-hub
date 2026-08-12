@@ -35,12 +35,30 @@ import type { ReportSetupRow } from "@/lib/data";
 
 interface Rascunho {
   whatsapp: string;
+  /** Dia do mês (1–28) no mensal; dia da semana (0–6) no semanal. */
   dia: string;
+  frequencia: "monthly" | "weekly";
   ativo: boolean;
 }
 
+/** 0=domingo, como `Date.getDay()` e como o `dow` do Postgres. */
+const DIAS_DA_SEMANA = [
+  { valor: "1", rotulo: "Segunda" },
+  { valor: "2", rotulo: "Terça" },
+  { valor: "3", rotulo: "Quarta" },
+  { valor: "4", rotulo: "Quinta" },
+  { valor: "5", rotulo: "Sexta" },
+  { valor: "6", rotulo: "Sábado" },
+  { valor: "0", rotulo: "Domingo" },
+];
+
 function estaPronto(linha: ReportSetupRow): boolean {
-  return Boolean(linha.reportEnabled && linha.reportDay && linha.whatsappPhone);
+  const temQuando =
+    linha.reportFrequency === "weekly"
+      ? linha.reportWeekday !== null && linha.reportWeekday !== undefined
+      : Boolean(linha.reportDay);
+
+  return Boolean(linha.reportEnabled && temQuando && linha.whatsappPhone);
 }
 
 export function ReportSetupTable({ linhas }: { linhas: ReportSetupRow[] }) {
@@ -73,7 +91,15 @@ export function ReportSetupTable({ linhas }: { linhas: ReportSetupRow[] }) {
     return (
       rascunhos[linha.id] ?? {
         whatsapp: linha.whatsappPhone ?? "",
-        dia: linha.reportDay ? String(linha.reportDay) : "",
+        dia:
+          linha.reportFrequency === "weekly"
+            ? linha.reportWeekday === null || linha.reportWeekday === undefined
+              ? ""
+              : String(linha.reportWeekday)
+            : linha.reportDay
+              ? String(linha.reportDay)
+              : "",
+        frequencia: linha.reportFrequency === "weekly" ? "weekly" : "monthly",
         ativo: linha.reportEnabled,
       }
     );
@@ -87,13 +113,24 @@ export function ReportSetupTable({ linhas }: { linhas: ReportSetupRow[] }) {
   }
 
   function salvar(linha: ReportSetupRow) {
-    const { whatsapp, dia, ativo } = valorAtual(linha);
+    const { whatsapp, dia, frequencia, ativo } = valorAtual(linha);
 
     const diaLimpo = dia.trim();
     const diaNum = diaLimpo === "" ? null : Number(diaLimpo);
+    const semanal = frequencia === "weekly";
 
-    if (diaNum !== null && (!Number.isInteger(diaNum) || diaNum < 1 || diaNum > 28)) {
+    if (diaNum !== null && !Number.isInteger(diaNum)) {
+      toast.error("Dia inválido.");
+      return;
+    }
+
+    if (!semanal && diaNum !== null && (diaNum < 1 || diaNum > 28)) {
       toast.error("O dia precisa estar entre 1 e 28.");
+      return;
+    }
+
+    if (semanal && diaNum !== null && (diaNum < 0 || diaNum > 6)) {
+      toast.error("Dia da semana inválido.");
       return;
     }
 
@@ -102,7 +139,9 @@ export function ReportSetupTable({ linhas }: { linhas: ReportSetupRow[] }) {
     startTransition(async () => {
       const r = await salvarAgendaDeRelatorio({
         clientId: linha.id,
-        reportDay: diaNum,
+        reportDay: semanal ? null : diaNum,
+        frequency: frequencia,
+        reportWeekday: semanal ? diaNum : null,
         enabled: ativo,
         whatsapp,
       });
@@ -173,8 +212,8 @@ export function ReportSetupTable({ linhas }: { linhas: ReportSetupRow[] }) {
           </div>
 
           <div className="surface-card overflow-hidden">
-            <div className="hidden grid-cols-[1fr_260px_80px_92px_92px] gap-3 border-b border-hairline px-4 py-2.5 lg:grid">
-              {["Cliente", "Destino no WhatsApp", "Dia", "Automático", ""].map(
+            <div className="hidden grid-cols-[1fr_240px_190px_92px_92px] gap-3 border-b border-hairline px-4 py-2.5 lg:grid">
+              {["Cliente", "Destino no WhatsApp", "Quando", "Automático", ""].map(
                 (label, i) => (
                   <span key={label || i} className="eyebrow">
                     {label}
@@ -197,7 +236,7 @@ export function ReportSetupTable({ linhas }: { linhas: ReportSetupRow[] }) {
                   return (
                     <li
                       key={linha.id}
-                      className="grid grid-cols-1 gap-x-3 gap-y-2 px-4 py-3 lg:grid-cols-[1fr_260px_80px_92px_92px] lg:items-center"
+                      className="grid grid-cols-1 gap-x-3 gap-y-2 px-4 py-3 lg:grid-cols-[1fr_240px_190px_92px_92px] lg:items-center"
                     >
                       <div className="flex min-w-0 items-center gap-2.5">
                         <ClientAvatar
@@ -222,18 +261,61 @@ export function ReportSetupTable({ linhas }: { linhas: ReportSetupRow[] }) {
                         disabled={salvando === linha.id}
                       />
 
-                      <Input
-                        value={rascunho.dia}
-                        onChange={(e) => editar(linha, { dia: e.target.value })}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") salvar(linha);
-                        }}
-                        placeholder="—"
-                        inputMode="numeric"
-                        maxLength={2}
-                        className="h-8 text-sm tabular-nums"
-                        aria-label={`Dia do envio de ${linha.name}`}
-                      />
+                      {/* CADÊNCIA E DIA no mesmo espaço, porque um não
+                          significa nada sem o outro: "5" é dia do mês no
+                          mensal e sábado no semanal. Trocar a cadência
+                          LIMPA o dia — 28 não existe como dia da semana,
+                          e deixar o número velho salvaria um valor que a
+                          constraint do banco recusaria. */}
+                      <div className="flex items-center gap-1.5">
+                        <select
+                          value={rascunho.frequencia}
+                          onChange={(e) =>
+                            editar(linha, {
+                              frequencia: e.target.value as "monthly" | "weekly",
+                              dia: "",
+                            })
+                          }
+                          className="h-8 rounded-md border border-hairline bg-transparent px-1.5 text-xs"
+                          aria-label={`Cadência do envio de ${linha.name}`}
+                        >
+                          <option value="monthly">Mensal</option>
+                          <option value="weekly">Semanal</option>
+                        </select>
+
+                        {rascunho.frequencia === "weekly" ? (
+                          <select
+                            value={rascunho.dia}
+                            onChange={(e) =>
+                              editar(linha, { dia: e.target.value })
+                            }
+                            className="h-8 min-w-0 flex-1 rounded-md border border-hairline bg-transparent px-1.5 text-xs"
+                            aria-label={`Dia da semana do envio de ${linha.name}`}
+                          >
+                            <option value="">—</option>
+                            {DIAS_DA_SEMANA.map((d) => (
+                              <option key={d.valor} value={d.valor}>
+                                {d.rotulo}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <Input
+                            value={rascunho.dia}
+                            onChange={(e) =>
+                              editar(linha, { dia: e.target.value })
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") salvar(linha);
+                            }}
+                            placeholder="—"
+                            inputMode="numeric"
+                            maxLength={2}
+                            className="h-8 min-w-0 flex-1 text-sm tabular-nums"
+                            aria-label={`Dia do mês do envio de ${linha.name}`}
+                          />
+                        )}
+                      </div>
 
                       <label className="flex items-center gap-2 text-xs">
                         <input
