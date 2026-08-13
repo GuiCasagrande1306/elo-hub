@@ -46,28 +46,31 @@
 
 drop policy if exists tasks_insert on public.tasks;
 
+/* ⚠️ ESTA POLICY FOI CORRIGIDA DEPOIS — ver migration 41.
+   ---------------------------------------------------------------------
+   A versão original deste arquivo exigia, além da autoria,
+   `exists (select 1 from public.clients where id = client_id)`. Em
+   produção isso continuou recusando o colaborador mesmo com a policy
+   confirmada no banco, e o motivo exato nunca foi determinado; o que se
+   sabe é que a condição não era necessária.
+
+   O ARQUIVO FOI REESCRITO para o estado final em vez de manter o
+   histórico fiel, e a razão é prática: enquanto ele guardasse a versão
+   antiga, executá-lo — por engano, por uma integração que aplique
+   migrations no push, ou num banco novo — RESSUSCITAVA o defeito. A 41
+   só conserta quem roda as duas, na ordem. Um arquivo que reintroduz um
+   bug conhecido é uma armadilha, não um registro. */
 create policy tasks_insert on public.tasks for insert to authenticated
   with check (
     -- A autoria vem da sessão: `created_by` não pode ser forjado.
     created_by = (select auth.uid())
-    and (
-      client_id is null
-      -- Conta existe ⇒ é visível, porque `clients_select` é `using (true)`.
-      or exists (select 1 from public.clients c where c.id = client_id)
-    )
   );
 
 drop policy if exists tasks_update on public.tasks;
 
 create policy tasks_update on public.tasks for update to authenticated
   using (app.can_access_task(id))
-  with check (
-    app.can_access_task(id)
-    and (
-      client_id is null
-      or exists (select 1 from public.clients c where c.id = client_id)
-    )
-  );
+  with check (app.can_access_task(id));
 
 comment on policy tasks_insert on public.tasks is
   'Qualquer pessoa da equipe cria tarefa em qualquer conta visível; a autoria vem da sessão.';
