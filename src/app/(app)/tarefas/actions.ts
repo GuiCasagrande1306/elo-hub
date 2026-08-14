@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+import { diaBRComoInstante, hojeComoInstante } from "@/lib/date-br";
 import { isDemoMode } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { TaskPriority, TaskStatus } from "@/types/database";
@@ -32,6 +33,24 @@ const statusSchema = z.enum([
 const prioritySchema = z.enum(["low", "medium", "high", "urgent"]);
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * O que vem do `<input type="date">` é um DIA — "2026-08-14" —, mas
+ * `due_date` é `timestamptz`. Gravar a string crua deixa o Postgres
+ * completar a hora com o fuso da sessão (UTC), e o prazo cai às 21h do
+ * dia anterior em São Paulo.
+ *
+ * Aqui a data vira meio-dia de Brasília antes de descer para o banco.
+ * `null` continua `null` — tarefa sem prazo é caso legítimo, e não pode
+ * virar "hoje" por acidente de normalização.
+ *
+ * Aceita ISO completo sem mexer: se um dia outra tela mandar um instante
+ * de verdade, ele passa direto em vez de ser remontado errado.
+ */
+function prazoParaInstante(valor: string | null): string | null {
+  if (valor === null) return null;
+  return /^\d{4}-\d{2}-\d{2}$/.test(valor) ? diaBRComoInstante(valor) : valor;
+}
 
 /* ------------------------------------------------------------------ */
 /* Mover no Kanban                                                     */
@@ -138,7 +157,7 @@ export async function updateTask(input: {
         // ProseMirror é garantida pelo editor que produziu o payload.
         task.content = rest.content as unknown as typeof task.content;
       }
-      if (dueDate !== undefined) task.due_date = dueDate;
+      if (dueDate !== undefined) task.due_date = prazoParaInstante(dueDate);
       if (rest.criticality !== undefined) task.criticality = rest.criticality;
       if (colorTag !== undefined) task.color_tag = colorTag;
       if (clientId !== undefined) {
@@ -160,7 +179,9 @@ export async function updateTask(input: {
     .from("tasks")
     .update({
       ...rest,
-      ...(dueDate !== undefined ? { due_date: dueDate } : {}),
+      ...(dueDate !== undefined
+        ? { due_date: prazoParaInstante(dueDate) }
+        : {}),
       ...(colorTag !== undefined ? { color_tag: colorTag } : {}),
       ...(clientId !== undefined ? { client_id: clientId } : {}),
     })
@@ -312,7 +333,7 @@ export async function createTask(input: {
       tracked_seconds: 0,
       timer_started_at: null,
       position: 0,
-      due_date: null,
+      due_date: hojeComoInstante(),
       completed_at: null,
       progress: 0,
       created_by: demoCurrentUser.id,
@@ -347,6 +368,18 @@ export async function createTask(input: {
     priority,
     criticality: 5,
     color_tag: null,
+    /* Nasce com prazo de HOJE, não sem prazo.
+       A rotina da agência é diária: o que entra no quadro é o que se
+       pretende resolver no dia, e obrigar a abrir o modal para carimbar
+       a data que já era a óbvia fazia a maioria das tarefas ficar sem
+       prazo nenhum — invisíveis no calendário e fora de qualquer
+       cobrança. Quem precisa de outro dia empurra a data no modal, que
+       é um clique; quem não precisa não faz nada.
+
+       ⚠️ MEIO-DIA DE BRASÍLIA, via `hojeComoInstante`. Gravar
+       "2026-08-14" cru aqui devolveria meia-noite UTC = 21h de ontem em
+       São Paulo, e a tarefa nasceria marcada "Atrasada 1d". */
+    due_date: hojeComoInstante(),
     // A policy `tasks_insert` exige created_by = auth.uid(): o campo não
     // pode ser forjado para atribuir a tarefa a outra pessoa.
     created_by: user.id,

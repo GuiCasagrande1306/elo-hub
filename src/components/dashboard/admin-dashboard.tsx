@@ -15,7 +15,8 @@ import { SyncButton } from "@/components/admin/sync-button";
 import { PageContainer, PageHeader } from "@/components/layout/page-header";
 import { getAgencyDashboard, getAgencyOverview } from "@/lib/data";
 import { formatCurrency, formatNumber } from "@/lib/format";
-import { formatDueDate, initials } from "@/lib/format";
+import { formatDueDate } from "@/lib/format";
+import { PersonAvatar } from "@/components/team/person-avatar";
 import { cn } from "@/lib/utils";
 import type { Profile } from "@/types/database";
 
@@ -208,13 +209,13 @@ export async function AdminDashboard({ user }: { user: Profile }) {
                           </span>
                         ) : (
                           task.assignees.slice(0, 3).map((p) => (
-                            <span
+                            <PersonAvatar
                               key={p.id}
-                              title={p.full_name}
-                              className="flex size-6 items-center justify-center rounded-full bg-surface-2 text-[10px] font-semibold ring-1 ring-hairline"
-                            >
-                              {initials(p.full_name)}
-                            </span>
+                              name={p.full_name}
+                              avatarUrl={p.avatar_url}
+                              className="size-6 ring-1 ring-hairline"
+                              fallbackClassName="text-[10px]"
+                            />
                           ))
                         )}
                       </div>

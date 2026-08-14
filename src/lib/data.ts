@@ -17,6 +17,7 @@ import {
   intervaloDoMes,
   mesCorrenteBR,
   segundaDestaSemana,
+  somarDiasBR,
 } from "@/lib/date-br";
 import type {
   AdCreative,
@@ -961,17 +962,19 @@ export interface MyDashboard {
 export async function getMyDashboard(userId: string): Promise<MyDashboard> {
   const [tasks, goals] = await Promise.all([getTasks(), getCurrentGoals()]);
 
-  const hoje = new Date();
-  const iso = (d: Date) => d.toISOString().slice(0, 10);
-  const hojeISO = iso(hoje);
-
-  const emSete = new Date(hoje);
-  emSete.setDate(emSete.getDate() + 7);
-  const semanaISO = iso(emSete);
+  /* "Hoje" em SÃO PAULO, não em UTC. `toISOString()` no servidor da
+     Vercel adianta o dia às 21h daqui, e o contador passava a incluir as
+     tarefas de AMANHÃ como "para hoje" das 21h à meia-noite — justo o
+     horário em que se confere o que sobrou do dia. Ver `src/lib/date-br.ts`. */
+  const hojeISO = dataNoBrasil();
+  const semanaISO = somarDiasBR(hojeISO, 7);
 
   const abertas = tasks.filter((t) => t.status !== "done");
 
-  const vence = (t: TaskWithRelations) => t.due_date?.slice(0, 10) ?? null;
+  /* `dataNoBrasil`, não `.slice(0, 10)`: o corte lê o prazo em UTC e
+     discordaria do calendário e do selo de atraso, que já leem em SP. */
+  const vence = (t: TaskWithRelations) =>
+    t.due_date ? dataNoBrasil(t.due_date) : null;
 
   const tasksToday = abertas.filter((t) => {
     const d = vence(t);
@@ -1103,16 +1106,18 @@ export async function getAgencyDashboard(): Promise<AgencyDashboard> {
 
   const ativos = clients.filter((c) => c.status === "active");
 
-  const hoje = new Date();
-  const iso = (d: Date) => d.toISOString().slice(0, 10);
-  const hojeISO = iso(hoje);
-
-  const emSete = new Date(hoje);
-  emSete.setDate(emSete.getDate() + 7);
-  const semanaISO = iso(emSete);
+  /* "Hoje" em SÃO PAULO, não em UTC. `toISOString()` no servidor da
+     Vercel adianta o dia às 21h daqui, e o contador passava a incluir as
+     tarefas de AMANHÃ como "para hoje" das 21h à meia-noite — justo o
+     horário em que se confere o que sobrou do dia. Ver `src/lib/date-br.ts`. */
+  const hojeISO = dataNoBrasil();
+  const semanaISO = somarDiasBR(hojeISO, 7);
 
   const abertas = tasks.filter((t) => t.status !== "done");
-  const vence = (t: TaskWithRelations) => t.due_date?.slice(0, 10) ?? null;
+  /* `dataNoBrasil`, não `.slice(0, 10)`: o corte lê o prazo em UTC e
+     discordaria do calendário e do selo de atraso, que já leem em SP. */
+  const vence = (t: TaskWithRelations) =>
+    t.due_date ? dataNoBrasil(t.due_date) : null;
 
   // Atrasada conta como "de hoje" — mesma regra do painel individual.
   const tasksToday = abertas.filter((t) => {
@@ -1239,21 +1244,34 @@ async function getOptimizationHistorySince(
   }
 
   const supabase = await createSupabaseServerClient();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("optimization_history")
-    /* SEM junção para o editor, de propósito.
+    /* ⚠️ O HINT `!optimization_history_collaborator_id_fkey` É
+       OBRIGATÓRIO, não estilo.
        ---------------------------------------------------------------
-       Buscar `editor:profiles!optimization_history_edited_by_fkey`
-       amarraria esta leitura a uma chave estrangeira que só passa a
-       existir depois da migration 36 — e, enquanto ela não rodasse, o
-       PostgREST derrubaria a consulta inteira e a esteira sairia do ar.
+       A migration 36 acrescenta `edited_by references profiles`, ou
+       seja uma SEGUNDA chave estrangeira desta tabela para `profiles`.
+       Com duas, `profiles(...)` sem hint fica ambíguo e o PostgREST
+       recusa a consulta inteira com PGRST201 / HTTP 300 — medido nesta
+       base em `social_posts`, que já tem as duas.
 
-       `edited_by` vem no `*` quando a coluna existe, e o nome é
+       Como esta função descartava o erro, o 300 virava `data = null` e
+       a esteira voltava VAZIA, com toda conta marcada atrasada. O erro
+       agora é registrado, mas o hint é o que impede o caso.
+
+       O editor continua SEM junção: `edited_by` vem no `*` e o nome é
        resolvido na tela contra a lista da equipe, que a página já
-       carrega. Assim o código funciona antes e depois da migration. */
-    .select("*, collaborator:profiles(id, full_name)")
+       carrega. Assim a leitura funciona antes e depois da migration. */
+    .select(
+      "*, collaborator:profiles!optimization_history_collaborator_id_fkey(id, full_name)",
+    )
     .gte("created_at", inicioDoDiaBR(desdeISO))
     .order("created_at", { ascending: false });
+
+  /* Lista vazia e consulta QUEBRADA sao indistinguiveis na tela: as duas
+     pintam a esteira de "sem registro" e marcam a conta atrasada. Sem
+     este log, um erro de schema some por semanas parecendo rotina. */
+  if (error) console.error("esteira: historico nao carregou", error);
 
   return (data ?? []) as unknown as OptimizationEntry[];
 }
@@ -1272,22 +1290,32 @@ export async function getClientOptimizations(
   }
 
   const supabase = await createSupabaseServerClient();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("optimization_history")
-    /* SEM junção para o editor, de propósito.
+    /* ⚠️ O HINT `!optimization_history_collaborator_id_fkey` É
+       OBRIGATÓRIO, não estilo.
        ---------------------------------------------------------------
-       Buscar `editor:profiles!optimization_history_edited_by_fkey`
-       amarraria esta leitura a uma chave estrangeira que só passa a
-       existir depois da migration 36 — e, enquanto ela não rodasse, o
-       PostgREST derrubaria a consulta inteira e a esteira sairia do ar.
+       A migration 36 acrescenta `edited_by references profiles`, ou
+       seja uma SEGUNDA chave estrangeira desta tabela para `profiles`.
+       Com duas, `profiles(...)` sem hint fica ambíguo e o PostgREST
+       recusa a consulta inteira com PGRST201 / HTTP 300 — medido nesta
+       base em `social_posts`, que já tem as duas.
 
-       `edited_by` vem no `*` quando a coluna existe, e o nome é
+       Como esta função descartava o erro, o 300 virava `data = null` e
+       a esteira voltava VAZIA, com toda conta marcada atrasada. O erro
+       agora é registrado, mas o hint é o que impede o caso.
+
+       O editor continua SEM junção: `edited_by` vem no `*` e o nome é
        resolvido na tela contra a lista da equipe, que a página já
-       carrega. Assim o código funciona antes e depois da migration. */
-    .select("*, collaborator:profiles(id, full_name)")
+       carrega. Assim a leitura funciona antes e depois da migration. */
+    .select(
+      "*, collaborator:profiles!optimization_history_collaborator_id_fkey(id, full_name)",
+    )
     .eq("client_id", clientId)
     .order("created_at", { ascending: false })
     .limit(limit);
+
+  if (error) console.error("esteira: historico da conta nao carregou", error);
 
   return (data ?? []) as unknown as OptimizationEntry[];
 }

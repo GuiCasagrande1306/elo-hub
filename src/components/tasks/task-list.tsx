@@ -30,7 +30,8 @@ import {
 } from "./task-quick-edit";
 import { TimeCell } from "./task-timer";
 import { createTask, updateTask } from "@/app/(app)/tarefas/actions";
-import { formatDueDate, initials } from "@/lib/format";
+import { formatDueDate } from "@/lib/format";
+import { PersonAvatar } from "@/components/team/person-avatar";
 import type { TaskWithRelations } from "@/types/database";
 
 /* =====================================================================
@@ -365,13 +366,12 @@ function TaskRow({
             ) : (
               <>
                 {task.assignees.slice(0, 3).map((p) => (
-                  <span
+                  <PersonAvatar
                     key={p.id}
-                    title={p.full_name}
-                    className="grid size-6 place-items-center rounded-full bg-surface-2 text-[9px] font-semibold ring-2 ring-card"
-                  >
-                    {initials(p.full_name)}
-                  </span>
+                    name={p.full_name}
+                    avatarUrl={p.avatar_url}
+                    className="size-6 ring-2 ring-card"
+                  />
                 ))}
                 {task.assignees.length > 3 && (
                   <span className="grid size-6 place-items-center rounded-full bg-surface-2 text-[9px] font-medium text-muted-foreground ring-2 ring-card">

@@ -8,7 +8,8 @@ import { CheckSquare, MessageSquare } from "lucide-react";
 import { PRIORITY_LABELS, PRIORITY_STYLES } from "./task-meta";
 import { cn } from "@/lib/utils";
 import { COLOR_TAG_CLASSES, criticalityTone } from "./task-meta";
-import { formatDueDate, initials } from "@/lib/format";
+import { formatDueDate } from "@/lib/format";
+import { PersonAvatar } from "@/components/team/person-avatar";
 import type { TaskWithRelations } from "@/types/database";
 
 /**
@@ -217,13 +218,12 @@ export function TaskCardShell({
         {task.assignees.length > 0 && (
           <div className="ml-auto flex -space-x-1.5">
             {task.assignees.slice(0, 3).map((person) => (
-              <span
+              <PersonAvatar
                 key={person.id}
-                title={person.full_name}
-                className="flex size-5 items-center justify-center rounded-full bg-surface-2 text-[9px] font-semibold ring-2 ring-card"
-              >
-                {initials(person.full_name)}
-              </span>
+                name={person.full_name}
+                avatarUrl={person.avatar_url}
+                className="size-5 ring-2 ring-card"
+              />
             ))}
             {task.assignees.length > 3 && (
               <span className="flex size-5 items-center justify-center rounded-full bg-surface-2 text-[9px] font-semibold ring-2 ring-card">

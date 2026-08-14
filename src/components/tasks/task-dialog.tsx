@@ -29,8 +29,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { dataNoBrasil } from "@/lib/date-br";
 import { COLOR_TAG_CLASSES, COLOR_TAG_LABELS } from "./task-meta";
-import { formatDueDate, initials } from "@/lib/format";
+import { formatDueDate } from "@/lib/format";
+import { PersonAvatar } from "@/components/team/person-avatar";
 import type {
   RichTextDoc,
   TaskStatus,
@@ -369,9 +371,12 @@ function TaskDialogBody({
                   title={person.full_name}
                   className="flex items-center gap-1.5 rounded-full bg-surface-2 py-0.5 pl-0.5 pr-2 text-xs ring-1 ring-hairline"
                 >
-                  <span className="flex size-5 items-center justify-center rounded-full bg-background text-[9px] font-semibold">
-                    {initials(person.full_name)}
-                  </span>
+                  <PersonAvatar
+                    name={person.full_name}
+                    avatarUrl={person.avatar_url}
+                    className="size-5"
+                    fallbackClassName="bg-background"
+                  />
                   <span className="max-w-24 truncate">
                     {person.full_name.split(" ")[0]}
                   </span>
@@ -411,9 +416,11 @@ function TaskDialogBody({
                           onClick={() => alternar(p.id, true)}
                           className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors hover:bg-accent"
                         >
-                          <span className="grid size-5 shrink-0 place-items-center rounded-full bg-surface-2 text-[9px] font-semibold">
-                            {initials(p.full_name)}
-                          </span>
+                          <PersonAvatar
+                            name={p.full_name}
+                            avatarUrl={p.avatar_url}
+                            className="size-5"
+                          />
                           <span className="truncate">{p.full_name}</span>
                         </button>
                       ))}
@@ -442,7 +449,12 @@ function TaskDialogBody({
             <div className="flex flex-wrap items-center gap-2">
               <input
                 type="date"
-                value={task.due_date ? task.due_date.slice(0, 10) : ""}
+                /* `dataNoBrasil`, não `.slice(0, 10)`. O corte pega a
+                   data em UTC, então um prazo gravado no fim da tarde
+                   apareceria aqui um dia à frente do que o calendário e
+                   o selo de atraso mostram — a mesma tarefa com duas
+                   datas na mesma tela. */
+                value={task.due_date ? dataNoBrasil(task.due_date) : ""}
                 onChange={(e) =>
                   commitField({ dueDate: e.target.value || null })
                 }

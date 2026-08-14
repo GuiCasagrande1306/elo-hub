@@ -1,3 +1,5 @@
+import { dataNoBrasil } from "@/lib/date-br";
+
 /**
  * Formatação pt-BR centralizada.
  *
@@ -160,26 +162,48 @@ export function formatPeriod(start: string, end: string): string {
   return `${formatDateFull(s)} – ${formatDateFull(e)}`;
 }
 
-/** Prazo em linguagem natural: "Vence hoje", "Atrasada 3d", "em 5d". */
+/**
+ * Prazo em linguagem natural: "Vence hoje", "Atrasada 3d", "em 5d".
+ *
+ * ⚠️ A CONTA É EM SÃO PAULO, não no relógio de quem renderiza. A versão
+ * anterior usava `getFullYear/getMonth/getDate`, que respondem no fuso
+ * local — e esta função roda nos DOIS lados:
+ *
+ *   • no servidor da Vercel, que é UTC: das 21h à meia-noite daqui, o
+ *     "hoje" de lá já era o dia seguinte, e uma tarefa para amanhã
+ *     aparecia como "Vence hoje" durante três horas por noite. Pior:
+ *     servidor e navegador discordavam no mesmo render, que é a receita
+ *     de erro de hidratação;
+ *   • no navegador, onde bastava alguém abrir o sistema fora do fuso de
+ *     Brasília para ver outro prazo.
+ *
+ * Os dois lados são ancorados ao MEIO-DIA da data brasileira antes de
+ * subtrair, então a diferença sai em múltiplos exatos de 24h e nenhum
+ * arredondamento empurra o resultado para o dia vizinho.
+ */
 export function formatDueDate(iso: string | null): {
   label: string;
   tone: "overdue" | "today" | "soon" | "normal";
 } {
   if (!iso) return { label: "", tone: "normal" };
 
-  const now = new Date();
-  const due = new Date(iso);
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startOfDue = new Date(due.getFullYear(), due.getMonth(), due.getDate());
+  const hoje = dataNoBrasil();
+  const prazo = dataNoBrasil(iso);
+
   const days = Math.round(
-    (startOfDue.getTime() - startOfToday.getTime()) / 86_400_000,
+    (Date.parse(`${prazo}T12:00:00-03:00`) -
+      Date.parse(`${hoje}T12:00:00-03:00`)) /
+      86_400_000,
   );
 
   if (days < 0) return { label: `Atrasada ${Math.abs(days)}d`, tone: "overdue" };
   if (days === 0) return { label: "Vence hoje", tone: "today" };
   if (days === 1) return { label: "Amanhã", tone: "soon" };
   if (days <= 3) return { label: `em ${days}d`, tone: "soon" };
-  return { label: formatDate(due), tone: "normal" };
+  /* Formata a partir da data JÁ resolvida em São Paulo — passar o
+     instante cru devolveria `formatDate` ao fuso local que esta função
+     acabou de deixar de usar. */
+  return { label: formatDate(`${prazo}T12:00:00-03:00`), tone: "normal" };
 }
 
 /** Iniciais para avatar de fallback: "Ana Paula Souza" → "AS". */

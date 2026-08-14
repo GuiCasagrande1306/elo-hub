@@ -88,6 +88,46 @@ export function inicioDoDiaBR(dataISO: string): string {
 }
 
 /**
+ * Um DIA do calendário brasileiro guardado numa coluna `timestamptz`.
+ *
+ * ⚠️ NÃO GRAVE `YYYY-MM-DD` CRU numa coluna timestamptz. O Postgres
+ * completa a hora usando o fuso da SESSÃO, que no PostgREST é UTC — a
+ * string "2026-08-14" vira `2026-08-14T00:00:00Z`, que é 13/08 às 21h
+ * aqui. Foi assim que todo prazo de tarefa nasceu marcado como o dia
+ * anterior, e uma tarefa criada para hoje aparecia "Atrasada 1d" no
+ * mesmo instante em que era criada.
+ *
+ * MEIO-DIA, não meia-noite. Meia-noite de Brasília (`T00:00:00-03:00`)
+ * conserta o caso do escritório e continua errado para quem abrir o
+ * sistema mais a oeste — no Acre, 03:00Z ainda é o dia anterior. Meio-
+ * dia tem doze horas de folga para cada lado e sobrevive a qualquer
+ * fuso das Américas ou da Europa, que é o alcance realista de quem usa
+ * isto. É a mesma âncora que `segundaDestaSemana` e `resolvePeriod` já
+ * usam para não escorregar de dia.
+ */
+export function diaBRComoInstante(dataISO: string): string {
+  return `${dataISO}T12:00:00-03:00`;
+}
+
+/** Hoje em São Paulo, pronto para gravar numa coluna `timestamptz`. */
+export function hojeComoInstante(): string {
+  return diaBRComoInstante(dataNoBrasil());
+}
+
+/**
+ * Soma (ou subtrai, com número negativo) dias a uma data brasileira.
+ *
+ * Ancorado ao meio-dia antes de mexer no contador, pelo mesmo motivo de
+ * `segundaDestaSemana`: partir da meia-noite deixa o resultado a três
+ * horas da virada, e qualquer deslocamento joga a data para o vizinho.
+ */
+export function somarDiasBR(dataISO: string, dias: number): string {
+  const d = new Date(diaBRComoInstante(dataISO));
+  d.setUTCDate(d.getUTCDate() + dias);
+  return dataNoBrasil(d);
+}
+
+/**
  * Primeiro e último dia do mês corrente, no fuso de São Paulo.
  *
  * `new Date(y, m, 1)` seguido de `toISOString()` — o que o código fazia
