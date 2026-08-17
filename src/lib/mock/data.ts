@@ -969,12 +969,13 @@ export const demoGoals: ClientGoal[] = [
 export const demoTemplates: ReportTemplate[] = [
   {
     id: "rt-ecom",
-    name: "E-commerce — Performance & ROAS",
+    name: "E-commerce — Faturamento & ROAS",
     description:
-      "Foco em receita, ROAS e ticket médio. Quebra por campanha e galeria dos criativos que mais venderam.",
+      "Foco em faturamento, ROAS e ticket médio. Quebra por campanha e galeria dos criativos que mais venderam.",
     segment: "ecommerce",
     metrics: ["spend", "revenue", "roas", "results", "cpa", "aov"],
     metric_labels: {
+      revenue: "Faturamento",
       results: "Vendas",
       cpa: "Custo por venda",
       aov: "Ticket médio",
