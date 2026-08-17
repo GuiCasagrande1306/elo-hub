@@ -319,9 +319,26 @@ export function ReportDocument({ payload }: { payload: ReportPayload }) {
   const chartColor = payload.client.brandPrimary ?? accent;
   const period = formatPeriod(payload.meta.periodStart, payload.meta.periodEnd);
 
-  // A capa é sempre a primeira página; as demais seções seguem a ordem
-  // definida no template do segmento.
-  const bodySections = payload.sections.filter((s) => s.type !== "cover");
+  /* A capa é sempre a primeira página; as demais seguem a ordem definida
+     no template do segmento.
+
+     ⚠️ SEÇÃO DE TEXTO SEM TEXTO É REMOVIDA, não impressa vazia. O
+     documento trazia "Análise não preenchida para este período" sob um
+     título — uma seção inteira dedicada a avisar que não há nada ali.
+     Desde que a escrita saiu do fluxo de envio, isso apareceria em TODO
+     relatório, e um espaço em branco pedindo desculpa é pior do que a
+     ausência: chama atenção para uma falta que o cliente não sentiria.
+
+     Vale só para as duas seções que dependem de alguém escrever. As de
+     dado (KPI, gráfico, galeria) continuam aparecendo mesmo vazias,
+     porque ali o vazio é INFORMAÇÃO — "nenhum criativo veiculou" é um
+     fato sobre o período, não uma lacuna de preenchimento. */
+  const bodySections = payload.sections.filter((s) => {
+    if (s.type === "cover") return false;
+    if (s.type === "insights") return payload.insights.trim().length > 0;
+    if (s.type === "next_steps") return payload.nextSteps.length > 0;
+    return true;
+  });
   const cover = payload.sections.find((s) => s.type === "cover");
 
   return (

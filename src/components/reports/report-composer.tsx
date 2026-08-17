@@ -6,7 +6,6 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -71,23 +70,29 @@ export function ReportComposer({
     return { inicio: start, fim: end };
   });
 
-  const [templateId, setTemplateId] = useState<string>("__auto__");
-  const [insights, setInsights] = useState("");
-  const [steps, setSteps] = useState("");
   const [busy, setBusy] = useState<"preview" | "send" | null>(null);
 
   const client = clients.find((c) => c.slug === clientSlug);
 
-  /* Template automático = o padrão do segmento do cliente, e a regra
-     mora em `resolverTemplate`: a tela de Relatórios EXIBE qual seria, e
-     duas cópias da mesma resolução divergiriam sem ninguém ver — a tela
-     anunciando um template e o PDF saindo com outro. */
-  const autoTemplate = resolverTemplate(templates, client?.segment);
+  /* O TEMPLATE NÃO SE ESCOLHE MAIS: é sempre o padrão do segmento do
+     cliente, resolvido por `resolverTemplate` — a mesma função que a
+     tela de Relatórios usa para exibir qual seria, e que o servidor usa
+     quando o campo vem vazio. Três lugares, uma regra.
 
-  const effectiveTemplate =
-    templateId === "__auto__"
-      ? autoTemplate
-      : templates.find((t) => t.id === templateId);
+     O seletor saiu porque a escolha nunca foi real: em toda geração o
+     valor certo era o padrão da conta, e oferecer as outras opções só
+     criava a chance de enviar ao cliente um layout que não é o dele. */
+  const effectiveTemplate = resolverTemplate(templates, client?.segment);
+
+  /* Quantas seções o PDF REALMENTE terá.
+     Contar `sections.length` cru passou a mentir: desde que a escrita
+     saiu deste fluxo, `insights` e `next_steps` chegam vazias e o
+     documento as descarta em vez de imprimir um título com "não
+     preenchido" embaixo. O painel dizia "8 no PDF" e saíam 6 — número
+     pequeno, mas é o tipo de detalhe que corrói a confiança na tela. */
+  const secoesNoPdf = (effectiveTemplate?.sections ?? []).filter(
+    (sec) => sec.type !== "insights" && sec.type !== "next_steps",
+  ).length;
 
   function handlePreview() {
     if (!client) return;
@@ -112,13 +117,15 @@ export function ReportComposer({
     form.rel = "noopener";
     form.style.display = "none";
 
+    /* `template` vazio: o servidor resolve pelo segmento, igual à tela.
+       `insights`/`nextSteps` não são mais enviados — a rota continua
+       aceitando os dois porque o cron pode um dia preenchê-los, mas
+       daqui não sai texto nenhum. */
     const campos: Record<string, string> = {
       cliente: clientSlug,
       inicio: periodo.inicio,
       fim: periodo.fim,
-      template: templateId === "__auto__" ? "" : templateId,
-      insights: insights.trim(),
-      nextSteps: steps,
+      template: "",
     };
 
     for (const [nome, valor] of Object.entries(campos)) {
@@ -146,14 +153,9 @@ export function ReportComposer({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           clientSlug,
-          templateId: templateId === "__auto__" ? undefined : templateId,
+          // Sem `templateId`: o servidor resolve pelo segmento da conta.
           periodStart: periodo.inicio,
           periodEnd: periodo.fim,
-          insights: insights.trim() || undefined,
-          nextSteps: steps
-            .split("\n")
-            .map((line) => line.trim())
-            .filter(Boolean),
           deliver,
         }),
       });
@@ -244,88 +246,20 @@ export function ReportComposer({
             <Field label="Período" htmlFor="periodo">
               <DateRangePicker id="periodo" value={periodo} onChange={setPeriodo} />
             </Field>
-
-            <Field
-              label="Template"
-              htmlFor="template"
-              className="sm:col-span-2"
-              hint={
-                templateId === "__auto__" && autoTemplate
-                  ? `Automático pelo segmento: ${autoTemplate.name}`
-                  : undefined
-              }
-            >
-              <Select
-                value={templateId}
-                onValueChange={(value) => setTemplateId(value ?? "__auto__")}
-              >
-                <SelectTrigger id="template" className="w-full">
-                  <SelectValue>
-                    {(value: string) =>
-                      value === "__auto__"
-                        ? "Automático (pelo segmento)"
-                        : (templates.find((t) => t.id === value)?.name ??
-                          "Template")
-                    }
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__auto__">
-                    Automático (pelo segmento)
-                  </SelectItem>
-                  {templates.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
           </div>
-        </section>
 
-        <section className="surface-card p-5">
-          {/* Havia aqui um botão "Escrever rascunho com IA". Ele foi
-              REMOVIDO, não escondido: nunca funcionou em produção — a
-              chave da Anthropic jamais existiu nas variáveis da Vercel —,
-              e mesmo assim ficava sempre habilitado, então o único
-              resultado possível de clicar nele era uma mensagem de erro.
-              A leitura do período é escrita pelo time, no campo abaixo. */}
-          <div className="min-w-0">
-            <h2 className="text-base font-semibold tracking-[-0.01em]">
-              Leitura do time
-            </h2>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              O que os números não contam sozinhos. Entra como seção de
-              análise no PDF.
+          {/* O TEMPLATE VIRA INFORMAÇÃO, não campo. Continua visível
+              porque quem gera precisa saber que layout o cliente vai
+              receber — só não é mais uma decisão a tomar a cada envio. */}
+          {client && (
+            <p className="mt-4 text-xs text-muted-foreground">
+              Template:{" "}
+              <span className="font-medium text-foreground">
+                {effectiveTemplate?.name ?? "nenhum configurado"}
+              </span>{" "}
+              — o padrão do nicho desta conta.
             </p>
-          </div>
-
-          <div className="mt-4 flex flex-col gap-4">
-            <Field label="Análise do período" htmlFor="insights">
-              <Textarea
-                id="insights"
-                rows={5}
-                value={insights}
-                onChange={(event) => setInsights(event.target.value)}
-                placeholder="Ex.: o CPA subiu 12% na segunda quinzena por saturação do criativo de depoimento; a substituição por prova social em vídeo já reverteu a curva nos últimos 4 dias."
-              />
-            </Field>
-
-            <Field
-              label="Próximos passos"
-              htmlFor="steps"
-              hint="Um por linha."
-            >
-              <Textarea
-                id="steps"
-                rows={4}
-                value={steps}
-                onChange={(event) => setSteps(event.target.value)}
-                placeholder={"Subir 3 criativos novos de prova social\nTestar públicos lookalike 2%\nRevisar a página de checkout"}
-              />
-            </Field>
-          </div>
+          )}
         </section>
       </div>
 
@@ -343,11 +277,7 @@ export function ReportComposer({
             />
             <Summary
               label="Seções"
-              value={
-                effectiveTemplate
-                  ? `${effectiveTemplate.sections.length} no PDF`
-                  : "—"
-              }
+              value={effectiveTemplate ? `${secoesNoPdf} no PDF` : "—"}
             />
             <Summary
               label="WhatsApp"
