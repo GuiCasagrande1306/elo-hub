@@ -518,6 +518,18 @@ export interface ReportTemplate {
    * reconhece o próprio negócio no que recebeu.
    */
   metric_labels: Partial<Record<MetricKey, string>>;
+  /**
+   * A métrica que abre a capa, em tamanho grande.
+   *
+   * É a resposta que o cliente procura primeiro, e ela muda com o
+   * negócio: faturamento na loja e no delivery, visitas ao perfil no
+   * negócio local, leads na captação. `null` deixa a capa só com a
+   * fileira de três, como era antes.
+   *
+   * O banco garante que o valor está em `metrics` — destacar um número
+   * que o corpo do relatório não explica seria pior que não destacar.
+   */
+  highlight_metric: MetricKey | null;
   sections: ReportSection[];
   theme: { accent?: string; cover?: "solid" | "gradient" };
   is_default: boolean;

@@ -103,6 +103,7 @@ export default async function ReportsPage() {
                     : "Genérico",
                   metrics: t.metrics,
                   metricLabels: t.metric_labels ?? {},
+                  highlightMetric: t.highlight_metric ?? null,
                   sectionCount: t.sections.length,
                 }))}
               />

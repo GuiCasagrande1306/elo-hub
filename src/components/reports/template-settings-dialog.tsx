@@ -58,6 +58,7 @@ export interface TemplateEditavel {
   segmentLabel: string;
   metrics: string[];
   metricLabels: Record<string, string>;
+  highlightMetric: string | null;
   sectionCount: number;
 }
 
@@ -142,9 +143,18 @@ function Formulario({
   const [rotulos, setRotulos] = useState<Record<string, string>>(
     template.metricLabels ?? {},
   );
+  const [destaque, setDestaque] = useState<string | null>(
+    template.highlightMetric,
+  );
   const [salvando, startTransition] = useTransition();
 
   function alternar(key: string) {
+    /* Tirar da lista a métrica que estava em destaque LIMPA o destaque.
+       Sem isto o formulário guardaria uma chave que não está mais em
+       `metrics`, e o salvamento voltaria com erro — ou pior, passaria e
+       a capa exibiria um número que o corpo do relatório não explica. */
+    if (destaque === key && metricas.includes(key)) setDestaque(null);
+
     setMetricas((atual) =>
       atual.includes(key)
         ? atual.filter((m) => m !== key)
@@ -169,6 +179,7 @@ function Formulario({
         description: descricao,
         metrics: metricas,
         metricLabels: rotulos,
+        highlightMetric: destaque,
       });
 
       if (!r.ok) {
@@ -277,6 +288,57 @@ function Formulario({
                     className="h-8 text-xs"
                   />
                 </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {metricas.length > 0 && (
+        <div>
+          <Label>Qual abre a capa</Label>
+          <p className="mt-0.5 text-2xs text-muted-foreground">
+            Sai em corpo grande no topo do relatório, antes das outras. É a
+            resposta que o cliente procura primeiro: faturamento na loja e
+            no delivery, visitas ao perfil no negócio local, leads na
+            captação.
+          </p>
+
+          <div className="mt-2.5 flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => setDestaque(null)}
+              className={cn(
+                "rounded-md border px-2.5 py-1.5 text-xs transition-colors",
+                destaque === null
+                  ? "border-signal bg-accent font-medium"
+                  : "border-hairline text-muted-foreground hover:text-foreground",
+              )}
+            >
+              Nenhuma
+            </button>
+
+            {/* Só as métricas ESCOLHIDAS. Oferecer as outras deixaria
+                destacar um número que o relatório não mostra em lugar
+                nenhum — o banco recusa (check da migration 45), mas o
+                erro chegaria depois de a pessoa já ter clicado. */}
+            {metricas.map((key) => {
+              const meta = METRICAS.find((m) => m.key === key);
+              const nome = rotulos[key]?.trim() || meta?.label || key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setDestaque(key)}
+                  className={cn(
+                    "rounded-md border px-2.5 py-1.5 text-xs transition-colors",
+                    destaque === key
+                      ? "border-signal bg-accent font-medium"
+                      : "border-hairline text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {nome}
+                </button>
               );
             })}
           </div>

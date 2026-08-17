@@ -175,6 +175,32 @@ const styles = StyleSheet.create({
     color: INK_SOFT,
   },
   kpiValue: { fontSize: 20, fontFamily: "Geist", fontWeight: 700, marginTop: 7 },
+
+  /* ------------------------- Destaque da capa ------------------------ */
+  /* Sem moldura e sem fundo, ao contrário dos cartões de apoio: o
+     destaque não compete com eles, ele os PRECEDE. Caixa dentro de caixa
+     achataria a hierarquia que o tamanho da fonte já estabelece. */
+  destaque: { marginTop: 14, marginBottom: 4 },
+  destaqueLabel: {
+    fontSize: 8,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    color: INK_SOFT,
+  },
+  destaqueValor: {
+    fontSize: 40,
+    fontFamily: "Geist",
+    fontWeight: 700,
+    marginTop: 4,
+    lineHeight: 1.1,
+  },
+  destaqueNota: {
+    fontSize: 8,
+    color: INK_SOFT,
+    marginTop: 6,
+    lineHeight: 1.4,
+    maxWidth: 330,
+  },
   kpiDelta: { fontSize: 8, marginTop: 6 },
   kpiPrev: { fontSize: 7.5, color: INK_SOFT, marginTop: 2 },
 
@@ -544,13 +570,45 @@ export function ReportDocument({ payload }: { payload: ReportPayload }) {
 /* ------------------------------------------------------------------ */
 
 function CoverSummary({ payload }: { payload: ReportPayload }) {
-  const top = payload.kpis.slice(0, 3);
+  const destaque = payload.highlight;
+
+  /* Os três de apoio saem da lista SEM o destaque — repetir o mesmo
+     número grande e pequeno na mesma capa faz o leitor procurar a
+     diferença que não existe. */
+  const apoio = payload.kpis
+    .filter((k) => k.key !== destaque?.key)
+    .slice(0, 3);
 
   return (
     <View>
       <Text style={styles.eyebrow}>Resumo do período</Text>
-      <View style={[styles.kpiRow, { marginTop: 12 }]}>
-        {top.map((kpi) => (
+
+      {destaque && (
+        <View style={styles.destaque}>
+          <Text style={styles.destaqueLabel}>{destaque.label}</Text>
+          <Text style={styles.destaqueValor}>{destaque.formatted}</Text>
+
+          {/* ⚠️ ZERO NO DESTAQUE É CASO PREVISTO, não exceção rara.
+              Medido em produção: 5 das 16 contas de delivery e 1 das 4 de
+              e-commerce não registram compra nenhuma pelo pixel. Nelas o
+              faturamento é honestamente zero — mas um "R$ 0,00" em corpo
+              32 no alto da capa não informa nada, só constrange. A frase
+              diz o que o número sozinho não diz: que o problema é de
+              rastreamento, não de venda. */}
+          {destaque.value === 0 ? (
+            <Text style={styles.destaqueNota}>
+              Nada registrado pelo rastreamento neste período — o número
+              acima mede o que o pixel conseguiu atribuir, não o total do
+              negócio.
+            </Text>
+          ) : (
+            <DeltaText kpi={destaque} />
+          )}
+        </View>
+      )}
+
+      <View style={[styles.kpiRow, { marginTop: destaque ? 14 : 12 }]}>
+        {apoio.map((kpi) => (
           <View key={kpi.key} style={styles.kpiCard}>
             <Text style={styles.kpiLabel}>{kpi.label}</Text>
             <Text style={styles.kpiValue}>{kpi.formatted}</Text>

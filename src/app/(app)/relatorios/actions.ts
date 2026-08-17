@@ -181,6 +181,9 @@ const templateSchema = z.object({
      "Contatos" no negócio local — sem isto o cliente não reconhece o
      próprio negócio no relatório. */
   metricLabels: z.record(z.string(), z.string().trim().max(40)),
+  /* Vazio = capa sem destaque. A coerência com `metrics` é conferida
+     abaixo e no banco — o check da migration 45 é a rede final. */
+  highlightMetric: z.string().nullable(),
 });
 
 export async function salvarTemplate(input: {
@@ -189,13 +192,25 @@ export async function salvarTemplate(input: {
   description: string;
   metrics: string[];
   metricLabels: Record<string, string>;
+  highlightMetric: string | null;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const parsed = templateSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: "Confira nome, descrição e métricas." };
   }
 
-  const { id, name, description, metrics, metricLabels } = parsed.data;
+  const { id, name, description, metrics, metricLabels, highlightMetric } =
+    parsed.data;
+
+  /* Recusa AQUI, com frase legível, antes de o banco recusar com o texto
+     cru do check. Acontece de verdade: tirar da lista a métrica que
+     estava destacada é o caminho natural de quem está reorganizando. */
+  if (highlightMetric && !metrics.includes(highlightMetric)) {
+    return {
+      ok: false,
+      error: "A métrica em destaque precisa estar entre as métricas escolhidas.",
+    };
+  }
 
   /* Rótulo em branco significa "usar o padrão da métrica", não string
      vazia — gravar "" faria o PDF imprimir um cabeçalho sem texto. */
@@ -213,6 +228,7 @@ export async function salvarTemplate(input: {
       description: description || null,
       metrics,
       metric_labels: rotulos,
+      highlight_metric: highlightMetric,
     })
     .eq("id", id);
 

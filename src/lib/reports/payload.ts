@@ -108,6 +108,18 @@ export interface ReportPayload {
    */
   creativesDoPeriodo: boolean;
   kpis: KpiResult[];
+  /**
+   * A métrica que abre a capa em tamanho grande.
+   *
+   * É a resposta que o cliente procura primeiro e muda com o negócio:
+   * faturamento na loja e no delivery, visitas ao perfil no negócio
+   * local, leads na captação. Sai de `report_templates.highlight_metric`,
+   * então a agência troca pela tela, sem deploy.
+   *
+   * `null` quando o template não define destaque — a capa volta a ser só
+   * a fileira de três, como sempre foi.
+   */
+  highlight: KpiResult | null;
   trend: TrendPoint[];
   platforms: PlatformSplit[];
   /** Uma entrada por plataforma que teve veiculação no período. */
@@ -203,6 +215,14 @@ export async function buildReportPayload(options: {
     return rotulo ? { ...kpi, label: rotulo } : kpi;
   });
 
+  /* O destaque é UM DOS `kpis`, não um cálculo à parte: o número da capa
+     e o da grade têm que ser o mesmo objeto, senão um dia divergem —
+     mesma razão de `platform-detail` reusar `deriveMetric` em vez de
+     refazer as contas. O banco garante que a chave está em `metrics`
+     (check da migration 45); o `?? null` cobre template antigo. */
+  const highlight =
+    kpis.find((k) => k.key === template.highlight_metric) ?? null;
+
   const agency = await resolverAgencia(client.agency_partner);
 
   return {
@@ -226,6 +246,7 @@ export async function buildReportPayload(options: {
     },
     creativesDoPeriodo: metricasDoPeriodo !== null,
     kpis,
+    highlight,
     trend: buildTrend(metrics.current),
     platforms: splitByPlatform(metrics.current),
     platformDetail: buildPlatformDetail(

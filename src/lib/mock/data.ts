@@ -979,6 +979,7 @@ export const demoTemplates: ReportTemplate[] = [
       cpa: "Custo por venda",
       aov: "Ticket médio",
     },
+    highlight_metric: "revenue",
     sections: [
       { type: "cover", title: "Relatório de Performance" },
       { type: "kpi_grid", title: "Visão geral do período" },
@@ -999,12 +1000,16 @@ export const demoTemplates: ReportTemplate[] = [
   },
   {
     id: "rt-local",
-    name: "Negócio Local — Geração de Contatos",
+    name: "Negócio Local — Visitas ao Perfil & Alcance",
     description:
       "Volume de contatos, custo por contato e alcance geográfico. Ideal para clínicas, serviços e varejo físico.",
     segment: "local_business",
     metrics: ["spend", "results", "cpa", "impressions", "ctr"],
-    metric_labels: { results: "Contatos", cpa: "Custo por contato" },
+    metric_labels: {
+      results: "Visitas ao perfil",
+      cpa: "Custo por visita",
+    },
+    highlight_metric: "results",
     sections: [
       { type: "cover", title: "Relatório de Resultados" },
       { type: "kpi_grid", title: "Resumo do mês" },
@@ -1021,12 +1026,17 @@ export const demoTemplates: ReportTemplate[] = [
   },
   {
     id: "rt-delivery",
-    name: "Delivery — Pedidos & Custo",
+    name: "Delivery — Faturamento & Pedidos",
     description:
       "Estrutura por fase do lançamento, com CPL e CAC por etapa.",
     segment: "delivery",
-    metrics: ["spend", "results", "cpa", "ctr", "cpc"],
-    metric_labels: { results: "Pedidos", cpa: "Custo por pedido" },
+    metrics: ["spend", "revenue", "results", "cpa", "ctr", "cpc"],
+    metric_labels: {
+      revenue: "Faturamento",
+      results: "Pedidos",
+      cpa: "Custo por pedido",
+    },
+    highlight_metric: "revenue",
     sections: [
       { type: "cover", title: "Relatório de Lançamento" },
       { type: "kpi_grid", title: "Números do lançamento" },
@@ -1050,6 +1060,7 @@ export const demoTemplates: ReportTemplate[] = [
     segment: "leads",
     metrics: ["spend", "leads", "cpl", "ctr", "cpc", "impressions"],
     metric_labels: { leads: "Leads", cpl: "Custo por lead" },
+    highlight_metric: "leads",
     sections: [
       { type: "cover", title: "Relatório de Mídia Paga" },
       { type: "kpi_grid", title: "Indicadores" },
