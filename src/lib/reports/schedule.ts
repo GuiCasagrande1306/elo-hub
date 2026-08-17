@@ -130,6 +130,26 @@ export async function dispatchScheduledReports(options?: {
      seguinte, que é o mesmo cuidado das outras contas de data aqui. */
   const diaDaSemana = new Date(`${hoje}T12:00:00Z`).getUTCDay();
 
+  /* DESTRAVA O QUE FICOU PRESO, antes de qualquer coisa.
+
+     A linha de `report_history` nasce em 'queued' antes de o PDF existir.
+     Se a função for cortada no meio — teto da plataforma, erro de rede
+     no upload —, sobra uma linha que nunca vira nada e que o índice
+     `report_history_automated_unique` passa a usar para recusar toda
+     nova tentativa daquele período. O cliente não recebe o relatório
+     daquele mês, e a única pista é um status parado numa tabela que a
+     tela nem lista.
+
+     Marcar como 'failed' resolve os dois lados: o índice da migration 47
+     ignora 'failed', então a retentativa passa; e a tentativa perdida
+     fica registrada, que é o que responde "por que não chegou?".
+
+     QUINZE MINUTOS porque o teto de uma função é medido em dezenas de
+     segundos — nada legítimo fica 'generating' por quinze minutos. Curto
+     demais mataria uma geração em andamento; longo demais faria o
+     cliente esperar o mês seguinte. */
+  await destravarPresos();
+
   const clientes = await clientesDoDia(diaDoMes, diaDaSemana);
   base.agendados = clientes.length;
 
@@ -208,6 +228,32 @@ export async function dispatchScheduledReports(options?: {
   }
 
   return base;
+}
+
+/**
+ * Marca como 'failed' os automáticos presos em 'queued'/'generating'.
+ *
+ * Silencioso de propósito: é higiene de início de rodada, não um evento.
+ * O que interessa fica na própria linha — status e `error_message` — e é
+ * lá que alguém vai olhar quando perguntarem por um relatório que não
+ * chegou.
+ */
+async function destravarPresos(): Promise<void> {
+  if (isDemoMode) return;
+
+  const admin = createSupabaseAdminClient();
+  const limite = new Date(Date.now() - 15 * 60_000).toISOString();
+
+  await admin
+    .from("report_history")
+    .update({
+      status: "failed",
+      error_message:
+        "Interrompido antes de terminar — a função foi cortada no meio da geração.",
+    })
+    .eq("is_automated", true)
+    .in("status", ["queued", "generating"])
+    .lt("created_at", limite);
 }
 
 /** Clientes com envio automático ligado para este dia do mês. */

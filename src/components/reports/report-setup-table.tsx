@@ -73,6 +73,48 @@ export function ReportSetupTable({ linhas }: { linhas: ReportSetupRow[] }) {
      aberta, senão vira mais uma gaveta que ninguém abre. */
   const prontos = linhas.filter(estaPronto).length;
   const pendentes = linhas.length - prontos;
+
+  /* Quantos relatórios cabem numa rodada do cron.
+     Um relatório custa ~6s medidos, e a fase de preparo tem ~37s do teto
+     da função — daí seis. Não é um palpite de folga: o cliente que não
+     couber é ADIADO, e adiado não volta amanhã, porque o `report_day`
+     dele não bate mais. Ele perde o relatório do mês.
+
+     Fica aqui, na tela, porque é onde a decisão é tomada. Descobrir o
+     teto só no dia em que o cron rodar custa um mês de relatório para
+     quem ficou de fora. */
+  const CABEM_POR_RODADA = 6;
+
+  /* Só conta quem está LIGADO e pronto: cliente com dia definido mas
+     desligado não disputa tempo nenhum. */
+  const lotacao = useMemo(() => {
+    const contagem = new Map<string, number>();
+    for (const l of linhas) {
+      if (!l.reportEnabled) continue;
+      const chave =
+        l.reportFrequency === "weekly"
+          ? l.reportWeekday !== null && l.reportWeekday !== undefined
+            ? `sem-${l.reportWeekday}`
+            : null
+          : l.reportDay
+            ? `mes-${l.reportDay}`
+            : null;
+      if (!chave) continue;
+      contagem.set(chave, (contagem.get(chave) ?? 0) + 1);
+    }
+
+    return [...contagem.entries()]
+      .filter(([, n]) => n > CABEM_POR_RODADA)
+      .map(([chave, n]) => {
+        const [tipo, valor] = chave.split("-");
+        const rotulo =
+          tipo === "sem"
+            ? (DIAS_DA_SEMANA.find((d) => d.valor === valor)?.rotulo ?? valor)
+            : `dia ${valor}`;
+        return { rotulo, n };
+      })
+      .sort((a, b) => b.n - a.n);
+  }, [linhas]);
   const [aberta, setAberta] = useState(pendentes > 0);
 
   const filtradas = useMemo(() => {
@@ -187,6 +229,12 @@ export function ReportSetupTable({ linhas }: { linhas: ReportSetupRow[] }) {
           </p>
         </div>
 
+        {lotacao.length > 0 && (
+          <span className="shrink-0 rounded-full bg-negative-muted px-2 py-0.5 text-2xs font-medium text-negative">
+            {lotacao.length} {lotacao.length === 1 ? "dia lotado" : "dias lotados"}
+          </span>
+        )}
+
         <span className="shrink-0 text-2xs tabular-nums text-muted-foreground">
           {prontos} de {linhas.length}
         </span>
@@ -200,6 +248,25 @@ export function ReportSetupTable({ linhas }: { linhas: ReportSetupRow[] }) {
 
       {aberta && (
         <div className="mt-4 flex flex-col gap-3">
+          {/* O AVISO PRECISA DIZER O QUE ACONTECE, não só que está cheio.
+              "Dia lotado" sozinho parece recomendação de estilo; o que
+              está em jogo é o cliente perder o relatório do mês inteiro,
+              em silêncio, e só alguém perceber quando ele cobrar. */}
+          {lotacao.length > 0 && (
+            <div className="rounded-lg border border-negative/25 bg-negative-muted px-3 py-2.5 text-xs text-negative">
+              <p className="font-medium">
+                {lotacao.map((d) => `${d.rotulo}: ${d.n} contas`).join(" · ")}
+              </p>
+              <p className="mt-1 text-negative/85">
+                Cabem cerca de {CABEM_POR_RODADA} por rodada — o robô roda uma
+                vez por dia e cada relatório leva alguns segundos. Quem passar
+                disso fica de fora <strong>sem receber</strong>, e não entra
+                automaticamente no dia seguinte: o dia agendado dele já
+                passou. Espalhe por outros dias.
+              </p>
+            </div>
+          )}
+
           <div className="relative max-w-64">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input

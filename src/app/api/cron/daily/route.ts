@@ -71,6 +71,15 @@ export async function GET(request: NextRequest) {
      do sync" — passava a incluir qualquer nome novo que aparecesse. */
   const rodar = (nome: string) => etapa === null || etapa === nome;
 
+  /* ⚠️ O RELÓGIO COMEÇA AQUI, não no início da fase de relatórios.
+     A trava de orçamento em `dispatchScheduledReports` media a partir do
+     momento em que ELA era chamada, e por isso "37s restantes" era uma
+     afirmação sobre um tempo que já tinha sido gasto por quem rodou
+     antes. Com o sync consumindo boa parte do teto real da função, a
+     trava autorizava seis relatórios num espaço que comportava um — e
+     os que não terminavam ficavam presos em `generating`. */
+  const inicioDaRequisicao = Date.now();
+
   const resposta: Record<string, unknown> = { etapa: etapa ?? "completa" };
 
   /* --- 0. Recorrência ---------------------------------------------------
@@ -97,14 +106,22 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  /* --- 1. Sincronização ------------------------------------------- */
-  if (rodar("sync")) {
-    // `mode=month` porque a rodada diária também precisa capturar
-    // reatribuições retroativas das plataformas.
-    resposta.sync = await syncAllClients({ mode: "month" });
-  }
+  /* --- 1. Preparo dos PDFs ---------------------------------------------
+     ⚠️ ANTES DO SYNC, e a ordem é o conserto.
 
-  /* --- 2. Preparo dos PDFs -------------------------------------------------- */
+     A sincronização roda sobre a carteira inteira e não tem orçamento
+     nenhum; os relatórios rodavam depois, com o que sobrasse de um teto
+     que a trava deles nem enxergava. Na prática o sync consumia o tempo
+     e a fase de relatórios começava condenada.
+
+     Inverter é de graça porque o relatório NÃO PRECISA do dado de hoje:
+     a janela é "30 dias terminando ONTEM" (`janelaAte` em
+     `schedule.ts`). O que o sync traz nesta rodada só entra no relatório
+     de amanhã em diante.
+
+     O sync perde a prioridade, e isso é aceitável: ele é incremental,
+     roda em `mode=month` e recupera no dia seguinte o que não couber.
+     Relatório atrasado, não — a data combinada com o cliente passa. */
   if (rodar("envio")) {
     // `?dia=N` permite conferir o preparo de um cliente sem esperar
     // chegar a data combinada. Protegido pelo mesmo CRON_SECRET, e a
@@ -117,14 +134,32 @@ export async function GET(request: NextRequest) {
     // sem esperar a carteira crescer para descobrir na prática.
     const orcamento = Number(searchParams.get("orcamentoMs"));
 
+    /* O orçamento é o que SOBROU do teto, não um número fixo. Sem
+       descontar o decorrido, a conta ignorava tudo o que rodou antes
+       nesta mesma invocação. O piso de 10s evita pedir uma janela
+       negativa quando as etapas anteriores estouraram sozinhas — nesse
+       caso a trava adia todo mundo, que é o desfecho correto. */
+    const decorrido = Date.now() - inicioDaRequisicao;
+    const restante = Math.max(ORCAMENTO_ENVIO_MS - decorrido, 10_000);
+
     resposta.relatorios = await dispatchScheduledReports({
       budgetMs:
         Number.isFinite(orcamento) && orcamento > 0
           ? Math.min(Math.max(orcamento, 10_000), 280_000)
-          : ORCAMENTO_ENVIO_MS,
+          : restante,
       diaForcado:
         Number.isInteger(dia) && dia >= 1 && dia <= 28 ? dia : undefined,
     });
+  }
+
+  /* --- 2. Sincronização -------------------------------------------
+     Depois dos relatórios, de propósito — ver a nota acima. Fica com o
+     tempo que sobrar do teto da função; o que não couber hoje entra na
+     rodada de amanhã, porque `mode=month` reprocessa o mês inteiro. */
+  if (rodar("sync")) {
+    // `mode=month` porque a rodada diária também precisa capturar
+    // reatribuições retroativas das plataformas.
+    resposta.sync = await syncAllClients({ mode: "month" });
   }
 
   // 200 mesmo com falhas parciais, pelo mesmo motivo de `sync-ads`: o
