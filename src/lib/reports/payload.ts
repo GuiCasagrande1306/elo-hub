@@ -306,6 +306,17 @@ export function buildWhatsAppSummary(payload: ReportPayload): string {
     return ` ${arrow} ${Math.abs(kpi.deltaPercent).toFixed(1).replace(".", ",")}%`;
   };
 
+  /* Razão sem denominador vira FRASE, não traço. "*—*" no meio de uma
+     mensagem de WhatsApp lê como falha do sistema, e some justamente a
+     informação que importa: não houve conversão no período. Antes daqui
+     saía "*R$ 0,00* ▼ 100,0%", que era pior — dizia o contrário do que
+     aconteceu. */
+  const linhaCpa = !cpa
+    ? ""
+    : cpa.indefinido
+      ? "📉 Custo por resultado: *sem conversões no período*"
+      : `📉 Custo por resultado: *${cpa.formatted}*${trendWord(cpa)}`;
+
   const period = new Intl.DateTimeFormat("pt-BR", {
     day: "2-digit",
     month: "2-digit",
@@ -319,7 +330,7 @@ export function buildWhatsAppSummary(payload: ReportPayload): string {
     "",
     spend ? `💰 Investimento: *${spend.formatted}*${trendWord(spend)}` : "",
     results ? `🎯 Resultados: *${results.formatted}*${trendWord(results)}` : "",
-    cpa ? `📉 Custo por resultado: *${cpa.formatted}*${trendWord(cpa)}` : "",
+    linhaCpa,
     "",
     "O relatório completo, com a análise e os criativos que rodaram, está no PDF em anexo.",
   ];

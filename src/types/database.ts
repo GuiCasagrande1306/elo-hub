@@ -24,6 +24,89 @@ export type ProjectStatus = "planning" | "active" | "on_hold" | "done" | "archiv
 export type TaskStatus = "backlog" | "todo" | "in_progress" | "review" | "done";
 export type TaskPriority = "low" | "medium" | "high" | "urgent";
 
+/* ------------------------------------------------------------------ */
+/* CRM comercial                                                       */
+/* ------------------------------------------------------------------ */
+
+export type DealStage =
+  | "novo"
+  | "contato"
+  | "reuniao"
+  | "proposta"
+  | "negociacao"
+  | "ganho"
+  | "perdido";
+
+export type DealOrigem =
+  | "indicacao"
+  | "instagram"
+  | "trafego_pago"
+  | "prospeccao"
+  | "site"
+  | "evento"
+  | "outro";
+
+export type LostReason =
+  | "preco"
+  | "timing"
+  | "concorrente"
+  | "sem_retorno"
+  | "nao_qualificado"
+  | "outro";
+
+export type ActivityKind =
+  | "nota"
+  | "ligacao"
+  | "reuniao"
+  | "email"
+  | "whatsapp"
+  | "etapa";
+
+export interface CrmDeal {
+  id: string;
+  title: string;
+  company: string | null;
+  contact_name: string | null;
+  contact_phone: string | null;
+  contact_email: string | null;
+  stage: DealStage;
+  origem: DealOrigem;
+  /** CENTAVOS. Mensalidade proposta — o que entra no MRR se ganhar. */
+  monthly_fee_cents: number;
+  /** CENTAVOS. Valor de uma vez só; fora do recorrente de propósito. */
+  setup_fee_cents: number;
+  owner_id: string | null;
+  expected_close_date: string | null;
+  /** Par obrigatório com `next_action_at` — o banco tem check para isso. */
+  next_action: string | null;
+  next_action_at: string | null;
+  lost_reason: LostReason | null;
+  notes: string | null;
+  /** Preenchido quando o negócio virou conta em `clients`. */
+  client_id: string | null;
+  won_at: string | null;
+  lost_at: string | null;
+  position: number;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CrmActivity {
+  id: string;
+  deal_id: string;
+  kind: ActivityKind;
+  body: string;
+  created_by: string | null;
+  created_at: string;
+}
+
+/** Negócio com as relações resolvidas — o formato que a tela consome. */
+export interface DealWithRelations extends CrmDeal {
+  owner: Pick<Profile, "id" | "full_name" | "avatar_url"> | null;
+  activityCount: number;
+}
+
 export type AdPlatform =
   | "google_ads"
   | "meta_ads"

@@ -103,8 +103,6 @@ export function ClientForm({
       contactName: client.contact_name ?? "",
       contactEmail: client.contact_email ?? "",
       whatsappPhone: client.whatsapp_phone ?? "",
-      reportEnabled: client.report_enabled,
-      reportDay: client.report_day,
       optimizationDay: client.optimization_day,
     },
   });
@@ -414,36 +412,23 @@ export function ClientForm({
                 )}
               />
 
-              <FormField
-                control={form.control}
-                name="reportDay"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Dia do relatório</FormLabel>
-                    <FormControl
-                      render={
-                        <Input
-                          inputMode="numeric"
-                          placeholder="1 a 28"
-                          className="tabular-nums"
-                        />
-                      }
-                      value={field.value === null ? "" : String(field.value)}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                        const t = e.target.value.trim();
-                        field.onChange(t === "" ? null : Number(t));
-                      }}
-                      onBlur={field.onBlur}
-                      name={field.name}
-                    />
-                    <FormDescription>
-                      1 a 28, e não 1 a 31: fevereiro existe, e conta agendada
-                      no dia 30 nunca receberia nada.
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {/* O DIA DO RELATÓRIO SAIU DAQUI, de propósito.
+                  ------------------------------------------------------
+                  Duas telas escreviam o mesmo agendamento com visões
+                  diferentes dele. Esta conhecia `report_enabled` e
+                  `report_day`; a de /relatorios conhece também
+                  `report_frequency` e `report_weekday`. Cliente com
+                  cadência SEMANAL tem, por definição, `report_day` nulo
+                  — e a validação daqui exigia o dia sempre que o envio
+                  estivesse ligado. Resultado medido: depois de marcar um
+                  cliente como semanal, salvar QUALQUER campo do cadastro
+                  dele (site, contato, status) passava a devolver "Escolha
+                  o dia do mês para o envio automático", num campo que
+                  para ele está corretamente vazio.
+
+                  A agenda agora tem um dono só: a tabela "Agenda de
+                  envio", em /relatorios, que resolve destino, cadência e
+                  dia na mesma linha. */}
 
               <FormField
                 control={form.control}
@@ -464,33 +449,14 @@ export function ClientForm({
                 )}
               />
 
-              <FormField
-                control={form.control}
-                name="reportEnabled"
-                render={({ field }) => (
-                  <FormItem className="sm:col-span-2">
-                    <label className="flex items-start gap-2.5">
-                      <input
-                        type="checkbox"
-                        checked={field.value}
-                        onChange={(e) => field.onChange(e.target.checked)}
-                        className="mt-0.5 size-4 shrink-0 rounded border-hairline accent-signal"
-                      />
-                      <span className="min-w-0">
-                        <span className="block text-sm">
-                          Preparar relatório automaticamente
-                        </span>
-                        <span className="block text-2xs text-muted-foreground">
-                          O robô gera o PDF no dia escolhido. O envio continua
-                          manual — alguém confere e dispara pelo próprio
-                          WhatsApp.
-                        </span>
-                      </span>
-                    </label>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <p className="text-2xs text-muted-foreground sm:col-span-2">
+                O envio automático do relatório — se está ligado, em que
+                cadência e em que dia — fica em{" "}
+                <span className="font-medium text-foreground">
+                  Relatórios → Agenda de envio
+                </span>
+                . O WhatsApp acima é o destino que aquela tela usa.
+              </p>
             </div>
           </TabsContent>
         </Tabs>

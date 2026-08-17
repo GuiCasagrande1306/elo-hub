@@ -39,7 +39,6 @@ export default async function TasksPage() {
             tasks={tasks}
             clients={clients}
           team={team}
-            corteConcluidas={corteConcluidas()}
           />
         </Suspense>
       </div>
@@ -63,18 +62,4 @@ function BoardSkeleton() {
       ))}
     </div>
   );
-}
-
-/**
- * Data a partir da qual uma tarefa concluída ainda aparece no quadro.
- *
- * Calculada no SERVIDOR e em granularidade de DIA. `Date.now()` dentro
- * do componente cliente daria valores diferentes no render do servidor e
- * no do navegador — divergência de hidratação — além de ser impuro
- * durante o render. Comparar strings ISO de data é estável.
- */
-function corteConcluidas(): string {
-  const d = new Date();
-  d.setDate(d.getDate() - 7);
-  return d.toISOString().slice(0, 10);
 }

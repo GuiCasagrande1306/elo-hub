@@ -35,6 +35,42 @@ import {
    dentro de botão é HTML inválido e o clique interno nunca chega.
    ===================================================================== */
 
+/**
+ * Estado local que ACOMPANHA o servidor.
+ *
+ * ⚠️ POR QUE NÃO É SÓ `useState(value)`. As células precisam de estado
+ * próprio para a edição parecer instantânea — clicou, mudou, e a action
+ * roda atrás. Mas `useState(value)` só lê a prop no primeiro render:
+ * quando outra pessoa altera a mesma tarefa e o `router.refresh()` traz
+ * a linha nova, a célula continua desenhando o valor do momento em que
+ * montou. `refresh()` é explícito nisso — a documentação desta versão diz
+ * que ele funde o payload novo "sem perder estado do cliente".
+ *
+ * Na tela de tarefas o defeito ficou escondido porque mudar o status
+ * move a linha de grupo, e a lista inteira remonta. Mudar a
+ * CRITICIDADE, não: a linha fica onde está, e o número velho sobrevive
+ * a qualquer atualização vinda do servidor.
+ *
+ * O padrão abaixo é o documentado pelo React para ajustar estado quando
+ * uma prop muda: comparar durante o RENDER e corrigir ali. Não é efeito
+ * — e por isso não esbarra na regra que proíbe `setState` síncrono
+ * dentro de `useEffect`, que é o que o compilador recusa neste projeto.
+ *
+ * Só ressincroniza quando o valor DO SERVIDOR mudou de verdade, então
+ * uma edição otimista em voo não é revertida por um render qualquer.
+ */
+function useValorDoServidor<T>(doServidor: T) {
+  const [valor, setValor] = useState(doServidor);
+  const [ultimo, setUltimo] = useState(doServidor);
+
+  if (doServidor !== ultimo) {
+    setUltimo(doServidor);
+    setValor(doServidor);
+  }
+
+  return [valor, setValor] as const;
+}
+
 export function CriticalityCell({
   taskId,
   value,
@@ -42,7 +78,7 @@ export function CriticalityCell({
   taskId: string;
   value: number;
 }) {
-  const [nivel, setNivel] = useState(value);
+  const [nivel, setNivel] = useValorDoServidor(value);
   const [aberto, setAberto] = useState(false);
   const [, startTransition] = useTransition();
 
@@ -236,7 +272,7 @@ export function StatusCell({
   taskId: string;
   value: TaskStatus;
 }) {
-  const [status, setStatus] = useState(value);
+  const [status, setStatus] = useValorDoServidor(value);
   const [aberto, setAberto] = useState(false);
   const [, startTransition] = useTransition();
 

@@ -177,11 +177,15 @@ function FormularioAgencia({
 
     const ext = arquivo.name.split(".").pop()?.toLowerCase() ?? "png";
 
-    /* SVG barrado ANTES do upload. O motor padrão de PDF não rasteriza
-       vetor e uma imagem que ele não abre aborta o documento inteiro —
-       o relatório do cliente cairia por causa de um logo. */
-    if (!["png", "jpg", "jpeg", "webp"].includes(ext)) {
-      toast.error("Use PNG, JPG ou WEBP. SVG quebra a geração do PDF.");
+    /* SÓ PNG E JPG. O gerador de PDF (@react-pdf/renderer) embute
+       exatamente esses dois formatos raster. WEBP e SVG ele descarta na
+       hora de desenhar — sem exceção, sem aviso: o logo simplesmente não
+       sai na capa. Barrar aqui é o único momento do caminho em que ainda
+       existe alguém olhando para receber o recado. */
+    if (!["png", "jpg", "jpeg"].includes(ext)) {
+      toast.error(
+        "Use PNG ou JPG. WEBP e SVG não são desenhados no PDF — o logo sumiria da capa.",
+      );
       return;
     }
 
@@ -354,7 +358,7 @@ function FormularioAgencia({
             <input
               ref={arquivoRef}
               type="file"
-              accept="image/png,image/jpeg,image/webp"
+              accept="image/png,image/jpeg"
               className="hidden"
               onChange={(e) => {
                 const f = e.target.files?.[0];
@@ -363,8 +367,15 @@ function FormularioAgencia({
               }}
             />
           </div>
+          {/* WEBP SAIU DA LISTA. A tela oferecia, o Storage aceitava, e o
+              @react-pdf/renderer descartava na hora de desenhar: ele só
+              embute JPG, PNG e SVG. O logo simplesmente não aparecia na
+              capa, sem erro em lugar nenhum — nem no upload, nem na
+              geração. Recusar aqui é o único ponto do caminho em que
+              ainda existe alguém para avisar. */}
           <p className="mt-1.5 text-2xs text-muted-foreground">
-            PNG, JPG ou WEBP. SVG não serve — quebra a geração do PDF.
+            PNG ou JPG. WEBP e SVG não servem — o gerador de PDF não
+            desenha esses formatos e o logo sumiria da capa em silêncio.
           </p>
         </div>
 

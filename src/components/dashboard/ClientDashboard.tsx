@@ -12,7 +12,7 @@ import { ClientSettingsCard } from "@/components/clients/client-settings-card";
 import { ClientSettingsDialog } from "@/components/clients/client-settings-dialog";
 import { AdStructure } from "@/components/dashboard/ad-structure";
 import { Button } from "@/components/ui/button";
-import { useRealtimeRefresh } from "@/hooks/use-realtime";
+import { useRealtimeRefresh, useRefreshAoVoltar } from "@/hooks/use-realtime";
 import { cn } from "@/lib/utils";
 import { DateRangePicker } from "./date-range-picker";
 import { formatPeriod } from "@/lib/format";
@@ -111,6 +111,10 @@ export function ClientDashboard({
 }: ClientDashboardProps) {
   // Qualquer sync de métricas ou anúncio revalida esta página para todos
   // os usuários conectados que têm acesso a esta conta.
+  /* Rede de segurança independente do socket: evento perdido enquanto
+     a aba esteve escondida não chega por Realtime nenhum. Uma tela
+     aberta desde quinta já mostrou três dias de dado velho. */
+  useRefreshAoVoltar();
   useRealtimeRefresh("daily_metrics", { filter: `client_id=eq.${client.id}` });
 
   const secondarySeries =

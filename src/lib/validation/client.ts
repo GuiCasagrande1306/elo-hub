@@ -355,22 +355,14 @@ export const clientFormSchema = z
        cola. Apertado o bastante para falhar em algum grupo real. */
     whatsappPhone: optionalText(60, "WhatsApp"),
 
-    reportEnabled: z.boolean(),
-    reportDay: z
-      .number()
-      .int()
-      .min(1, "O dia vai de 1 a 28.")
-      .max(28, "O dia vai de 1 a 28.")
-      .nullable(),
+    /* `reportEnabled` e `reportDay` SAÍRAM daqui — a agenda de envio é
+       responsabilidade única de `salvarAgendaDeRelatorio`, em
+       /relatorios. Este formulário só conhecia metade do agendamento
+       (não sabia de `report_frequency` nem de `report_weekday`) e por
+       isso rejeitava salvar qualquer cliente de cadência semanal, que
+       tem `report_day` nulo por definição. Ver o comentário longo em
+       `client-form.tsx`. */
     optimizationDay: z.number().int().min(1).max(5).nullable(),
-  })
-  .refine((v) => !v.reportEnabled || v.reportDay !== null, {
-    message: "Escolha o dia do mês para o envio automático.",
-    path: ["reportDay"],
-  })
-  .refine((v) => !v.reportEnabled || v.whatsappPhone.trim() !== "", {
-    message: "Sem WhatsApp cadastrado não há para onde enviar.",
-    path: ["whatsappPhone"],
   });
 
 export type ClientFormValues = z.infer<typeof clientFormSchema>;
@@ -394,8 +386,6 @@ export const FIELD_TAB: Record<keyof ClientFormValues, "perfil" | "operacional">
     contactName: "perfil",
     contactEmail: "perfil",
     whatsappPhone: "operacional",
-    reportEnabled: "operacional",
-    reportDay: "operacional",
     optimizationDay: "operacional",
   };
 

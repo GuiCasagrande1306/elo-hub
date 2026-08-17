@@ -67,16 +67,20 @@ function normalizar(input: z.infer<typeof schema>):
     return { ok: false, error: "Cor inválida. Use o formato #1A2B3C." };
   }
 
-  /* SVG é recusado aqui e no banco. O motor padrão de PDF é o react-pdf,
-     que não rasteriza vetor — e uma imagem que ele não abre ABORTA o
-     documento inteiro, derrubando o relatório do cliente por causa de um
-     logo. Barrar na entrada é onde o erro sai barato. */
+  /* PNG e JPG, e nada mais. O motor padrão de PDF é o react-pdf, que
+     desenha só esses dois formatos raster; WEBP e SVG ele descarta em
+     silêncio — o documento sai sem o logo e sem nenhum erro. Barrar na
+     entrada é onde o problema ainda é visível para quem pode resolvê-lo.
+
+     (WEBP era aceito aqui até agora. A tela oferecia, o Storage
+     guardava, e a capa saía sem marca nenhuma.) */
   if (input.logoUrl) {
     const semQuery = input.logoUrl.split("?")[0].toLowerCase();
-    if (!/\.(png|jpe?g|webp)$/.test(semQuery)) {
+    if (!/\.(png|jpe?g)$/.test(semQuery)) {
       return {
         ok: false,
-        error: "O logo precisa ser PNG, JPG ou WEBP — SVG quebra a geração do PDF.",
+        error:
+          "O logo precisa ser PNG ou JPG — WEBP e SVG não são desenhados no PDF.",
       };
     }
   }

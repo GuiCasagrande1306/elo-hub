@@ -166,9 +166,52 @@ export function sumMetrics(rows: DailyMetric[]): MetricTotals {
 }
 
 /**
+ * A métrica é uma RAZÃO cujo denominador é zero?
+ *
+ * ⚠️ ZERO E INDEFINIDO NÃO SÃO A MESMA COISA, e confundi-los produziu o
+ * pior defeito que este sistema já teve — porque ele não quebrava nada,
+ * só mentia com confiança no documento que vai para o cliente.
+ *
+ * `deriveMetric` devolve 0 quando o divisor é 0. Isso protege contra
+ * NaN e está certo para o gráfico, onde o ponto precisa de um número.
+ * Mas um cliente que investiu R$ 5.000 e não gerou pedido nenhum tem
+ * custo por pedido INDEFINIDO, não R$ 0,00 — e era isso que a capa do
+ * relatório imprimia, com "−100%" pintado de VERDE porque custo caindo
+ * é bom, e "anterior: R$ 62,34" logo abaixo. O pior mês possível saía
+ * anunciado como o melhor do ano, e a mesma frase ia na mensagem do
+ * WhatsApp.
+ *
+ * A tabela de campanhas do PDF já acertava sozinha, imprimindo "—". O
+ * resto do sistema agora segue a mesma régua, num lugar só.
+ */
+export function metricaIndefinida(key: MetricKey, t: MetricTotals): boolean {
+  switch (key) {
+    case "cpa":
+    case "cpl":
+    case "aov":
+      return t.conversions === 0;
+    case "roas":
+      return t.spendCents === 0;
+    case "ctr":
+    case "cpm":
+      return t.impressions === 0;
+    case "cpc":
+      return t.clicks === 0;
+    /* Soma, não razão: zero investido é literalmente zero, e imprimir
+       "—" ali esconderia um fato verdadeiro. */
+    default:
+      return false;
+  }
+}
+
+/**
  * Converte somatórios em valores de KPI.
  * Toda razão é protegida contra divisor zero — um cliente pausado no
  * período não pode derrubar a página com NaN.
+ *
+ * O 0 devolvido aqui é um VALOR DE FALLBACK, não um fato sobre a conta.
+ * Quem exibe número para gente precisa consultar `metricaIndefinida`
+ * antes — `computeKpi` já faz isso.
  */
 export function deriveMetric(key: MetricKey, t: MetricTotals): number {
   const safeDiv = (a: number, b: number) => (b === 0 ? 0 : a / b);
@@ -218,6 +261,12 @@ export interface KpiResult {
   sentiment: Sentiment;
   previousValue: number;
   previousFormatted: string;
+  /**
+   * Razão sem denominador no período — `formatted` é "—" e não há
+   * variação para mostrar. Exposto para a interface poder explicar o
+   * traço ("sem conversões no período") em vez de deixar um buraco.
+   */
+  indefinido: boolean;
 }
 
 /** Abaixo disto, tratamos como estabilidade e não como tendência. */
@@ -232,8 +281,17 @@ export function computeKpi(
   const value = deriveMetric(key, current);
   const previousValue = deriveMetric(key, previous);
 
+  const indefinido = metricaIndefinida(key, current);
+  const anteriorIndefinido = metricaIndefinida(key, previous);
+
+  /* Sem denominador de um dos lados não existe variação: comparar o
+     fallback 0 contra o CPA do mês passado é o que produzia o "−100%"
+     verde. `null` aqui faz toda a interface cair no ramo "sem base de
+     comparação", que já existe e já é tratado em todas as telas. */
   const deltaPercent =
-    previousValue === 0 ? null : ((value - previousValue) / previousValue) * 100;
+    indefinido || anteriorIndefinido || previousValue === 0
+      ? null
+      : ((value - previousValue) / previousValue) * 100;
 
   let direction: KpiResult["direction"] = "flat";
   if (deltaPercent !== null && Math.abs(deltaPercent) >= FLAT_THRESHOLD) {
@@ -250,12 +308,13 @@ export function computeKpi(
     label: def.label,
     hint: def.hint,
     value,
-    formatted: def.format(value),
+    formatted: indefinido ? "—" : def.format(value),
     deltaPercent,
     direction,
     sentiment,
     previousValue,
-    previousFormatted: def.format(previousValue),
+    previousFormatted: anteriorIndefinido ? "—" : def.format(previousValue),
+    indefinido,
   };
 }
 

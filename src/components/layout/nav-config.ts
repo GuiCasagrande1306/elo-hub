@@ -1,6 +1,7 @@
 import {
   BarChart3,
   Building2,
+  Handshake,
   CheckSquare,
   FileText,
   Landmark,
@@ -58,6 +59,10 @@ export const navGroups: NavGroup[] = [
   {
     label: "Operação",
     items: [
+      /* Comercial vem ANTES de Clientes, e a ordem é o argumento: o dia
+         começa em quem ainda não fechou. Depois de Clientes, o funil
+         viraria o link que ninguém abre. */
+      { href: "/comercial", label: "Comercial", icon: Handshake, matchPrefix: true },
       { href: "/clientes", label: "Clientes", icon: Users, matchPrefix: true },
       { href: "/esteira", label: "Esteira", icon: Repeat, matchPrefix: true },
       { href: "/tarefas", label: "Tarefas", icon: CheckSquare, matchPrefix: true },

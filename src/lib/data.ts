@@ -26,7 +26,9 @@ import type {
   ClientFinancials,
   ClientGoal,
   ClientSegment,
+  CrmActivity,
   DailyMetric,
+  DealWithRelations,
   FinancialTransaction,
   MonthlySummary,
   OptimizationEntry,
@@ -1738,4 +1740,85 @@ export async function getAgencies(): Promise<AgencyContract[]> {
     billing_day: null,
     notes: null,
   }));
+}
+
+/* ------------------------------------------------------------------ */
+/* CRM comercial                                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Negócios do funil, com o responsável resolvido.
+ *
+ * SEM FILTRO DE ETAPA por padrão, e de propósito: a tela precisa dos
+ * ganhos e perdidos para calcular taxa de conversão, e uma segunda
+ * consulta só para eles pagaria dois round-trips para responder uma
+ * pergunta só. O corte por etapa é feito na tela, que é onde o filtro
+ * do usuário também mora.
+ *
+ * ⚠️ O PostgREST corta em `max_rows = 1000` (supabase/config.toml) e não
+ * avisa. Um funil com mais de mil negócios é improvável nesta agência,
+ * mas o `limit` explícito faz a truncagem virar um número visível em vez
+ * de uma lista silenciosamente incompleta.
+ */
+export async function getDeals(): Promise<DealWithRelations[]> {
+  if (isDemoMode) {
+    const { demoDeals } = await import("@/lib/mock/data");
+    return demoDeals;
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  /* Hint de FK no embed de `profiles`. `crm_deals` aponta para ela DUAS
+     vezes — `owner_id` e `created_by` —, e sem o hint o PostgREST recusa
+     com PGRST201 por ambiguidade. Foi assim que a esteira quase voltou
+     vazia quando a migration 36 criou a segunda FK dela. */
+  const { data, error } = await supabase
+    .from("crm_deals")
+    .select(
+      `
+      *,
+      owner:profiles!crm_deals_owner_id_fkey(id, full_name, avatar_url),
+      crm_activities(count)
+    `,
+    )
+    .order("position", { ascending: false })
+    .limit(1000);
+
+  if (error) throw error;
+
+  return (data ?? []).map((row) => {
+    const { crm_activities, ...deal } = row as unknown as Record<
+      string,
+      unknown
+    > & { crm_activities: { count: number }[] | null };
+
+    return {
+      ...deal,
+      activityCount: crm_activities?.[0]?.count ?? 0,
+    };
+  }) as unknown as DealWithRelations[];
+}
+
+/** Linha do tempo de um negócio, do mais recente para o mais antigo. */
+export async function getDealActivities(
+  dealId: string,
+): Promise<(CrmActivity & { author: Pick<Profile, "id" | "full_name"> | null })[]> {
+  if (isDemoMode) {
+    const { demoActivities } = await import("@/lib/mock/data");
+    return demoActivities.filter((a) => a.deal_id === dealId);
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data } = await supabase
+    .from("crm_activities")
+    .select(
+      `*, author:profiles!crm_activities_created_by_fkey(id, full_name)`,
+    )
+    .eq("deal_id", dealId)
+    .order("created_at", { ascending: false })
+    .limit(200);
+
+  return (data ?? []) as unknown as (CrmActivity & {
+    author: Pick<Profile, "id" | "full_name"> | null;
+  })[];
 }

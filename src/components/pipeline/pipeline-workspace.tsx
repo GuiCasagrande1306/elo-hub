@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useRealtimeRefresh } from "@/hooks/use-realtime";
+import { useRealtimeRefresh, useRefreshAoVoltar } from "@/hooks/use-realtime";
 import { WEEKDAY_LABELS } from "@/lib/validation/client";
 import { cn } from "@/lib/utils";
 import type {
@@ -54,6 +54,10 @@ export function PipelineWorkspace({
   const [visao, setVisao] = useState<"todos" | "meus">("todos");
 
   // Alguém do time registrou uma rodada → a lista se atualiza sozinha.
+  /* Rede de segurança independente do socket: evento perdido enquanto
+     a aba esteve escondida não chega por Realtime nenhum. Uma tela
+     aberta desde quinta já mostrou três dias de dado velho. */
+  useRefreshAoVoltar();
   useRealtimeRefresh("optimization_history");
 
   const filtrada = useMemo(

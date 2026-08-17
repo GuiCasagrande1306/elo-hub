@@ -32,7 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useRealtimeRefresh } from "@/hooks/use-realtime";
+import { useRealtimeRefresh, useRefreshAoVoltar } from "@/hooks/use-realtime";
 import { useLocalPreference } from "@/lib/use-local-preference";
 import { ColumnMenu } from "./column-menu";
 import {
@@ -71,14 +71,17 @@ interface TasksWorkspaceProps {
   clients: Client[];
   /** Equipe, para o seletor de responsáveis do popup. */
   team: Profile[];
-  /** Data ISO (YYYY-MM-DD) do corte de tarefas concluídas recentes. */
-  corteConcluidas: string;
 }
 
-/* `corteConcluidas` segue aceito pela página mas não é mais lido: a
-   janela de 7 dias deixou de existir quando o agrupamento virou
-   estrito. `clients` voltou a ser usado — não pelo filtro da barra, que
-   saiu, mas pelo seletor de cliente dentro de cada linha da lista. */
+/* A prop `corteConcluidas` SAIU. Ela era calculada no servidor,
+   atravessava a fronteira para o cliente e não tinha um único leitor —
+   a janela de 7 dias deixou de existir quando o agrupamento virou
+   estrito (`status === "done"` de um lado, o resto do outro). Uma prop
+   sem leitor custa payload e, pior, mente sobre o contrato: quem lesse
+   a interface concluiria que existe um recorte de data que não existe.
+
+   `clients` continua em uso — não pelo filtro da barra, que saiu, mas
+   pelo seletor de cliente dentro de cada linha da lista. */
 export function TasksWorkspace({ tasks, clients, team }: TasksWorkspaceProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -151,6 +154,10 @@ export function TasksWorkspace({ tasks, clients, team }: TasksWorkspaceProps) {
 
      Sem esta linha, o admin cria e atribui, e o card só aparece na tela
      do colaborador quando ele recarrega a página à mão. */
+  /* Rede de segurança independente do socket: evento perdido enquanto
+     a aba esteve escondida não chega por Realtime nenhum. Uma tela
+     aberta desde quinta já mostrou três dias de dado velho. */
+  useRefreshAoVoltar();
   useRealtimeRefresh("tasks");
   useRealtimeRefresh("task_assignees");
   useRealtimeRefresh("task_checklist_items");

@@ -32,6 +32,27 @@ const nextConfig: NextConfig = {
    */
   serverExternalPackages: ["@sparticuz/chromium", "puppeteer-core"],
 
+  /**
+   * As fontes do PDF viajam com a função.
+   *
+   * `src/lib/reports/pdf/document.tsx` lê os dois `.ttf` do disco com
+   * `join(process.cwd(), "src/assets/fonts", ...)`. O rastreador de
+   * arquivos do Next segue `import`, não caminho montado em tempo de
+   * execução — sem esta lista os arquivos ficam de fora do bundle da
+   * Vercel e o `Font.register` falha ao abrir, EM PRODUÇÃO APENAS.
+   * Local funciona porque o disco tem o repositório inteiro, o que faz
+   * deste o tipo de defeito que só aparece depois do deploy.
+   *
+   * As chaves são globs de ROTA. Quatro caminhos geram PDF: a rota de
+   * geração, a de pré-visualização, o cron diário e a rota de impressão.
+   */
+  outputFileTracingIncludes: {
+    "/api/reports/generate": ["src/assets/fonts/**/*"],
+    "/api/reports/preview": ["src/assets/fonts/**/*"],
+    "/api/cron/daily": ["src/assets/fonts/**/*"],
+    "/reports/render/[clientId]": ["src/assets/fonts/**/*"],
+  },
+
   async headers() {
     return [
       {

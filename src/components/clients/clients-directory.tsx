@@ -19,7 +19,7 @@ import {
 import { buildGoalProgress, type GoalProgressPair } from "@/lib/metrics/goals";
 import { goalExecutedFrom, goalMetricFor } from "@/lib/metrics/goal-metric";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
-import { useRealtimeRefresh } from "@/hooks/use-realtime";
+import { useRealtimeRefresh, useRefreshAoVoltar } from "@/hooks/use-realtime";
 import { isDemoMode } from "@/lib/env";
 import { cn } from "@/lib/utils";
 import type { Client, ClientGoal, ClientSegment } from "@/types/database";
@@ -104,6 +104,10 @@ export function ClientsDirectory({
   const liveGoals = patch.base === rows ? patch.goals : {};
 
   // Métricas: agregação pesada demais para recalcular no browser.
+  /* Rede de segurança independente do socket: evento perdido enquanto
+     a aba esteve escondida não chega por Realtime nenhum. Uma tela
+     aberta desde quinta já mostrou três dias de dado velho. */
+  useRefreshAoVoltar();
   useRealtimeRefresh("daily_metrics");
   useRealtimeRefresh("clients");
 

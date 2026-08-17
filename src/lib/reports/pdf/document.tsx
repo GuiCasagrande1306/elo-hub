@@ -1,5 +1,8 @@
+import { join } from "node:path";
+
 import {
   Document,
+  Font,
   Image,
   Page,
   StyleSheet,
@@ -23,12 +26,27 @@ import {
    ---------------------------------------------------------------------
    Notas de implementação:
 
-   • Tipografia: Helvetica (embutida no react-pdf). Para usar Inter ou
-     Satoshi, registrar o .ttf no bundle:
-        Font.register({ family: "Inter", src: path.join(process.cwd(),
-          "src/assets/fonts/Inter-Regular.ttf") })
-     Evitamos baixar fonte por URL em tempo de render: uma falha de rede
-     derrubaria a geração do relatório inteiro.
+   • Tipografia: GEIST, EMBUTIDA no arquivo.
+
+     ⚠️ CORREÇÃO DE UMA AFIRMAÇÃO QUE ESTAVA AQUI. Este comentário dizia
+     "Helvetica (embutida no react-pdf)". É falso, e custou caro: as
+     quatorze fontes padrão do PDF — Helvetica entre elas — NÃO são
+     embutidas por definição. O arquivo só escreve "use Helvetica" e
+     transfere o problema para quem abre.
+
+     Medido: o relatório saía com 15KB e ZERO fontes embutidas. Em
+     desktop passa despercebido, porque Preview, Acrobat e Chrome
+     substituem por Arial, que tem métrica idêntica. No celular — que é
+     onde o cliente abre o PDF que chega por WhatsApp — não existe
+     Helvetica nem Arial: o visualizador troca por Roboto ou pior, as
+     larguras deixam de bater com as posições que o react-pdf calculou,
+     e o resultado é texto sobreposto e valor que some da página.
+
+     Geist porque é a mesma família da interface, é OFL (redistribuível,
+     e a licença acompanha em src/assets/fonts/OFL.txt) e cobre o
+     português inteiro. Os arquivos são lidos do disco no bundle, nunca
+     por URL: uma falha de rede em tempo de render derrubaria a geração
+     do relatório inteiro.
 
    • Gráficos: desenhados com <View> posicionado. O react-pdf não executa
      Recharts (não há DOM), e rasterizar gráfico como imagem perderia a
@@ -39,6 +57,31 @@ import {
      aqui aborta a geração inteira, e um criativo sem thumb não pode
      custar o relatório do cliente.
    ===================================================================== */
+
+/* Registrado no MÓDULO, não dentro do componente: o react-pdf guarda as
+   fontes num registro global e registrar a cada render recarregaria o
+   arquivo do disco a cada relatório do cron.
+
+   `join(process.cwd(), ...)` e não `import` do .ttf: o Turbopack trataria
+   o import como asset e devolveria uma URL, que é exatamente o caminho
+   por rede que este documento não pode depender. Na Vercel o
+   `outputFileTracingIncludes` do next.config garante que os dois arquivos
+   viajem junto com a função. */
+const DIR_FONTES = join(process.cwd(), "src/assets/fonts");
+
+Font.register({
+  family: "Geist",
+  fonts: [
+    { src: join(DIR_FONTES, "Geist-Regular.ttf"), fontWeight: 400 },
+    { src: join(DIR_FONTES, "Geist-Bold.ttf"), fontWeight: 700 },
+  ],
+});
+
+/* O hifenizador padrão do react-pdf quebra palavra no meio sem hífen
+   visível, e em português isso produz coisas como "investi mento" no
+   meio de um cartão estreito. Desligado: preferimos a palavra inteira
+   passando para a linha seguinte. */
+Font.registerHyphenationCallback((palavra) => [palavra]);
 
 const INK = "#141413";
 const INK_SOFT = "#5C5C57";
@@ -53,13 +96,13 @@ const styles = StyleSheet.create({
     paddingBottom: 56,
     paddingHorizontal: 44,
     fontSize: 9.5,
-    fontFamily: "Helvetica",
+    fontFamily: "Geist",
     color: INK,
     backgroundColor: "#FFFFFF",
   },
 
   /* ---------------------------- Capa ---------------------------- */
-  cover: { padding: 0, fontFamily: "Helvetica", color: INK },
+  cover: { padding: 0, fontFamily: "Geist", color: INK },
   coverBand: { height: 300, paddingTop: 56, paddingHorizontal: 48 },
   coverEyebrow: {
     fontSize: 8,
@@ -70,7 +113,7 @@ const styles = StyleSheet.create({
   },
   coverTitle: {
     fontSize: 34,
-    fontFamily: "Helvetica-Bold",
+    fontFamily: "Geist", fontWeight: 700,
     color: "#FFFFFF",
     marginTop: 14,
     lineHeight: 1.1,
@@ -85,7 +128,7 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     color: INK_SOFT,
   },
-  h2: { fontSize: 15, fontFamily: "Helvetica-Bold", marginBottom: 3 },
+  h2: { fontSize: 15, fontFamily: "Geist", fontWeight: 700, marginBottom: 3 },
   sub: { fontSize: 9, color: INK_SOFT, marginBottom: 16 },
   section: { marginBottom: 26 },
 
@@ -98,7 +141,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: HAIRLINE,
   },
-  headerName: { fontSize: 10, fontFamily: "Helvetica-Bold" },
+  headerName: { fontSize: 10, fontFamily: "Geist", fontWeight: 700 },
   headerMeta: { fontSize: 8, color: INK_SOFT },
 
   footer: {
@@ -131,7 +174,7 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     color: INK_SOFT,
   },
-  kpiValue: { fontSize: 20, fontFamily: "Helvetica-Bold", marginTop: 7 },
+  kpiValue: { fontSize: 20, fontFamily: "Geist", fontWeight: 700, marginTop: 7 },
   kpiDelta: { fontSize: 8, marginTop: 6 },
   kpiPrev: { fontSize: 7.5, color: INK_SOFT, marginTop: 2 },
 
@@ -161,7 +204,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     borderRadius: 3,
     fontSize: 8,
-    fontFamily: "Helvetica-Bold",
+    fontFamily: "Geist", fontWeight: 700,
     letterSpacing: 1,
     textTransform: "uppercase",
     color: "#FFFFFF",
@@ -183,7 +226,7 @@ const styles = StyleSheet.create({
   },
   th: {
     fontSize: 7.5,
-    fontFamily: "Helvetica-Bold",
+    fontFamily: "Geist", fontWeight: 700,
     letterSpacing: 0.6,
     textTransform: "uppercase",
     color: INK_SOFT,
@@ -196,7 +239,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 5,
   },
-  splitName: { fontSize: 9.5, fontFamily: "Helvetica-Bold" },
+  splitName: { fontSize: 9.5, fontFamily: "Geist", fontWeight: 700 },
   splitTrack: {
     height: 5,
     backgroundColor: HAIRLINE,
@@ -229,7 +272,7 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     color: INK_SOFT,
   },
-  adHeadline: { fontSize: 10, fontFamily: "Helvetica-Bold", marginTop: 3 },
+  adHeadline: { fontSize: 10, fontFamily: "Geist", fontWeight: 700, marginTop: 3 },
   adCopy: { fontSize: 8, color: INK_SOFT, marginTop: 4, lineHeight: 1.45 },
   adMetrics: {
     flexDirection: "row",
@@ -245,12 +288,12 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     color: INK_SOFT,
   },
-  adMetricValue: { fontSize: 9, fontFamily: "Helvetica-Bold", marginTop: 2 },
+  adMetricValue: { fontSize: 9, fontFamily: "Geist", fontWeight: 700, marginTop: 2 },
 
   /* --------------------------- Textos --------------------------- */
   paragraph: { fontSize: 9.5, lineHeight: 1.6, color: INK },
   stepRow: { flexDirection: "row", gap: 8, marginBottom: 7 },
-  stepIndex: { fontSize: 9, fontFamily: "Helvetica-Bold", width: 14 },
+  stepIndex: { fontSize: 9, fontFamily: "Geist", fontWeight: 700, width: 14 },
   stepText: { fontSize: 9.5, lineHeight: 1.5, flex: 1 },
 
   emptyNote: {
@@ -310,9 +353,16 @@ export function ReportDocument({ payload }: { payload: ReportPayload }) {
               agência tenha ou não enviado o arquivo.
 
               O logo é RASTER por contrato (a migration 38 recusa SVG na
-              entrada): o react-pdf não rasteriza vetor, e uma imagem que
-              ele não consegue abrir ABORTA o documento inteiro. Um logo
-              faltando não pode custar o relatório do cliente. */}
+              entrada), porque o react-pdf não rasteriza vetor.
+
+              ⚠️ CORREÇÃO DE UMA PREMISSA QUE ESTAVA ESCRITA AQUI: dizia-se
+              que uma imagem ilegível ABORTA o documento inteiro. Isso é
+              falso na versão instalada (@react-pdf/renderer 4.5.1) — o
+              `fetchImage` engole o erro e simplesmente pula o desenho.
+              O risco real é o oposto e mais traiçoeiro: o documento sai
+              CALADO e incompleto, sem logo e sem nenhum sinal de que
+              algo faltou. Por isso o formato é restringido na ENTRADA,
+              onde ainda dá para avisar quem enviou. */}
           {payload.agency?.logoUrl ? (
             // Mesmo falso positivo do thumb de criativo: este `Image` é
             // do @react-pdf/renderer e não existe `alt` no PDF.
@@ -335,6 +385,26 @@ export function ReportDocument({ payload }: { payload: ReportPayload }) {
         </View>
 
         <View style={styles.coverBody}>
+          {/* O LOGO DO CLIENTE. Ele era montado no payload
+              (`payload.client.logoUrl`) e nunca lido pelo documento — o
+              relatório saía com a marca de quem assina e sem a marca de
+              quem recebe.
+
+              Fica no CORPO da capa, não na faixa: a faixa é a assinatura
+              da agência, e as duas marcas juntas ali competiriam. Aqui
+              ele abre a página como o cabeçalho de quem o documento é. */}
+          {payload.client.logoUrl && (
+            // eslint-disable-next-line jsx-a11y/alt-text
+            <Image
+              src={payload.client.logoUrl}
+              style={{
+                height: 34,
+                marginBottom: 26,
+                objectFit: "contain",
+                alignSelf: "flex-start",
+              }}
+            />
+          )}
           <CoverSummary payload={payload} />
         </View>
 
@@ -374,15 +444,50 @@ export function ReportDocument({ payload }: { payload: ReportPayload }) {
             );
           }
 
+          /* A GALERIA PRECISA PODER QUEBRAR ENTRE PÁGINAS.
+             `wrap={false}` diz ao react-pdf "não parta este nó", e ele
+             obedece mesmo quando o nó é maior que a folha: empurra o
+             bloco inteiro e segue desenhando por cima da margem, com um
+             `console.warn` que ninguém lê em produção. Com os SEIS
+             criativos que todos os templates pedem por padrão, o rodapé
+             fixo (nome da agência e numeração) era empurrado para fora
+             da página; com sete ou oito os cartões passavam a colidir
+             com a linha de métricas.
+
+             Cada CARTÃO continua com `wrap={false}` mais abaixo — partir
+             um anúncio ao meio é que ficaria feio. O que muda é a
+             seção, que agora deixa os cartões transbordarem para a folha
+             seguinte, como a `platform_detail` já fazia. */
+          const galeria = section.type === "ad_gallery";
+
           return (
-            <View key={`${section.type}-${index}`} style={styles.section} wrap={false}>
+            <View
+              key={`${section.type}-${index}`}
+              style={styles.section}
+              wrap={galeria}
+            >
+              {/* ⚠️ O TÍTULO DA GALERIA PODE FICAR ÓRFÃO NO PÉ DA
+                  PÁGINA, e isso é aceito de propósito.
+
+                  `minPresenceAhead` não resolve: no `<Text>` ela é
+                  ignorada porque `shouldBreak` exige elementos ANTES do
+                  nó na mesma caixa, e o título é o primeiro filho; na
+                  seção também, porque para um nó que PODE quebrar o ramo
+                  do `minPresenceAhead` nunca chega a ser avaliado
+                  (node_modules/@react-pdf/layout, `shouldBreak`).
+
+                  Agrupar título e primeiro cartão num bloco
+                  `wrap={false}` foi tentado e MEDIDO: o bloco passa a
+                  não caber no que resta da folha, o react-pdf desenha
+                  por cima da margem, e os três anúncios saem sobrepostos
+                  uns aos outros — o defeito real no lugar do cosmético.
+                  Um título sozinho no pé da página é o preço mais barato
+                  dos dois. */}
               <Text style={styles.h2}>{section.title}</Text>
 
               {/* RESSALVA SÓ QUANDO É EXCEÇÃO. Quando os números foram
-                  apurados para o período, nada é impresso — a seção já
-                  está no limite da folha e uma linha permanente
-                  agravaria o corte do último cartão. Aqui a linha só
-                  aparece quando o documento estaria mentindo sem ela:
+                  apurados para o período, nada é impresso. Aqui a linha
+                  só aparece quando o documento estaria mentindo sem ela:
                   a apuração falhou e os valores são da última
                   sincronização, não do período da capa. */}
               {section.type === "ad_gallery" && !payload.creativesDoPeriodo && (
@@ -782,7 +887,21 @@ function AdGallery({ payload }: { payload: ReportPayload }) {
   return (
     <View>
       {payload.creatives.map((ad) => (
-        <View key={ad.id} style={styles.adCard} wrap={false}>
+        <Cartao key={ad.id} ad={ad} payload={payload} />
+      ))}
+    </View>
+  );
+}
+
+function Cartao({
+  ad,
+  payload,
+}: {
+  ad: ReportPayload["creatives"][number];
+  payload: ReportPayload;
+}) {
+  return (
+    <View style={styles.adCard} wrap={false}>
           {ad.imageIsRaster && ad.imageUrl ? (
             // `Image` aqui é do @react-pdf/renderer, não <img> do DOM:
             // não existe `alt` no PDF. A regra de a11y é um falso
@@ -837,9 +956,7 @@ function AdGallery({ payload }: { payload: ReportPayload }) {
                 </Text>
               </View>
             </View>
-          </View>
-        </View>
-      ))}
+      </View>
     </View>
   );
 }

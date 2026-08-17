@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { Eye, Loader2, MessageCircle, Sparkles } from "lucide-react";
+import { useState } from "react";
+import { Eye, Loader2, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,6 @@ import {
   rotuloDoIntervalo,
   type Intervalo,
 } from "@/components/ui/date-range-picker";
-import { gerarAnaliseIA } from "@/app/(app)/relatorios/actions";
 import { resolverTemplate } from "@/lib/reports/template-resolver";
 import { resolvePeriod } from "@/lib/date-br";
 import { cn } from "@/lib/utils";
@@ -76,7 +75,6 @@ export function ReportComposer({
   const [insights, setInsights] = useState("");
   const [steps, setSteps] = useState("");
   const [busy, setBusy] = useState<"preview" | "send" | null>(null);
-  const [escrevendo, iniciarEscrita] = useTransition();
 
   const client = clients.find((c) => c.slug === clientSlug);
 
@@ -90,54 +88,6 @@ export function ReportComposer({
     templateId === "__auto__"
       ? autoTemplate
       : templates.find((t) => t.id === templateId);
-
-  function escreverComIA() {
-    if (!client) return;
-
-    /* SUBSTITUI o que estava escrito — concatenar produziria dois
-       parágrafos contraditórios no PDF a cada clique repetido, e o texto
-       vai para o cliente. Por isso a confirmação, e por isso ANTES da
-       chamada: perguntar depois já teria gasto a requisição paga.
-
-       Os `Textarea` são controlados, então o `setState` apaga de vez: o
-       desfazer do navegador não recupera o que a pessoa digitou. */
-    if (
-      (insights.trim() || steps.trim()) &&
-      !window.confirm(
-        "Isso substitui a análise e os próximos passos que já estão escritos. Continuar?",
-      )
-    ) {
-      return;
-    }
-
-    iniciarEscrita(async () => {
-      try {
-        const r = await gerarAnaliseIA({
-          clientSlug,
-          periodStart: periodo.inicio,
-          periodEnd: periodo.fim,
-        });
-
-        if (!r.ok) {
-          toast.error(r.error);
-          return;
-        }
-
-        setInsights(r.insights);
-        setSteps(r.nextSteps.join("\n"));
-        toast.success("Rascunho escrito. Revise antes de gerar o PDF.");
-      } catch {
-        /* A action devolve erro como VALOR, então este catch só pega
-           falha de transporte: rede caída, 504 da Vercel, ou a action
-           some depois de um deploy com a aba antiga aberta. Sem ele a
-           promise rejeitada sobe para o error boundary e leva junto o
-           formulário inteiro — inclusive o texto já digitado. */
-        toast.error(
-          "Não deu para falar com o servidor. Recarregue a página e tente de novo.",
-        );
-      }
-    });
-  }
 
   function handlePreview() {
     if (!client) return;
@@ -335,35 +285,20 @@ export function ReportComposer({
         </section>
 
         <section className="surface-card p-5">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <h2 className="text-base font-semibold tracking-[-0.01em]">
-                Leitura do time
-              </h2>
-              <p className="mt-0.5 text-sm text-muted-foreground">
-                O que os números não contam sozinhos. Entra como seção de
-                análise no PDF.
-              </p>
-            </div>
-
-            {/* RASCUNHO, e o rótulo diz isso. O texto sai dos mesmos
-                números do PDF, mas quem assina o relatório é a agência —
-                um botão chamado "Analisar" sugeriria que o trabalho
-                acabou aqui. */}
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-9 shrink-0"
-              disabled={escrevendo || !client}
-              onClick={escreverComIA}
-            >
-              {escrevendo ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Sparkles className="size-4" />
-              )}
-              Escrever rascunho com IA
-            </Button>
+          {/* Havia aqui um botão "Escrever rascunho com IA". Ele foi
+              REMOVIDO, não escondido: nunca funcionou em produção — a
+              chave da Anthropic jamais existiu nas variáveis da Vercel —,
+              e mesmo assim ficava sempre habilitado, então o único
+              resultado possível de clicar nele era uma mensagem de erro.
+              A leitura do período é escrita pelo time, no campo abaixo. */}
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold tracking-[-0.01em]">
+              Leitura do time
+            </h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              O que os números não contam sozinhos. Entra como seção de
+              análise no PDF.
+            </p>
           </div>
 
           <div className="mt-4 flex flex-col gap-4">
