@@ -1,5 +1,6 @@
 import "server-only";
 
+import { intervaloDoMes } from "@/lib/date-br";
 import { isDemoMode } from "@/lib/env";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { generateAndDeliverReport } from "./orchestrator";
@@ -74,6 +75,24 @@ function hojeNoBrasil(): string {
   }).format(new Date());
 }
 
+/**
+ * O MÊS CIVIL ANTERIOR, completo — a janela do relatório mensal.
+ *
+ * ⚠️ NÃO É "30 dias terminando ontem", que era o que valia antes. Um
+ * envio no dia 5 com aquela regra cobria do dia 6 do mês passado ao dia
+ * 4 do corrente: atravessava dois meses e não fechava nenhum. O cliente
+ * que recebe em setembro espera ler AGOSTO, e compara com o faturamento
+ * que ele já fechou no caixa. Qualquer outra janela obriga ele a
+ * desconfiar do número — e desconfiar de um número é o mesmo que não
+ * ter o número.
+ */
+function mesAnterior(hojeISO: string) {
+  const [ano, mes] = hojeISO.split("-").map(Number);
+  const referencia =
+    mes === 1 ? `${ano - 1}-12` : `${ano}-${String(mes - 1).padStart(2, "0")}`;
+  return intervaloDoMes(referencia);
+}
+
 /** Janela de N dias terminando ONTEM, ancorada numa data YYYY-MM-DD. */
 function janelaAte(ontemISO: string, dias: number) {
   // T12:00 evita que o deslocamento de fuso jogue a data para o dia
@@ -84,6 +103,12 @@ function janelaAte(ontemISO: string, dias: number) {
 
   const iso = (d: Date) => d.toISOString().slice(0, 10);
   return { start: iso(inicio), end: iso(fim) };
+}
+
+/** Uma conta e a cadência pela qual ela caiu na rodada de hoje. */
+interface Agendado {
+  cliente: Client;
+  cadencia: "mensal" | "semanal";
 }
 
 export async function dispatchScheduledReports(options?: {
@@ -103,16 +128,17 @@ export async function dispatchScheduledReports(options?: {
   ontem.setUTCDate(ontem.getUTCDate() - 1);
   const ontemISO = ontem.toISOString().slice(0, 10);
 
-  /* UMA JANELA POR CADÊNCIA. O mensal continua em 30 dias; o semanal
-     cobre 7. Manter os 30 para quem recebe toda sexta produziria quatro
-     relatórios quase idênticos por mês — mesmos números, mesmas
-     campanhas, variando só as pontas. O `periodo` de topo permanece o
-     mensal porque é ele que rotula a rodada no relatório de execução. */
-  const periodo = janelaAte(ontemISO, 30);
-  const janelaSemanal = janelaAte(ontemISO, 7);
+  /* UMA JANELA POR CADÊNCIA, e as duas podem valer para o MESMO cliente
+     no mesmo dia — desde a migration 48 mensal e semanal deixaram de ser
+     modos exclusivos. Quando o dia do mês cai no dia da semana escolhido,
+     a conta recebe os dois documentos: são períodos diferentes, então o
+     índice de duplicidade aceita, e cada um responde uma pergunta
+     distinta (o mês fechado e a semana corrente).
 
-  const janelaDe = (c: Client) =>
-    (c.report_frequency ?? "monthly") === "weekly" ? janelaSemanal : periodo;
+     `periodo` de topo é o mensal porque é ele que rotula a rodada no
+     relatório de execução. */
+  const periodo = mesAnterior(hoje);
+  const janelaSemanal = janelaAte(ontemISO, 7);
 
   const base: RelatorioDeDisparo = {
     executadoEm: new Date().toISOString(),
@@ -150,8 +176,8 @@ export async function dispatchScheduledReports(options?: {
      cliente esperar o mês seguinte. */
   await destravarPresos();
 
-  const clientes = await clientesDoDia(diaDoMes, diaDaSemana);
-  base.agendados = clientes.length;
+  const agendados = await clientesDoDia(diaDoMes, diaDaSemana);
+  base.agendados = agendados.length;
 
   /* Custo do pior relatório JÁ MEDIDO nesta rodada.
      Enquanto é null vale o chute inicial. Não usar `max` contra o chute
@@ -161,7 +187,7 @@ export async function dispatchScheduledReports(options?: {
   let custoObservado: number | null = null;
   const estimativa = () => custoObservado ?? CUSTO_INICIAL_MS;
 
-  for (const cliente of clientes) {
+  for (const { cliente, cadencia } of agendados) {
     // Sem destino não há o que tentar: falharia no envio depois de
     // gastar o tempo de gerar o PDF.
     if (!cliente.whatsapp_phone) {
@@ -184,8 +210,9 @@ export async function dispatchScheduledReports(options?: {
 
     const antes = Date.now();
 
-    // A janela é a da CADÊNCIA deste cliente, não a da rodada.
-    const janela = janelaDe(cliente);
+    // A janela é a da CADÊNCIA desta entrada, não a da rodada — e o
+    // mesmo cliente pode aparecer duas vezes, com janelas diferentes.
+    const janela = cadencia === "semanal" ? janelaSemanal : periodo;
 
     const resultado = await generateAndDeliverReport({
       clientSlug: cliente.slug,
@@ -256,88 +283,70 @@ async function destravarPresos(): Promise<void> {
     .lt("created_at", limite);
 }
 
-/** Clientes com envio automático ligado para este dia do mês. */
 /**
- * Quem recebe hoje: os mensais do dia do mês E os semanais deste dia da
- * semana.
+ * Quem recebe hoje, e por qual cadência.
+ *
+ * DEVOLVE ENTRADAS, NÃO CLIENTES. Desde a migration 48 mensal e semanal
+ * são agendas independentes: uma conta com `report_day = 8` e
+ * `report_weekday = 1` aparece DUAS VEZES numa segunda-feira dia 8, cada
+ * ocorrência com a janela dela. Devolver uma lista de clientes obrigaria
+ * quem chama a redescobrir por que cada um entrou.
  *
  * DUAS CONSULTAS, não um `or` — o PostgREST monta `or` como texto e uma
  * expressão com dois pares de condições fica ilegível e frágil. Duas
  * consultas com índice cada, unidas em memória, custam o mesmo e dizem o
  * que fazem.
- *
- * Cliente sem `report_frequency` (linha anterior à migration 40) é
- * tratado como mensal, que é o default da coluna — o `is` cobre o nulo
- * junto do valor explícito, senão a carteira inteira sumiria da agenda
- * entre o deploy e a migration.
  */
 async function clientesDoDia(
   diaDoMes: number,
   diaDaSemana: number,
-): Promise<Client[]> {
-  const ehMensal = (c: Client) => (c.report_frequency ?? "monthly") === "monthly";
-
+): Promise<Agendado[]> {
   if (isDemoMode) {
     const { demoClients } = await import("@/lib/mock/data");
-    return demoClients.filter(
-      (c) =>
-        c.report_enabled &&
-        (ehMensal(c)
-          ? c.report_day === diaDoMes
-          : c.report_weekday === diaDaSemana),
-    );
+    const ligados = demoClients.filter((c) => c.report_enabled);
+    return [
+      ...ligados
+        .filter((c) => c.report_day === diaDoMes)
+        .map((cliente) => ({ cliente, cadencia: "mensal" as const })),
+      ...ligados
+        .filter((c) => c.report_weekday === diaDaSemana)
+        .map((cliente) => ({ cliente, cadencia: "semanal" as const })),
+    ];
   }
 
   const admin = createSupabaseAdminClient();
 
-  const mensais = await admin
-    .from("clients")
-    .select("*")
-    .eq("report_enabled", true)
-    .eq("report_day", diaDoMes)
-    .eq("status", "active");
+  const [mensais, semanais] = await Promise.all([
+    admin
+      .from("clients")
+      .select("*")
+      .eq("report_enabled", true)
+      .eq("report_day", diaDoMes)
+      .eq("status", "active")
+      .order("name"),
+    admin
+      .from("clients")
+      .select("*")
+      .eq("report_enabled", true)
+      .eq("report_weekday", diaDaSemana)
+      .eq("status", "active")
+      .order("name"),
+  ]);
 
-  /* 42703 = a coluna ainda não existe (deploy antes da migration 40).
-     Nesse estado toda conta é mensal por definição, então a consulta sem
-     o filtro de frequência JÁ é a resposta certa — e insistir nela
-     derrubaria a rodada inteira do cron por um recurso que ninguém
-     conseguiu configurar ainda. */
-  if (mensais.error) {
-    if (mensais.error.code === "42703") {
-      const semColuna = await admin
-        .from("clients")
-        .select("*")
-        .eq("report_enabled", true)
-        .eq("report_day", diaDoMes)
-        .eq("status", "active")
-        .order("name");
+  if (mensais.error) throw mensais.error;
+  if (semanais.error) throw semanais.error;
 
-      if (semColuna.error) throw semColuna.error;
-      return (semColuna.data ?? []) as Client[];
-    }
-    throw mensais.error;
-  }
-
-  const semanais = await admin
-    .from("clients")
-    .select("*")
-    .eq("report_enabled", true)
-    .eq("report_weekday", diaDaSemana)
-    .eq("report_frequency", "weekly")
-    .eq("status", "active");
-
-  if (semanais.error && semanais.error.code !== "42703") throw semanais.error;
-
-  /* O filtro de mensal exclui os semanais em MEMÓRIA: com a coluna
-     recém-criada e nula nas linhas antigas, um `.neq("report_frequency",
-     "weekly")` no banco descartaria justamente essas — o Postgres trata
-     `null <> 'weekly'` como desconhecido, não como verdadeiro, e a
-     carteira inteira sumiria da agenda. */
-  const soMensais = ((mensais.data ?? []) as Client[]).filter(
-    (c) => (c.report_frequency ?? "monthly") !== "weekly",
-  );
-
-  return [...soMensais, ...((semanais.data ?? []) as Client[])].sort((a, b) =>
-    a.name.localeCompare(b.name, "pt-BR"),
-  );
+  /* MENSAIS PRIMEIRO, de propósito. Quando o orçamento da rodada acaba,
+     quem sobra é adiado — e perder o fechamento do mês custa mais que
+     perder um acompanhamento semanal, que se repete em sete dias. */
+  return [
+    ...((mensais.data ?? []) as Client[]).map((cliente) => ({
+      cliente,
+      cadencia: "mensal" as const,
+    })),
+    ...((semanais.data ?? []) as Client[]).map((cliente) => ({
+      cliente,
+      cadencia: "semanal" as const,
+    })),
+  ];
 }

@@ -257,10 +257,9 @@ const agendaSchema = z.object({
   /* `null` = sem envio recorrente. 28 é o teto pelo mesmo motivo do
      banco e do faturamento: fevereiro existe, e dia 30 nunca chegaria. */
   reportDay: z.number().int().min(1).max(28).nullable(),
-  /* Cadência do envio. 'weekly' usa `reportWeekday` e janela de 7 dias;
-     'monthly' usa `reportDay` e janela de 30. */
-  frequency: z.enum(["monthly", "weekly"]),
-  /** 0=domingo a 6=sábado, como `Date.getDay()`. */
+  /* 0=domingo a 6=sábado, como `Date.getDay()`. INDEPENDENTE de
+     `reportDay` desde a migration 48: a conta pode ter as duas agendas,
+     e havia aqui um campo `frequency` que as tratava como exclusivas. */
   reportWeekday: z.number().int().min(0).max(6).nullable(),
   enabled: z.boolean(),
   /* Telefone OU JID de grupo (`...@g.us`). Vazio limpa o destino. */
@@ -283,8 +282,9 @@ const agendaSchema = z.object({
  */
 export async function salvarAgendaDeRelatorio(input: {
   clientId: string;
+  /** Dia do mês (1-28) do relatório MENSAL. `null` = sem agenda mensal. */
   reportDay: number | null;
-  frequency: "monthly" | "weekly";
+  /** Dia da semana (0-6) do SEMANAL. `null` = sem agenda semanal. */
   reportWeekday: number | null;
   enabled: boolean;
   whatsapp: string;
@@ -293,30 +293,26 @@ export async function salvarAgendaDeRelatorio(input: {
   if (!parsed.success) {
     /* A mensagem do zod em vez de uma genérica: "Dia ou destino
        inválido" não diz QUAL dos dois, e foi exatamente o que mascarou
-       este bug — o id é que estava sendo recusado, não o dia. */
+       um bug antigo — o id é que estava sendo recusado, não o dia. */
     return {
       ok: false,
       error: parsed.error.issues[0]?.message ?? "Dados inválidos.",
     };
   }
 
-  const { clientId, reportDay, frequency, reportWeekday, enabled, whatsapp } =
-    parsed.data;
+  const { clientId, reportDay, reportWeekday, enabled, whatsapp } = parsed.data;
 
-  const semQuando =
-    frequency === "weekly" ? reportWeekday === null : reportDay === null;
-
-  /* LIGADO SEM DIA NUNCA DISPARA. O job procura `report_day = <dia de
-     hoje>`, então um cliente marcado como ativo e sem dia fica para
+  /* LIGADO SEM NENHUMA AGENDA NUNCA DISPARA. O job procura por dia do
+     mês e por dia da semana; sem nenhum dos dois o cliente fica para
      sempre em silêncio, parecendo configurado. Recusar aqui é o que
-     impede a tela de mostrar "pronto" para quem não está. */
-  if (enabled && semQuando) {
+     impede a tela de mostrar "pronto" para quem não está.
+
+     As duas juntas são LEGÍTIMAS desde a migration 48 — é o caso de quem
+     recebe o fechamento do mês e um acompanhamento semanal. */
+  if (enabled && reportDay === null && reportWeekday === null) {
     return {
       ok: false,
-      error:
-        frequency === "weekly"
-          ? "Escolha o dia da semana antes de ligar o automático."
-          : "Escolha o dia do envio antes de ligar o automático.",
+      error: "Escolha o dia do mês, o dia da semana, ou os dois.",
     };
   }
 
@@ -332,7 +328,6 @@ export async function salvarAgendaDeRelatorio(input: {
     const alvo = demoClients.find((c) => c.id === clientId);
     if (alvo) {
       alvo.report_day = reportDay;
-      alvo.report_frequency = frequency;
       alvo.report_weekday = reportWeekday;
       alvo.report_enabled = enabled;
       alvo.whatsapp_phone = whatsapp || null;
@@ -343,49 +338,19 @@ export async function salvarAgendaDeRelatorio(input: {
 
   const supabase = await createSupabaseServerClient();
 
-  /* A coluna da OUTRA cadência vai a null: deixar o valor antigo
-     guardado faria a linha parecer agendada duas vezes para quem lesse o
-     banco, e a constraint permite os dois preenchidos. */
-  const completo = {
-    report_day: frequency === "monthly" ? reportDay : null,
-    report_frequency: frequency,
-    report_weekday: frequency === "weekly" ? reportWeekday : null,
-    report_enabled: enabled,
-    whatsapp_phone: whatsapp || null,
-  };
-
-  let { error } = await supabase
+  /* AS DUAS COLUNAS VÃO SEMPRE, cada uma com o que a tela mandou. Não há
+     mais "cadência escolhida" para zerar a outra: elas são independentes,
+     e apagar uma ao salvar a outra desfaria metade da configuração de
+     quem usa as duas. */
+  const { error } = await supabase
     .from("clients")
-    .update(completo)
+    .update({
+      report_day: reportDay,
+      report_weekday: reportWeekday,
+      report_enabled: enabled,
+      whatsapp_phone: whatsapp || null,
+    })
     .eq("id", clientId);
-
-  /* 42703 = coluna inexistente. Acontece entre o deploy e a migration 40:
-     sem este caminho, gravar a agenda falharia para TODO mundo, inclusive
-     os mensais que já funcionavam — uma tela que funcionava pararia por
-     causa de um recurso novo que ninguém ainda usa.
-
-     Repete sem os campos novos e avisa quem escolheu semanal, em vez de
-     dizer "salvo" para um agendamento que não existe no banco. */
-  if (error?.code === "42703") {
-    const retorno = await supabase
-      .from("clients")
-      .update({
-        report_day: reportDay,
-        report_enabled: enabled,
-        whatsapp_phone: whatsapp || null,
-      })
-      .eq("id", clientId);
-
-    error = retorno.error;
-
-    if (!error && frequency === "weekly") {
-      return {
-        ok: false,
-        error:
-          "O envio semanal ainda não está disponível neste banco. O destino foi salvo; rode a migration 40 para liberar a cadência semanal.",
-      };
-    }
-  }
 
   if (error) {
     return {
@@ -398,6 +363,84 @@ export async function salvarAgendaDeRelatorio(input: {
   }
 
   revalidatePath("/relatorios");
-  revalidatePath("/clientes");
   return { ok: true };
+}
+
+
+/* ------------------------------------------------------------------ */
+/* Resumo de um período escolhido na tela                              */
+/* ------------------------------------------------------------------ */
+
+const resumoSchema = z.object({
+  clientId: z.string().min(1),
+  start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});
+
+export type ResumoDoPeriodo = {
+  spendCents: number;
+  /** Cru, sem unidade aplicada — ver a nota da função. */
+  conversions: number;
+  revenueCents: number;
+};
+
+/**
+ * Soma as métricas da conta na janela pedida.
+ *
+ * ⚠️ ESTA AÇÃO É O QUE TORNA O SELETOR DE PERÍODO HONESTO. A estação de
+ * comando já teve um seletor e ele foi REMOVIDO porque mentia: trocava a
+ * frase ("resumo dos últimos 7 dias") sem trocar os números, que
+ * continuavam sendo os do mês inteiro. O comentário no componente
+ * registrava a dívida — "voltará quando houver busca de verdade por
+ * intervalo". É esta.
+ *
+ * O texto montado naquela tela é copiado e enviado ao cliente final. Um
+ * controle que muda o rótulo e não o dado é pior que controle nenhum:
+ * produz um número errado com aparência de conferido.
+ *
+ * A leitura passa por `getMetrics`, que roda sob RLS — um colaborador
+ * não soma a carteira de quem não atende.
+ *
+ * ⚠️ DEVOLVE OS TOTAIS CRUS, e não "o resultado" já resolvido. A versão
+ * anterior escolhia a unidade aqui, chamando `goalMetricFor(segment,
+ * null)` — e `null` naquele parâmetro significa "meta antiga, logo
+ * CONTAGEM", que é exatamente o que a documentação da função avisa.
+ * Resultado medido na tela: conta de e-commerce com R$ 12.170,81 de
+ * receita na janela exibindo "R$ 0,64", porque as 64 conversões estavam
+ * sendo formatadas como dinheiro.
+ *
+ * A unidade tem UM dono: `cliente.metric`, que o servidor já resolveu
+ * para os números iniciais. Quem chama aplica `goalExecutedFrom` com ela
+ * e os dois lados nunca discordam.
+ */
+export async function resumoDoPeriodo(
+  input: z.input<typeof resumoSchema>,
+): Promise<{ ok: true; resumo: ResumoDoPeriodo } | { ok: false; error: string }> {
+  const parsed = resumoSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Período inválido." };
+
+  const { clientId, start, end } = parsed.data;
+  if (end < start) {
+    return { ok: false, error: "O fim do período é anterior ao início." };
+  }
+
+  const { getClients, getMetrics } = await import("@/lib/data");
+  const { sumMetrics } = await import("@/lib/metrics/kpi");
+
+  /* A leitura de clientes existe só para provar que a conta é visível
+     para quem pediu: `getClients` roda sob RLS, e sem ela um id
+     adivinhado somaria a carteira de outra agência. */
+  const visivel = (await getClients()).some((c) => c.id === clientId);
+  if (!visivel) return { ok: false, error: "Conta não encontrada." };
+
+  const totais = sumMetrics(await getMetrics(clientId, start, end));
+
+  return {
+    ok: true,
+    resumo: {
+      spendCents: totais.spendCents,
+      conversions: totais.conversions,
+      revenueCents: totais.revenueCents,
+    },
+  };
 }

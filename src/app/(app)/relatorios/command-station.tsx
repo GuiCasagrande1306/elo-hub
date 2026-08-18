@@ -7,7 +7,6 @@ import {
   MessageCircle, Target, TrendingUp,
 } from "lucide-react";
 
-import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -15,7 +14,16 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { formatCurrency, formatMultiplier, formatPeriod } from "@/lib/format";
-import { formatGoalValue, type GoalMetric } from "@/lib/metrics/goal-metric";
+import {
+  formatGoalValue,
+  goalExecutedFrom,
+  type GoalMetric,
+} from "@/lib/metrics/goal-metric";
+import {
+  DateRangePicker,
+  type Intervalo,
+} from "@/components/ui/date-range-picker";
+import { resumoDoPeriodo } from "./actions";
 
 /* =====================================================================
    Estação de comando
@@ -27,14 +35,20 @@ import { formatGoalValue, type GoalMetric } from "@/lib/metrics/goal-metric";
    `daily_metrics` no servidor, na janela da meta vigente de cada conta,
    e a tela rotula a mensagem com essa mesma janela.
 
-   ⚠️ HAVIA UM SELETOR DE PERÍODO AQUI, e ele mentia. Trocava a frase
-   ("resumo dos últimos 7 dias") sem trocar os números, que continuavam
-   sendo os do mês inteiro — e o texto daqui é copiado e enviado ao
-   cliente final. Um controle que muda o rótulo e não o dado é pior que
-   controle nenhum: ele produz um número errado com aparência de certo.
+   O SELETOR DE PERÍODO VOLTOU, e agora ele é honesto. A versão anterior
+   foi removida porque MENTIA: trocava a frase ("resumo dos últimos 7
+   dias") sem trocar os números, que continuavam sendo os do mês inteiro
+   — e o texto daqui é copiado e enviado ao cliente final. Um controle
+   que muda o rótulo e não o dado é pior que controle nenhum: produz um
+   número errado com aparência de conferido.
 
-   Voltará quando houver busca de verdade por intervalo. Enquanto não
-   houver, a tela diz o período que ela realmente somou.
+   A dívida registrada ali era "voltará quando houver busca de verdade
+   por intervalo". Ela existe: `resumoDoPeriodo` soma `daily_metrics` na
+   janela escolhida, sob RLS. Trocar o período AGORA TROCA O NÚMERO.
+
+   ESTA É A ÚNICA TELA DE RELATÓRIO. Havia um compositor separado em
+   `/relatorios/novo` que fazia quase a mesma coisa com outros controles;
+   duas telas para a mesma tarefa é como uma delas fica desatualizada.
 
    CORES POR TOKEN, não `purple-600`: o app tem tema claro e escuro, e
    cor fixa do Tailwind fica ilegível num dos dois.
@@ -65,14 +79,72 @@ const SECOES = [
 export function CommandStation({ clients }: { clients: ClientSummary[] }) {
   const [clientId, setClientId] = useState(clients[0]?.id ?? "");
   const [copiado, setCopiado] = useState(false);
+  const [busy, setBusy] = useState<"pdf" | "envio" | null>(null);
 
   const cliente = clients.find((c) => c.id === clientId) ?? null;
 
-  /* Rótulo DERIVADO da janela somada, não escolhido. Muda quando o
-     cliente muda, porque cada conta tem o período da meta dela. */
-  const periodoLabel = cliente
-    ? formatPeriod(cliente.period.start, cliente.period.end)
-    : "—";
+  /* Abre na janela da META da conta — é o período que o servidor já
+     somou, então a tela nasce com número conferido e sem ida ao banco. */
+  const [periodo, setPeriodo] = useState<Intervalo>(() => ({
+    inicio: clients[0]?.period.start ?? "",
+    fim: clients[0]?.period.end ?? "",
+  }));
+
+  /* Números da janela ESCOLHIDA. `null` = ainda é a janela da meta, e
+     valem os que vieram do servidor. Guardar em separado deixa claro,
+     na leitura do código, quando o que está na tela é o dado inicial e
+     quando é o resultado de uma busca. */
+  const [override, setOverride] = useState<{
+    spendCents: number;
+    resultValue: number;
+  } | null>(null);
+  const [buscando, setBuscando] = useState(false);
+
+  const periodoLabel = formatPeriod(periodo.inicio, periodo.fim);
+
+  const spendCents = override?.spendCents ?? cliente?.spendCents ?? 0;
+  const resultValue = override?.resultValue ?? cliente?.resultValue ?? 0;
+
+  /** Troca de conta reabre na janela da meta dela e descarta a busca. */
+  function trocarCliente(id: string) {
+    const alvo = clients.find((c) => c.id === id);
+    setClientId(id);
+    setOverride(null);
+    if (alvo) setPeriodo({ inicio: alvo.period.start, fim: alvo.period.end });
+  }
+
+  /** Trocar o período REBUSCA. É o que impede a tela de mentir. */
+  function trocarPeriodo(novo: Intervalo) {
+    setPeriodo(novo);
+    if (!cliente) return;
+
+    setBuscando(true);
+    resumoDoPeriodo({
+      clientId: cliente.id,
+      start: novo.inicio,
+      end: novo.fim,
+    })
+      .then((r) => {
+        if (!r.ok) {
+          toast.error(r.error);
+          return;
+        }
+        /* A UNIDADE VEM DE `cliente.metric`, não do servidor. É a mesma
+           que formatou os números iniciais, então o cartão e a mensagem
+           não têm como discordar dela. Deixar o servidor escolher já
+           produziu R$ 0,64 onde eram R$ 12.170,81 — ele resolveu
+           contagem e a tela formatou como dinheiro. */
+        setOverride({
+          spendCents: r.resumo.spendCents,
+          resultValue: goalExecutedFrom(cliente.metric, {
+            conversions: r.resumo.conversions,
+            revenueCents: r.resumo.revenueCents,
+          }),
+        });
+      })
+      .catch(() => toast.error("Não deu para somar o período."))
+      .finally(() => setBuscando(false));
+  }
 
   /* Custo por resultado calculado aqui e não guardado: dividir na hora
      garante que ele nunca discorde do gasto e do resultado ao lado.
@@ -80,13 +152,13 @@ export function CommandStation({ clients }: { clients: ClientSummary[] }) {
      `costLabel` nulo = a meta já é em dinheiro, e "custo por
      faturamento" não é uma grandeza. Ali a razão que interessa é ROAS. */
   const cpl =
-    cliente && cliente.metric.costLabel && cliente.resultValue > 0
-      ? cliente.spendCents / cliente.resultValue
+    cliente && cliente.metric.costLabel && resultValue > 0
+      ? spendCents / resultValue
       : null;
 
   const roas =
-    cliente && cliente.metric.isCurrency && cliente.spendCents > 0
-      ? cliente.resultValue / cliente.spendCents
+    cliente && cliente.metric.isCurrency && spendCents > 0
+      ? resultValue / spendCents
       : null;
 
   const mensagem = useMemo(() => {
@@ -101,8 +173,8 @@ export function CommandStation({ clients }: { clients: ClientSummary[] }) {
          outro; era exatamente essa separação que deixava a frase dizer
          "7 dias" sobre o gasto de um mês. */
       `• Período: ${periodoLabel}`,
-      `• Investimento: ${formatCurrency(cliente.spendCents)}`,
-      `• ${metric.label}: ${formatGoalValue(metric, cliente.resultValue)}`,
+      `• Investimento: ${formatCurrency(spendCents)}`,
+      `• ${metric.label}: ${formatGoalValue(metric, resultValue)}`,
       cpl ? `• ${metric.costLabel}: ${formatCurrency(Math.round(cpl))}` : null,
       roas ? `• Retorno: ${formatMultiplier(roas)} sobre o investido` : null,
       "",
@@ -110,7 +182,7 @@ export function CommandStation({ clients }: { clients: ClientSummary[] }) {
     ]
       .filter((l) => l !== null)
       .join("\n");
-  }, [cliente, periodoLabel, cpl, roas]);
+  }, [cliente, periodoLabel, spendCents, resultValue, cpl, roas]);
 
   async function copiar() {
     await navigator.clipboard.writeText(mensagem);
@@ -118,6 +190,105 @@ export function CommandStation({ clients }: { clients: ClientSummary[] }) {
     toast.success("Mensagem copiada.");
     // Volta ao ícone original: o check permanente perde o significado.
     setTimeout(() => setCopiado(false), 2000);
+  }
+
+  /**
+   * Abre o PDF numa aba, sem gravar nada.
+   *
+   * POST por formulário e não `window.open` com query: o período e a
+   * conta cabem numa URL, mas o caminho ficou POST porque a rota já
+   * espera assim desde que a análise (agora removida) precisava viajar
+   * no corpo. Manter um só formato evita duas rotas de preview.
+   */
+  function visualizar() {
+    if (!cliente) return;
+    setBusy("pdf");
+
+    const form = document.createElement("form");
+    form.method = "POST";
+    form.action = "/api/reports/preview";
+    form.target = "_blank";
+    form.rel = "noopener";
+    form.style.display = "none";
+
+    for (const [nome, valor] of Object.entries({
+      cliente: cliente.slug,
+      inicio: periodo.inicio,
+      fim: periodo.fim,
+      // Vazio: o servidor resolve o template pelo segmento da conta.
+      template: "",
+    })) {
+      const campo = document.createElement("input");
+      campo.type = "hidden";
+      campo.name = nome;
+      campo.value = valor;
+      form.appendChild(campo);
+    }
+
+    document.body.appendChild(form);
+    form.submit();
+    form.remove();
+    setTimeout(() => setBusy(null), 800);
+  }
+
+  /** Gera, arquiva e dispara pelo WhatsApp de quem está logado. */
+  async function gerarEEnviar() {
+    if (!cliente) return;
+    setBusy("envio");
+
+    try {
+      const resposta = await fetch("/api/reports/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientSlug: cliente.slug,
+          periodStart: periodo.inicio,
+          periodEnd: periodo.fim,
+          deliver: "whatsapp",
+        }),
+      });
+
+      // Em modo demo a rota devolve o PDF direto, sem Storage nem envio.
+      if (
+        resposta.ok &&
+        (resposta.headers.get("content-type") ?? "").includes("application/pdf")
+      ) {
+        const blob = await resposta.blob();
+        window.open(URL.createObjectURL(blob), "_blank", "noopener");
+        toast.success("PDF gerado. Em modo demo não há envio.");
+        return;
+      }
+
+      /* Ler como TEXTO e só então tentar JSON: quando a função estoura o
+         limite da plataforma, a resposta é uma página de erro, não JSON,
+         e `response.json()` devolvia "Unexpected token 'A'" — mensagem
+         que não diz nada sobre o que aconteceu nem o que fazer. */
+      const corpo = await resposta.text();
+      let dados: { error?: string } = {};
+      try {
+        dados = corpo ? JSON.parse(corpo) : {};
+      } catch {
+        toast.error(
+          resposta.status === 504 || resposta.status === 502
+            ? "A geração demorou demais e foi interrompida. Confira a fila abaixo — o relatório pode ter sido arquivado."
+            : `O servidor respondeu de forma inesperada (HTTP ${resposta.status}).`,
+        );
+        return;
+      }
+
+      if (!resposta.ok) {
+        toast.error(dados.error ?? "Falha ao gerar o relatório.");
+        return;
+      }
+
+      toast.success("Relatório gerado e enviado por WhatsApp.");
+    } catch (erro) {
+      toast.error(
+        erro instanceof Error ? erro.message : "Falha de rede na geração.",
+      );
+    } finally {
+      setBusy(null);
+    }
   }
 
   return (
@@ -132,7 +303,7 @@ export function CommandStation({ clients }: { clients: ClientSummary[] }) {
           <div className="grid gap-3 sm:grid-cols-3">
             <label className="flex min-w-0 flex-col gap-1.5">
               <span className="eyebrow">Cliente</span>
-              <Select value={clientId} onValueChange={(v) => setClientId(v ?? clientId)}>
+              <Select value={clientId} onValueChange={(v) => trocarCliente(v ?? clientId)}>
                 <SelectTrigger size="sm" className="w-full min-w-0">
                   <SelectValue>
                     {(v: string) =>
@@ -148,23 +319,26 @@ export function CommandStation({ clients }: { clients: ClientSummary[] }) {
               </Select>
             </label>
 
-            {/* Período NÃO é campo — é consequência. Mostrado como texto
-                para ficar claro que veio da meta da conta e que trocar o
-                cliente troca ele junto. */}
-            <div className="flex min-w-0 flex-col gap-1.5">
-              <span className="eyebrow">Período</span>
-              <p className="flex h-8 items-center text-sm tabular-nums">
-                {periodoLabel}
-              </p>
-            </div>
+            {/* PERÍODO É CAMPO DE NOVO, e desta vez trocar ele troca o
+                número: `trocarPeriodo` rebusca as métricas da janela.
+                Abre na meta da conta, que é o que o servidor já somou. */}
+            <label className="flex min-w-0 flex-col gap-1.5">
+              <span className="eyebrow">
+                Período
+                {buscando && (
+                  <span className="ml-1.5 font-normal normal-case tracking-normal text-muted-foreground">
+                    somando…
+                  </span>
+                )}
+              </span>
+              <DateRangePicker value={periodo} onChange={trocarPeriodo} />
+            </label>
 
-            {/* Template também é CONSEQUÊNCIA, não escolha — o segmento
-                da conta decide. Havia um select aqui e ele não fazia
-                nada: guardava estado que ninguém lia. Escolher template
-                de verdade existe no compositor (`/relatorios/novo`),
-                onde a decisão chega até a geração do PDF. Duplicar o
-                controle aqui só oferecia a mesma decisão duas vezes, uma
-                delas sem efeito. */}
+            {/* Template é CONSEQUÊNCIA, não escolha: o segmento da conta
+                decide, e é o mesmo `resolverTemplate` que o gerador usa.
+                Trocar aqui só criaria a chance de mandar ao cliente um
+                layout que não é o dele. Para mudar o que entra no PDF,
+                o lugar é o botão Templates, no topo da página. */}
             <div className="flex min-w-0 flex-col gap-1.5">
               <span className="eyebrow">Template</span>
               {/* `title` porque o nome trunca nesta largura e, sendo
@@ -194,8 +368,9 @@ export function CommandStation({ clients }: { clients: ClientSummary[] }) {
             className="mt-2 resize-y font-mono text-xs"
           />
           <p className="mt-1.5 text-2xs text-muted-foreground">
-            Números somados das métricas sincronizadas, no período da meta
-            vigente desta conta. Trocam junto com o cliente.
+            Números somados das métricas sincronizadas na janela acima.
+            Trocar o período rebusca no banco — o texto nunca fica
+            dizendo um prazo e mostrando outro.
           </p>
         </section>
 
@@ -215,32 +390,27 @@ export function CommandStation({ clients }: { clients: ClientSummary[] }) {
             <Button
               variant="outline"
               size="sm"
-              nativeButton={false}
-              render={
-                <Link
-                  href={
-                    cliente ? `/relatorios/novo?cliente=${cliente.slug}` : "#"
-                  }
-                />
-              }
+              disabled={!cliente || busy !== null}
+              onClick={visualizar}
             >
               <FileDown className="size-4" />
-              Gerar PDF
+              {busy === "pdf" ? "Abrindo…" : "Visualizar PDF"}
             </Button>
             <Button
               size="sm"
               className="bg-signal text-white hover:bg-signal/90"
-              nativeButton={false}
-              render={<a href="#fila-de-envio" />}
+              disabled={!cliente || busy !== null}
+              onClick={gerarEEnviar}
             >
               <MessageCircle className="size-4" />
-              Ir para a fila de envio
+              {busy === "envio" ? "Enviando…" : "Gerar e enviar"}
             </Button>
           </div>
           <p className="mt-2 text-2xs text-muted-foreground">
-            Só a mensagem? Use o <strong>Copiar</strong> acima. Com PDF
-            anexado, gere primeiro e despache pela fila — ela sai do seu
-            WhatsApp. Esta tela monta o texto e mostra os números.
+            <strong>Visualizar</strong> abre o PDF numa aba sem gravar
+            nada — serve para conferir antes. <strong>Gerar e enviar</strong>
+            arquiva e dispara pelo seu WhatsApp, com o documento em anexo.
+            Só a mensagem, sem PDF? Use o <strong>Copiar</strong> acima.
           </p>
         </section>
       </div>
@@ -259,12 +429,19 @@ export function CommandStation({ clients }: { clients: ClientSummary[] }) {
               linha por número não tem esse limite. */}
           <dl className="mt-4 flex flex-col gap-2 border-t border-white/20 pt-3">
             {[
-              ["Investimento", cliente ? formatCurrency(cliente.spendCents) : "—"],
+              /* ⚠️ `spendCents`/`resultValue` DERIVADOS, nunca
+                 `cliente.spendCents`. Este cartão é o que a pessoa olha
+                 enquanto decide, e ler direto da prop o deixava preso na
+                 janela da meta enquanto a mensagem ao lado já mostrava a
+                 janela escolhida. Visto na tela: período trocado para 7
+                 dias, o Retorno virou 0,00x e o Investimento continuou o
+                 do mês — dois números do mesmo card falando de períodos
+                 diferentes. É o mesmo defeito que derrubou o seletor
+                 antigo, só que uma camada acima. */
+              ["Investimento", cliente ? formatCurrency(spendCents) : "—"],
               [
                 cliente?.metric.label ?? "Resultados",
-                cliente
-                  ? formatGoalValue(cliente.metric, cliente.resultValue)
-                  : "—",
+                cliente ? formatGoalValue(cliente.metric, resultValue) : "—",
               ],
               /* Terceira coluna: custo unitário onde ele existe, ROAS
                  onde a meta é dinheiro. */

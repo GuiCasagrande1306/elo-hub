@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { Metadata } from "next";
 
 import { PageContainer, PageHeader } from "@/components/layout/page-header";
@@ -6,7 +5,6 @@ import { TemplateSettingsDialog } from "@/components/reports/template-settings-d
 import { ReportHistoryList } from "@/components/reports/report-history";
 import { ReportSetupTable } from "@/components/reports/report-setup-table";
 import { getCurrentUser } from "@/lib/supabase/server";
-import { Button } from "@/components/ui/button";
 import {
   getClients,
   getClientsWithGoals,
@@ -108,14 +106,6 @@ export default async function ReportsPage() {
                 }))}
               />
             )}
-            <Button
-              size="sm"
-              className="h-9"
-              nativeButton={false}
-              render={<Link href="/relatorios/novo" />}
-            >
-              Gerar relatório
-            </Button>
           </>
         }
       />

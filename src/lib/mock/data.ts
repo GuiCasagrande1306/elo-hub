@@ -146,6 +146,7 @@ export const demoClients: Client[] = [
     },
     contract_start: daysAgo(300),
     report_day: 5,
+    report_weekday: 1,
     report_enabled: true,
     optimization_day: 1,
     owner_id: "u-admin",

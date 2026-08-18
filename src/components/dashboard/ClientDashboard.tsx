@@ -190,7 +190,7 @@ export function ClientDashboard({
                 size="sm"
                 className="h-9"
                 nativeButton={false}
-                render={<Link href={`/relatorios/novo?cliente=${client.slug}`} />}
+                render={<Link href="/relatorios" />}
               >
                 <FileDown className="size-4" />
                 Gerar relatório

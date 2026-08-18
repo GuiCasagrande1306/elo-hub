@@ -35,14 +35,16 @@ import type { ReportSetupRow } from "@/lib/data";
 
 interface Rascunho {
   whatsapp: string;
-  /** Dia do mês (1–28) no mensal; dia da semana (0–6) no semanal. */
-  dia: string;
-  frequencia: "monthly" | "weekly";
+  /** Dia do mês, 1–28. Vazio = sem relatório mensal. */
+  diaDoMes: string;
+  /** Dia da semana, 0–6. Vazio = sem relatório semanal. */
+  diaDaSemana: string;
   ativo: boolean;
 }
 
 /** 0=domingo, como `Date.getDay()` e como o `dow` do Postgres. */
 const DIAS_DA_SEMANA = [
+  { valor: "", rotulo: "—" },
   { valor: "1", rotulo: "Segunda" },
   { valor: "2", rotulo: "Terça" },
   { valor: "3", rotulo: "Quarta" },
@@ -52,11 +54,17 @@ const DIAS_DA_SEMANA = [
   { valor: "0", rotulo: "Domingo" },
 ];
 
+/**
+ * Pronto = ligado, com destino e com PELO MENOS UMA agenda.
+ *
+ * As duas são independentes desde a migration 48: mensal (fechamento do
+ * mês anterior) e semanal (últimos 7 dias) podem coexistir na mesma
+ * conta, e é comum que coexistam.
+ */
 function estaPronto(linha: ReportSetupRow): boolean {
   const temQuando =
-    linha.reportFrequency === "weekly"
-      ? linha.reportWeekday !== null && linha.reportWeekday !== undefined
-      : Boolean(linha.reportDay);
+    Boolean(linha.reportDay) ||
+    (linha.reportWeekday !== null && linha.reportWeekday !== undefined);
 
   return Boolean(linha.reportEnabled && temQuando && linha.whatsappPhone);
 }
@@ -89,18 +97,20 @@ export function ReportSetupTable({ linhas }: { linhas: ReportSetupRow[] }) {
      desligado não disputa tempo nenhum. */
   const lotacao = useMemo(() => {
     const contagem = new Map<string, number>();
+    /* Uma conta com as DUAS agendas ocupa vaga nos dois dias, e é assim
+       que ela chega ao cron — duas entradas, duas janelas. Contar uma vez
+       só faria a tela subestimar a lotação justamente das contas mais
+       exigentes. */
     for (const l of linhas) {
       if (!l.reportEnabled) continue;
-      const chave =
-        l.reportFrequency === "weekly"
-          ? l.reportWeekday !== null && l.reportWeekday !== undefined
-            ? `sem-${l.reportWeekday}`
-            : null
-          : l.reportDay
-            ? `mes-${l.reportDay}`
-            : null;
-      if (!chave) continue;
-      contagem.set(chave, (contagem.get(chave) ?? 0) + 1);
+      if (l.reportDay) {
+        const k = `mes-${l.reportDay}`;
+        contagem.set(k, (contagem.get(k) ?? 0) + 1);
+      }
+      if (l.reportWeekday !== null && l.reportWeekday !== undefined) {
+        const k = `sem-${l.reportWeekday}`;
+        contagem.set(k, (contagem.get(k) ?? 0) + 1);
+      }
     }
 
     return [...contagem.entries()]
@@ -133,15 +143,11 @@ export function ReportSetupTable({ linhas }: { linhas: ReportSetupRow[] }) {
     return (
       rascunhos[linha.id] ?? {
         whatsapp: linha.whatsappPhone ?? "",
-        dia:
-          linha.reportFrequency === "weekly"
-            ? linha.reportWeekday === null || linha.reportWeekday === undefined
-              ? ""
-              : String(linha.reportWeekday)
-            : linha.reportDay
-              ? String(linha.reportDay)
-              : "",
-        frequencia: linha.reportFrequency === "weekly" ? "weekly" : "monthly",
+        diaDoMes: linha.reportDay ? String(linha.reportDay) : "",
+        diaDaSemana:
+          linha.reportWeekday === null || linha.reportWeekday === undefined
+            ? ""
+            : String(linha.reportWeekday),
         ativo: linha.reportEnabled,
       }
     );
@@ -155,23 +161,18 @@ export function ReportSetupTable({ linhas }: { linhas: ReportSetupRow[] }) {
   }
 
   function salvar(linha: ReportSetupRow) {
-    const { whatsapp, dia, frequencia, ativo } = valorAtual(linha);
+    const { whatsapp, diaDoMes, diaDaSemana, ativo } = valorAtual(linha);
 
-    const diaLimpo = dia.trim();
-    const diaNum = diaLimpo === "" ? null : Number(diaLimpo);
-    const semanal = frequencia === "weekly";
+    const mes = diaDoMes.trim() === "" ? null : Number(diaDoMes.trim());
+    const semana =
+      diaDaSemana.trim() === "" ? null : Number(diaDaSemana.trim());
 
-    if (diaNum !== null && !Number.isInteger(diaNum)) {
-      toast.error("Dia inválido.");
+    if (mes !== null && (!Number.isInteger(mes) || mes < 1 || mes > 28)) {
+      toast.error("O dia do mês precisa estar entre 1 e 28.");
       return;
     }
 
-    if (!semanal && diaNum !== null && (diaNum < 1 || diaNum > 28)) {
-      toast.error("O dia precisa estar entre 1 e 28.");
-      return;
-    }
-
-    if (semanal && diaNum !== null && (diaNum < 0 || diaNum > 6)) {
+    if (semana !== null && (!Number.isInteger(semana) || semana < 0 || semana > 6)) {
       toast.error("Dia da semana inválido.");
       return;
     }
@@ -181,9 +182,8 @@ export function ReportSetupTable({ linhas }: { linhas: ReportSetupRow[] }) {
     startTransition(async () => {
       const r = await salvarAgendaDeRelatorio({
         clientId: linha.id,
-        reportDay: semanal ? null : diaNum,
-        frequency: frequencia,
-        reportWeekday: semanal ? diaNum : null,
+        reportDay: mes,
+        reportWeekday: semana,
         enabled: ativo,
         whatsapp,
       });
@@ -280,7 +280,17 @@ export function ReportSetupTable({ linhas }: { linhas: ReportSetupRow[] }) {
 
           <div className="surface-card overflow-hidden">
             <div className="hidden grid-cols-[1fr_240px_190px_92px_92px] gap-3 border-b border-hairline px-4 py-2.5 lg:grid">
-              {["Cliente", "Destino no WhatsApp", "Quando", "Automático", ""].map(
+              {[
+                "Cliente",
+                "Destino no WhatsApp",
+                /* Dois campos sob um rótulo só: à esquerda o dia do mês
+                   (fechamento do mês anterior), à direita o dia da
+                   semana (últimos 7 dias). "Quando" cobria um campo; com
+                   dois, o cabeçalho precisa dizer que são duas agendas. */
+                "Mensal / Semanal",
+                "Automático",
+                "",
+              ].map(
                 (label, i) => (
                   <span key={label || i} className="eyebrow">
                     {label}
@@ -328,60 +338,49 @@ export function ReportSetupTable({ linhas }: { linhas: ReportSetupRow[] }) {
                         disabled={salvando === linha.id}
                       />
 
-                      {/* CADÊNCIA E DIA no mesmo espaço, porque um não
-                          significa nada sem o outro: "5" é dia do mês no
-                          mensal e sábado no semanal. Trocar a cadência
-                          LIMPA o dia — 28 não existe como dia da semana,
-                          e deixar o número velho salvaria um valor que a
-                          constraint do banco recusaria. */}
-                      <div className="flex items-center gap-1.5">
-                        <select
-                          value={rascunho.frequencia}
-                          onChange={(e) =>
-                            editar(linha, {
-                              frequencia: e.target.value as "monthly" | "weekly",
-                              dia: "",
-                            })
-                          }
-                          className="h-8 rounded-md border border-hairline bg-transparent px-1.5 text-xs"
-                          aria-label={`Cadência do envio de ${linha.name}`}
-                        >
-                          <option value="monthly">Mensal</option>
-                          <option value="weekly">Semanal</option>
-                        </select>
+                      {/* AS DUAS AGENDAS LADO A LADO, cada uma opcional.
+                          Antes havia um seletor Mensal/Semanal e UM
+                          campo: as cadências eram exclusivas, e escolher
+                          semanal apagava o dia do mês. Desde a migration
+                          48 elas são independentes — a conta pode receber
+                          o fechamento do mês E um acompanhamento toda
+                          segunda, que é o caso comum de quem acompanha
+                          campanha de perto.
 
-                        {rascunho.frequencia === "weekly" ? (
-                          <select
-                            value={rascunho.dia}
-                            onChange={(e) =>
-                              editar(linha, { dia: e.target.value })
-                            }
-                            className="h-8 min-w-0 flex-1 rounded-md border border-hairline bg-transparent px-1.5 text-xs"
-                            aria-label={`Dia da semana do envio de ${linha.name}`}
-                          >
-                            <option value="">—</option>
-                            {DIAS_DA_SEMANA.map((d) => (
-                              <option key={d.valor} value={d.valor}>
-                                {d.rotulo}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <Input
-                            value={rascunho.dia}
-                            onChange={(e) =>
-                              editar(linha, { dia: e.target.value })
-                            }
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") salvar(linha);
-                            }}
-                            placeholder="—"
-                            inputMode="numeric"
-                            maxLength={2}
-                            className="h-8 min-w-0 flex-1 text-sm tabular-nums"
-                            aria-label={`Dia do mês do envio de ${linha.name}`}
-                          />
-                        )}
+                          Vazio nos dois = sem envio automático, e o
+                          interruptor ao lado recusa ligar. */}
+                      <div className="flex items-center gap-1.5">
+                        <Input
+                          value={rascunho.diaDoMes}
+                          onChange={(e) =>
+                            editar(linha, { diaDoMes: e.target.value })
+                          }
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") salvar(linha);
+                          }}
+                          placeholder="dia"
+                          inputMode="numeric"
+                          maxLength={2}
+                          className="h-8 w-14 shrink-0 text-sm tabular-nums"
+                          title="Dia do mês — relatório do mês anterior"
+                          aria-label={`Dia do mês do envio mensal de ${linha.name}`}
+                        />
+
+                        <select
+                          value={rascunho.diaDaSemana}
+                          onChange={(e) =>
+                            editar(linha, { diaDaSemana: e.target.value })
+                          }
+                          className="h-8 min-w-0 flex-1 rounded-md border border-hairline bg-transparent px-1.5 text-xs"
+                          title="Dia da semana — relatório dos últimos 7 dias"
+                          aria-label={`Dia da semana do envio semanal de ${linha.name}`}
+                        >
+                          {DIAS_DA_SEMANA.map((d) => (
+                            <option key={d.valor} value={d.valor}>
+                              {d.rotulo}
+                            </option>
+                          ))}
+                        </select>
                       </div>
 
                       <label className="flex items-center gap-2 text-xs">

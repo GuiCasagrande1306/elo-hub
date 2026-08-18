@@ -473,7 +473,7 @@ export async function saveClientProfile(
     whatsapp_phone: v.whatsappPhone.trim() || null,
     /* NÃO escreve `report_enabled` nem `report_day`. Escrever daqui
        apagaria o que a tela de agenda gravou: este formulário nunca
-       soube de `report_frequency`/`report_weekday`, então salvar o
+       soube de `report_weekday`, a agenda semanal, então salvar o
        cadastro de um cliente semanal zerava o agendamento dele sem
        aviso. Quem manda na agenda é `salvarAgendaDeRelatorio`. */
     optimization_day: v.optimizationDay,

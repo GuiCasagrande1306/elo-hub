@@ -158,9 +158,15 @@ export interface Client {
   owner_id: string | null;
   /** Dia do mês (1-28) do envio automático; null quando não agendado. */
   report_day: number | null;
-  /** 'monthly' (dia do mês) ou 'weekly' (dia da semana). */
-  report_frequency?: "monthly" | "weekly";
-  /** 0=domingo a 6=sábado, como `Date.getDay()`. Só no semanal. */
+  /**
+   * 0=domingo a 6=sábado, como `Date.getDay()`. Dia do relatório
+   * SEMANAL, que cobre os últimos 7 dias.
+   *
+   * INDEPENDENTE de `report_day`: as duas agendas coexistem desde a
+   * migration 48, e a conta pode receber o fechamento do mês e o
+   * acompanhamento da semana. Havia aqui um `report_frequency` que as
+   * tratava como modos exclusivos; ele foi removido, coluna e tudo.
+   */
   report_weekday?: number | null;
   report_enabled: boolean;
   /** Dia útil da rotina: 1=segunda … 5=sexta. NULL = sem rotina. */

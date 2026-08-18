@@ -417,7 +417,7 @@ export function ClientForm({
                   Duas telas escreviam o mesmo agendamento com visões
                   diferentes dele. Esta conhecia `report_enabled` e
                   `report_day`; a de /relatorios conhece também
-                  `report_frequency` e `report_weekday`. Cliente com
+                  `report_weekday`, a agenda semanal. Cliente com
                   cadência SEMANAL tem, por definição, `report_day` nulo
                   — e a validação daqui exigia o dia sempre que o envio
                   estivesse ligado. Resultado medido: depois de marcar um

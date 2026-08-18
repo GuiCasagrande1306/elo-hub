@@ -358,7 +358,7 @@ export const clientFormSchema = z
     /* `reportEnabled` e `reportDay` SAÍRAM daqui — a agenda de envio é
        responsabilidade única de `salvarAgendaDeRelatorio`, em
        /relatorios. Este formulário só conhecia metade do agendamento
-       (não sabia de `report_frequency` nem de `report_weekday`) e por
+       (não sabia de `report_weekday`, a agenda semanal) e por
        isso rejeitava salvar qualquer cliente de cadência semanal, que
        tem `report_day` nulo por definição. Ver o comentário longo em
        `client-form.tsx`. */
