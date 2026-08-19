@@ -69,11 +69,43 @@ import {
    viajem junto com a função. */
 const DIR_FONTES = join(process.cwd(), "src/assets/fonts");
 
+/* AS QUATRO ENTRADAS SÃO OBRIGATÓRIAS, e as duas de baixo não são
+   decoração.
+
+   O react-pdf resolve fonte por (família, peso, estilo) e LANÇA ERRO
+   quando a combinação não existe — não cai para a mais próxima. Como
+   Helvetica era usada antes, e Helvetica-Oblique é uma das quatorze
+   fontes padrão do PDF, todo `fontStyle: "italic"` resolvia sozinho.
+   Ao trocar para Geist esse chão sumiu: uma nota em itálico numa seção
+   vazia derrubava a geração INTEIRA com
+
+     Error: Could not resolve font for Geist, fontWeight 400, fontStyle italic
+
+   e o cliente recebia um 500 no lugar do relatório. Não era hipótese —
+   foi o que aconteceu em produção nos dois cliques em "Visualizar PDF".
+
+   Geist não tem itálico: a família publicada pela Vercel é só vertical.
+   Então as entradas `italic` apontam para os MESMOS arquivos verticais.
+   O texto sai sem inclinação, e essa é a escolha consciente: perder a
+   inclinação de uma nota secundária custa quase nada, perder o
+   relatório custa o envio ao cliente. Os estilos deste arquivo já não
+   pedem itálico — isto existe para que um `fontStyle: "italic"` escrito
+   daqui a seis meses degrade em vez de derrubar. */
 Font.register({
   family: "Geist",
   fonts: [
     { src: join(DIR_FONTES, "Geist-Regular.ttf"), fontWeight: 400 },
     { src: join(DIR_FONTES, "Geist-Bold.ttf"), fontWeight: 700 },
+    {
+      src: join(DIR_FONTES, "Geist-Regular.ttf"),
+      fontWeight: 400,
+      fontStyle: "italic",
+    },
+    {
+      src: join(DIR_FONTES, "Geist-Bold.ttf"),
+      fontWeight: 700,
+      fontStyle: "italic",
+    },
   ],
 });
 
@@ -322,10 +354,12 @@ const styles = StyleSheet.create({
   stepIndex: { fontSize: 9, fontFamily: "Geist", fontWeight: 700, width: 14 },
   stepText: { fontSize: 9.5, lineHeight: 1.5, flex: 1 },
 
+  /* SEM `fontStyle: "italic"` — ver a nota no Font.register. A distinção
+     visual já vinha do tamanho menor e do cinza; a inclinação era o
+     terceiro sinal para a mesma coisa, e era o único que quebrava. */
   emptyNote: {
     fontSize: 8.5,
     color: INK_SOFT,
-    fontStyle: "italic",
     paddingVertical: 8,
   },
   /* Ressalva sob o título da galeria. Compacta de propósito: a seção
@@ -334,7 +368,6 @@ const styles = StyleSheet.create({
   ressalva: {
     fontSize: 7.5,
     color: INK_SOFT,
-    fontStyle: "italic",
     marginBottom: 4,
   },
 });

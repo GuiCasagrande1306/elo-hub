@@ -111,19 +111,44 @@ async function gerar(entrada: {
     );
   }
 
-  const payload = await buildReportPayload({
-    client,
-    template,
-    periodStart: start,
-    periodEnd: end,
-    insights: entrada.insights?.trim() || undefined,
-    nextSteps: (entrada.nextSteps ?? "")
-      .split("\n")
-      .map((linha) => linha.trim())
-      .filter(Boolean),
-  });
+  let buffer: Buffer;
 
-  const { buffer } = await renderReportPdf(payload);
+  try {
+    const payload = await buildReportPayload({
+      client,
+      template,
+      periodStart: start,
+      periodEnd: end,
+      insights: entrada.insights?.trim() || undefined,
+      nextSteps: (entrada.nextSteps ?? "")
+        .split("\n")
+        .map((linha) => linha.trim())
+        .filter(Boolean),
+    });
+
+    ({ buffer } = await renderReportPdf(payload));
+  } catch (erro) {
+    /* ESTA ABA ABRE EM BRANCO SE NINGUÉM SEGURAR O ERRO.
+       O botão "Visualizar" envia um formulário com target="_blank": a
+       resposta vira a página inteira de uma aba nova. Sem este catch, um
+       erro de render devolvia o 500 cru do Next e a experiência era
+       exatamente "o sistema quebra" — sem dizer o que quebrou, sem
+       deixar rastro na tela de quem clicou.
+
+       O texto do erro aparece de propósito. Este é um painel interno,
+       autenticado; quem clica aqui é do time e vai ter que relatar o
+       problema. "Could not resolve font for Geist" resolve em minutos;
+       "algo deu errado" custa uma sessão de investigação. */
+    console.error("[preview] falha ao gerar PDF", erro);
+
+    return new NextResponse(paginaDeErro(erro), {
+      status: 500,
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store",
+      },
+    });
+  }
 
   return new NextResponse(new Uint8Array(buffer), {
     headers: {
@@ -133,6 +158,30 @@ async function gerar(entrada: {
       "Cache-Control": "no-store",
     },
   });
+}
+
+/** Página legível no lugar do 500 cru, já que a resposta ocupa uma aba. */
+function paginaDeErro(erro: unknown): string {
+  const detalhe = erro instanceof Error ? erro.message : String(erro);
+  const seguro = detalhe.replace(
+    /[&<>]/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c] ?? c,
+  );
+
+  return `<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><title>Não foi possível gerar o PDF</title></head>
+<body style="margin:0;padding:48px;font:15px/1.6 system-ui,sans-serif;color:#141413;background:#F7F6F3">
+  <div style="max-width:560px">
+    <h1 style="font-size:19px;margin:0 0 12px">Não foi possível gerar o PDF</h1>
+    <p style="margin:0 0 20px;color:#5C5C57">
+      O relatório não chegou a ser criado e nada foi enviado ao cliente.
+      Feche esta aba e avise o time com a mensagem abaixo.
+    </p>
+    <pre style="margin:0;padding:14px;background:#fff;border:1px solid #E4E2DD;border-radius:8px;font:13px/1.5 ui-monospace,monospace;white-space:pre-wrap">${seguro}</pre>
+  </div>
+</body>
+</html>`;
 }
 
 /**
