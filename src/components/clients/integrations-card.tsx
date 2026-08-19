@@ -391,9 +391,28 @@ function LinhaIntegracao({
                   ))}
                 </SelectContent>
               </Select>
-              <p className="mt-1.5 font-mono text-2xs text-muted-foreground">
-                {efetivo}
-              </p>
+              {/* UM POR LINHA, e não `{efetivo}` solto.
+                  `conversionActionFor` devolve um ARRAY, e array em JSX
+                  é renderizado concatenado, sem separador. Na tela isso
+                  virava uma palavra só —
+                  "…fb_pixel_leadonsite_conversion.lead_grouped…" — que
+                  além de ilegível parece um valor errado gravado no
+                  banco. E como não tem espaço para quebrar, a linha
+                  empurrava o diálogo inteiro na horizontal.
+
+                  `break-all` porque o que estoura é UM token sem espaço:
+                  `break-words` só quebra entre palavras e não teria onde
+                  agir. */}
+              <ul className="mt-1.5 flex flex-col gap-0.5">
+                {efetivo.map((tipo) => (
+                  <li
+                    key={tipo}
+                    className="break-all font-mono text-2xs text-muted-foreground"
+                  >
+                    {tipo}
+                  </li>
+                ))}
+              </ul>
               <p className="mt-1 text-2xs text-muted-foreground">
                 A Meta devolve todos os eventos do pixel juntos. Escolher o
                 errado zera conversão e receita no relatório.
