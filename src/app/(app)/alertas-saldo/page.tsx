@@ -7,6 +7,7 @@ import {
   /* Renomeado: `Infinity` sombrearia o global de mesmo nome no escopo
      do módulo, e um `Infinity` numérico aqui viraria um componente. */
   Infinity as InfinityIcon,
+  RefreshCw,
   TriangleAlert,
 } from "lucide-react";
 
@@ -27,6 +28,13 @@ import {
 import { formatCurrency, formatDate } from "@/lib/format";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
+import {
+  DestinoDoAviso,
+  type GrupoDisponivel,
+} from "@/components/clients/destino-do-aviso";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { isDemoMode } from "@/lib/env";
+import { RegistrarSaldo } from "@/components/clients/registrar-saldo";
 import type { BalanceAlert, BalanceStatus } from "@/lib/ads/balances";
 
 export const metadata: Metadata = { title: "Alertas de saldo" };
@@ -63,12 +71,23 @@ export default async function BalanceAlertsPage() {
   if (!user) redirect("/login");
 
   const alerts = await getBalanceAlerts();
+  const aviso = await carregarDestinoDoAviso();
 
   return (
     <PageContainer>
       <PageHeader
         title="⚠️ Alertas de saldo"
         description={`Saldo disponível e quanto ele dura no ritmo dos últimos dias. Crítico abaixo de ${DIAS_DE_ALERTA} dias, atenção abaixo de ${DIAS_DE_ATENCAO}.`}
+      />
+
+      {/* O DESTINO VEM ANTES DE TUDO. Quem abre esta página quer saber
+          se precisa abri-la de novo amanhã — e a resposta é "não, se o
+          aviso estiver ligado". */}
+      <DestinoDoAviso
+        grupos={aviso.grupos}
+        jidAtual={aviso.jid}
+        nomeAtual={aviso.nome}
+        podeEditar={user.role === "admin"}
       />
 
       {/* O aviso vem ANTES dos cards porque muda como o número deve ser
@@ -169,9 +188,10 @@ export interface ContaAgrupada {
 const PESO_STATUS: Record<BalanceStatus, number> = {
   critical: 0,
   warning: 1,
-  unknown: 2,
-  healthy: 3,
-  unlimited: 4,
+  stale: 2,
+  unknown: 3,
+  healthy: 4,
+  unlimited: 5,
 };
 
 function agruparPorCliente(alerts: BalanceAlert[]): ContaAgrupada[] {
@@ -238,6 +258,15 @@ const ESTILO: Record<
     texto: "text-positive",
     borda: "border-l-positive",
     Icone: CheckCircle2,
+  },
+  /* Âmbar como o de atenção, e não vermelho: a conta está no ar. O que
+     está errado é o NÚMERO na tela, e o pedido é de releitura, não de
+     recarga. Vermelho aqui reproduziria o alarme falso que este estado
+     existe para acabar. */
+  stale: {
+    texto: "text-warning",
+    borda: "border-l-warning",
+    Icone: RefreshCw,
   },
   /* Cinza, não amarelo: não saber o saldo não é um alerta sobre a
      conta, é uma pendência de cadastro. Pintar de amarelo misturaria
@@ -407,10 +436,55 @@ function BlocoPlataforma({
             <dt>Saldo informado em</dt>
             <dd className="text-right font-medium tabular-nums">
               {formatDate(`${alert.fundsRecordedAt}T12:00:00`)}
+              {/* A IDADE, e não só a data. "05 de ago" não diz nada
+                  sozinho; "há 14 dias" diz que o número embaixo é uma
+                  estimativa de duas semanas atrás. Âmbar a partir de uma
+                  semana, que é quando a deriva começa a pesar mais que a
+                  leitura. */}
+              {alert.diasDesdeLeitura !== null &&
+                alert.diasDesdeLeitura > 0 && (
+                  <span
+                    className={cn(
+                      "ml-1.5 font-normal",
+                      alert.diasDesdeLeitura >= 7
+                        ? "text-warning"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    há {alert.diasDesdeLeitura}{" "}
+                    {alert.diasDesdeLeitura === 1 ? "dia" : "dias"}
+                  </span>
+                )}
             </dd>
           </div>
         )}
       </dl>
+
+      {/* O CAMPO FICA NA LINHA, ao lado do número que ele corrige.
+          Antes só existia no diálogo de configuração de cada cliente, e
+          o resultado medido foi 23 de 24 contas sem saldo informado: o
+          trabalho não cabia no fluxo de quem lê alertas.
+
+          Só para conta pré-paga com âncora manual. Verba de fatura vem
+          da API do Google e não se digita; conta sem teto não tem o que
+          informar. */}
+      {(alert.balanceSource === "manual" ||
+        alert.balanceSource === "indisponivel") &&
+        alert.status !== "unlimited" && (
+          <div className="mt-3 flex items-center justify-between gap-2 border-t border-hairline pt-3">
+            <span className="text-2xs text-muted-foreground">
+              {alert.currentBalance === null
+                ? "Abra o gerenciador e informe o saldo:"
+                : "Releu o saldo? Atualize:"}
+            </span>
+            <RegistrarSaldo
+              clientId={alert.clientId}
+              platform={alert.platform}
+              valorAtual={null}
+              compacto
+            />
+          </div>
+        )}
     </section>
   );
 }
@@ -435,6 +509,8 @@ function rotuloCurto(alert: BalanceAlert): string {
       return "Sem saldo";
     case "unlimited":
       return "Sem teto";
+    case "stale":
+      return "Releia";
     default:
       return alert.daysLeft === null ? "Sem ritmo" : `${alert.daysLeft}d`;
   }
@@ -452,6 +528,20 @@ function diagnostico(alert: BalanceAlert): string {
     return "Faturamento sem teto — não há saldo a esgotar";
   }
 
+  /* A FRASE PRECISA EXPLICAR A CONTRADIÇÃO, não só pedir a releitura.
+     Quem abre a tela vê "saldo R$ 0,00" e uma conta que gastou ontem —
+     sem a explicação, a conclusão natural é que a tela está quebrada. */
+  if (alert.status === "stale") {
+    const quando =
+      alert.diasDesdeLeitura === null
+        ? "a leitura"
+        : alert.diasDesdeLeitura === 1
+          ? "a leitura de ontem"
+          : `a leitura de ${alert.diasDesdeLeitura} dias atrás`;
+
+    return `A conta segue veiculando, então ${quando} já não vale — informe o saldo atual`;
+  }
+
   if (alert.currentBalance === 0) {
     return "Sem saldo — anúncios podem estar fora do ar";
   }
@@ -467,4 +557,55 @@ function diagnostico(alert: BalanceAlert): string {
   return alert.daysLeft === 1
     ? "Resta 1 dia no ritmo atual"
     : `Restam ${alert.daysLeft} dias no ritmo atual`;
+}
+
+
+/**
+ * Configuração do aviso e os grupos entre os quais escolher.
+ *
+ * `whatsapp_groups` tem 512 linhas de várias sincronizações; a lista é
+ * ordenada por nome e cortada — um seletor de 512 itens não é um
+ * seletor, é uma busca. Quem não achar o grupo aqui sincroniza de novo
+ * no EloZap, que é onde essa lista nasce.
+ */
+async function carregarDestinoDoAviso(): Promise<{
+  grupos: GrupoDisponivel[];
+  jid: string | null;
+  nome: string | null;
+}> {
+  if (isDemoMode) {
+    return {
+      grupos: [{ jid: "120363000000000000@g.us", name: "Equipe — Mídia" }],
+      jid: null,
+      nome: null,
+    };
+  }
+
+  try {
+    const admin = createSupabaseAdminClient();
+
+    const [{ data: config }, { data: grupos }] = await Promise.all([
+      admin
+        .from("balance_alert_settings")
+        .select("group_jid, group_name")
+        .eq("id", true)
+        .maybeSingle(),
+      admin
+        .from("whatsapp_groups")
+        .select("jid, name")
+        .order("name")
+        .limit(300),
+    ]);
+
+    return {
+      grupos: (grupos ?? []) as GrupoDisponivel[],
+      jid: config?.group_jid ?? null,
+      nome: config?.group_name ?? null,
+    };
+  } catch {
+    /* Migration 50 ainda não rodada: a página inteira não pode cair por
+       causa do seletor. Sem grupos, ele aparece dizendo que ninguém está
+       sendo avisado — que é a verdade. */
+    return { grupos: [], jid: null, nome: null };
+  }
 }

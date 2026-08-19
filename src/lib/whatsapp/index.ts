@@ -373,12 +373,19 @@ export async function evolutionFetch(
 export async function sendTextMessage(
   number: string,
   text: string,
+  /* Instância alvo. Omitida = a da agência. O aviso diário de saldo
+     passa a do usuário dono do grupo escolhido — ver `balance-notice`. */
+  instanceOverride?: string,
 ): Promise<EvolutionResult> {
-  return evolutionRequest("message/sendText", {
-    number: normalizePhone(number),
-    text,
-    delay: 1200,
-  });
+  return evolutionRequest(
+    "message/sendText",
+    {
+      number: normalizePhone(number),
+      text,
+      delay: 1200,
+    },
+    instanceOverride,
+  );
 }
 
 /**

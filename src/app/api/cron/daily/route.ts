@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { serverEnv } from "@/lib/env";
 import { syncAllClients } from "@/lib/ads/sync";
+import { enviarAvisoDeSaldo } from "@/lib/ads/balance-notice";
 import { dispatchScheduledReports } from "@/lib/reports/schedule";
 import { materializarMes, mesCorrente } from "@/lib/finance/recurrence";
 
@@ -160,6 +161,25 @@ export async function GET(request: NextRequest) {
     // `mode=month` porque a rodada diária também precisa capturar
     // reatribuições retroativas das plataformas.
     resposta.sync = await syncAllClients({ mode: "month" });
+  }
+
+  /* --- 3. Aviso de saldo ------------------------------------------
+     DEPOIS DO SYNC, e a ordem é o conserto aqui também: o aviso lê o
+     gasto de `daily_metrics`, então mandá-lo antes usaria o dado de
+     ontem para dizer quantos dias restam hoje.
+
+     Fora do orçamento de relatórios de propósito — é uma consulta e uma
+     mensagem, medidas em segundos, e uma conta que zera custa mais que
+     o tempo que isto ocupa. */
+  if (rodar("saldo")) {
+    try {
+      resposta.avisoDeSaldo = await enviarAvisoDeSaldo();
+    } catch (error) {
+      resposta.avisoDeSaldo = {
+        enviado: false,
+        motivo: error instanceof Error ? error.message : "falha desconhecida",
+      };
+    }
   }
 
   // 200 mesmo com falhas parciais, pelo mesmo motivo de `sync-ads`: o

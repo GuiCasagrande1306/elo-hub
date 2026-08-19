@@ -1,8 +1,9 @@
 import "server-only";
 
-import { resolvePeriod } from "@/lib/date-br";
+import { dataNoBrasil, resolvePeriod } from "@/lib/date-br";
 import { isDemoMode } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { fetchPrepaidBalances, type ContaSaldo } from "./meta-balance";
 import { fetchGoogleBalances, type VerbaGoogle } from "./google-balance";
 import type { AdPlatform, Client } from "@/types/database";
@@ -67,7 +68,21 @@ export type BalanceStatus =
   | "warning"
   | "healthy"
   | "unknown"
-  | "unlimited";
+  | "unlimited"
+  /**
+   * A leitura informada não bate com a realidade da conta.
+   *
+   * Acontece quando a projeção zera o saldo E a conta continua gastando:
+   * alguém recarregou e não avisou o painel. Medido em 19/08/2026 na
+   * Nuur Libanese Bakery — R$ 341,77 lidos catorze dias antes, gasto
+   * desde então maior que isso, e a conta veiculando a R$ 35,76/dia com
+   * dado até a véspera.
+   *
+   * Sem este estado a tela gritava CRÍTICO numa conta cheia. E o
+   * estrago do alarme falso não é o susto: é que a próxima vez que a
+   * tela gritar, ninguém corre.
+   */
+  | "stale";
 
 /** O objeto padronizado: mesma forma para Meta e Google. */
 export interface BalanceForecast {
@@ -94,6 +109,19 @@ export interface BalanceAlert extends BalanceForecast {
   accruedCents: number | null;
   /** Divisor usado no ritmo: dias com gasto na janela, no máximo 7. */
   diasDeRitmo: number;
+  /**
+   * Há quantos dias a leitura foi informada. `null` quando não há
+   * leitura.
+   *
+   * A âncora não é um fato permanente: ela é um número lido numa data e
+   * envelhece. Aos catorze dias, o saldo mostrado é a leitura menos duas
+   * semanas de gasto estimado — e qualquer recarga no meio o torna
+   * ficção. A tela precisa poder dizer isso, e para isso precisa do
+   * número.
+   */
+  diasDesdeLeitura: number | null;
+  /** Data do último dia com gasto — a prova de que a conta está no ar. */
+  ultimoGastoEm: string | null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -132,7 +160,16 @@ export function calcularRitmo(
 export function projetar(
   balanceCents: number | null,
   burnRate: number,
-  opts: { unlimited?: boolean } = {},
+  opts: {
+    unlimited?: boolean;
+    /**
+     * A conta gastou nos últimos dias?
+     *
+     * É a única evidência independente da âncora manual, e é o que
+     * separa "acabou" de "a leitura envelheceu". Ver o estado `stale`.
+     */
+    gastandoAgora?: boolean;
+  } = {},
 ): BalanceForecast {
   if (opts.unlimited) {
     return {
@@ -147,8 +184,25 @@ export function projetar(
     return { currentBalance: null, burnRate, daysLeft: null, status: "unknown" };
   }
 
-  // Sem saldo é crítico mesmo sem ritmo: os anúncios já podem ter caído.
   if (balanceCents <= 0) {
+    /* ZERO E GASTANDO É CONTRADIÇÃO, não emergência.
+       -----------------------------------------------------------------
+       Conta sem saldo não veicula: a plataforma derruba o anúncio no
+       mesmo dia. Se a projeção diz zero e a conta gastou ontem, quem
+       está errado é a projeção — alguém recarregou sem avisar o painel.
+
+       O caminho antigo devolvia `critical` aqui e produzia o alarme
+       falso descrito em `stale`. */
+    if (opts.gastandoAgora) {
+      return {
+        currentBalance: 0,
+        burnRate,
+        daysLeft: null,
+        status: "stale",
+      };
+    }
+
+    // Parada E zerada: aí é o que parece. Os anúncios já podem ter caído.
     return { currentBalance: 0, burnRate, daysLeft: 0, status: "critical" };
   }
 
@@ -179,7 +233,24 @@ export function projetar(
   };
 }
 
-export async function getBalanceAlerts(): Promise<BalanceAlert[]> {
+/**
+ * Dias inteiros entre duas datas ISO, sem passar por fuso.
+ *
+ * `new Date("2026-08-05")` é meia-noite UTC; na Vercel isso já é outro
+ * dia em São Paulo, e a diferença saía um a mais ou a menos conforme a
+ * hora da requisição. Comparar só a parte da data resolve.
+ */
+function diasEntre(deISO: string, ateISO: string): number {
+  const ms =
+    Date.parse(`${ateISO}T12:00:00Z`) - Date.parse(`${deISO}T12:00:00Z`);
+  return Math.max(0, Math.round(ms / 86_400_000));
+}
+
+export async function getBalanceAlerts(
+  comoSistema = false,
+): Promise<BalanceAlert[]> {
+  const hojeISO = dataNoBrasil();
+
   const {
     clients,
     gastoPorConta,
@@ -189,7 +260,7 @@ export async function getBalanceAlerts(): Promise<BalanceAlert[]> {
     saldosGoogle,
     fundos,
     gastoDesdeRecarga,
-  } = await carregar();
+  } = await carregar(comoSistema);
 
   const alertas: BalanceAlert[] = [];
 
@@ -271,8 +342,20 @@ export async function getBalanceAlerts(): Promise<BalanceAlert[]> {
          saldo folgado simplesmente não existia na tela — indistinguível
          de "esqueci de configurar". O status diferencia; a ausência,
          não. */
+      /* ÚLTIMO DIA COM GASTO, tirado do conjunto que já alimenta o
+         ritmo — sem consulta extra. É a evidência de que a conta está no
+         ar, e é o que permite desconfiar da âncora em vez do saldo. */
+      const diasDoRitmo = [...(diasComGasto.get(chave) ?? [])].sort();
+      const ultimoGastoEm = diasDoRitmo[diasDoRitmo.length - 1] ?? null;
+
+      /* DOIS DIAS de folga, não um. O sync roda de madrugada e o dado de
+         ontem pode não ter fechado; exigir gasto "ontem" marcaria como
+         parada uma conta que só não sincronizou ainda. */
+      const gastandoAgora =
+        ultimoGastoEm !== null && diasEntre(ultimoGastoEm, hojeISO) <= 2;
+
       alertas.push({
-        ...projetar(balanceCents, burnRate, { unlimited }),
+        ...projetar(balanceCents, burnRate, { unlimited, gastandoAgora }),
         clientId: client.id,
         clientName: client.name,
         clientSlug: client.slug,
@@ -284,6 +367,10 @@ export async function getBalanceAlerts(): Promise<BalanceAlert[]> {
         /* O divisor de fato, não a contagem crua: exibir "8 dias"
            enquanto a divisão usa 7 faria a tela desmentir o cálculo. */
         diasDeRitmo: Math.min(diasComGasto.get(chave)?.size ?? 0, JANELA_DIAS),
+        diasDesdeLeitura: informado
+          ? diasEntre(informado.desde.slice(0, 10), hojeISO)
+          : null,
+        ultimoGastoEm,
       });
     }
   }
@@ -294,9 +381,12 @@ export async function getBalanceAlerts(): Promise<BalanceAlert[]> {
   const PESO: Record<BalanceStatus, number> = {
     critical: 0,
     warning: 1,
-    unknown: 2,
-    healthy: 3,
-    unlimited: 4,
+    /* Logo abaixo de atenção: a linha pede AÇÃO — alguém tem de reler o
+       saldo —, mas não é emergência, porque a conta está veiculando. */
+    stale: 2,
+    unknown: 3,
+    healthy: 4,
+    unlimited: 5,
   };
 
   return alertas.sort(
@@ -310,7 +400,7 @@ export async function getBalanceAlerts(): Promise<BalanceAlert[]> {
 
 /* ------------------------------------------------------------------ */
 
-async function carregar(): Promise<{
+async function carregar(comoSistema = false): Promise<{
   clients: Client[];
   gastoPorConta: Map<string, number>;
   /**
@@ -445,7 +535,12 @@ async function carregar(): Promise<{
      equipe, qualquer usuário vê a lista de clientes — e `daily_metrics`
      continua com policy própria, então o gasto só aparece para quem tem
      acesso à conta. O alerta é global; o número é filtrado. */
-  const supabase = await createSupabaseServerClient();
+  /* `comoSistema` é o caminho do CRON, que não tem sessão. Sem ele, a
+     leitura sob RLS devolve zero cliente numa invocação sem usuário — e
+     o aviso diário sairia dizendo que está tudo bem. */
+  const supabase = comoSistema
+    ? createSupabaseAdminClient()
+    : await createSupabaseServerClient();
 
   const [{ data: clients }, { data: metrics }, { data: integracoes }] =
     await Promise.all([
@@ -576,4 +671,17 @@ async function carregar(): Promise<{
     fundos,
     gastoDesdeRecarga,
   };
+}
+
+
+/**
+ * A mesma lista, lida com service_role.
+ *
+ * Para o CRON, que roda sem usuário. `getBalanceAlerts()` passa pela
+ * RLS: numa invocação sem sessão ela devolve zero cliente, e o aviso
+ * diário sairia afirmando que não há nada crítico — o pior desfecho
+ * possível para um alerta.
+ */
+export function getBalanceAlertsAsSystem(): Promise<BalanceAlert[]> {
+  return getBalanceAlerts(true);
 }
