@@ -11,6 +11,7 @@ import {
 } from "@react-pdf/renderer";
 
 import type { ReportPayload } from "@/lib/reports/payload";
+import { copyDoAnuncio, semEmoji } from "./texto-seguro";
 import { payloadHeadline } from "@/lib/reports/payload";
 import {
   formatCurrency,
@@ -710,7 +711,7 @@ function SectionBody({
       return <AdGallery payload={payload} />;
     case "insights":
       return payload.insights ? (
-        <Text style={styles.paragraph}>{payload.insights}</Text>
+        <Text style={styles.paragraph}>{semEmoji(payload.insights)}</Text>
       ) : (
         <Text style={styles.emptyNote}>
           Análise não preenchida para este período.
@@ -722,7 +723,7 @@ function SectionBody({
           {payload.nextSteps.map((step, index) => (
             <View key={index} style={styles.stepRow}>
               <Text style={styles.stepIndex}>{index + 1}.</Text>
-              <Text style={styles.stepText}>{step}</Text>
+              <Text style={styles.stepText}>{semEmoji(step)}</Text>
             </View>
           ))}
         </View>
@@ -816,7 +817,7 @@ function PlatformPages({
                   quase vazia. Seis cabe; sete já não. */}
               {p.campaigns.slice(0, 6).map((c) => (
                 <View key={c.name} style={styles.tableRow}>
-                  <Text style={[styles.td, { flex: 3 }]}>{c.name}</Text>
+                  <Text style={[styles.td, { flex: 3 }]}>{semEmoji(c.name)}</Text>
                   <Text style={[styles.td, { flex: 1, textAlign: "right" }]}>
                     {formatCurrency(c.spendCents)}
                   </Text>
@@ -1071,6 +1072,11 @@ function Cartao({
   ad: ReportPayload["creatives"][number];
   payload: ReportPayload;
 }) {
+  /* Limpa e ENTÃO corta. Cortar primeiro gastaria parte dos 190
+     caracteres com emoji que sairia — e o corte pode cair no meio de um
+     par de substitutos, que é justamente o que produz lixo. */
+  const copy = copyDoAnuncio(ad.primaryText, 190);
+
   return (
     <View style={styles.adCard} wrap={false}>
           {ad.imageIsRaster && ad.imageUrl ? (
@@ -1094,12 +1100,12 @@ function Cartao({
 
           <View style={{ flex: 1 }}>
             <Text style={styles.adPlatform}>
-              {ad.platformLabel} · {ad.campaignName ?? "—"}
+              {ad.platformLabel} · {semEmoji(ad.campaignName ?? "") || "—"}
             </Text>
-            <Text style={styles.adHeadline}>{ad.headline ?? ad.adName ?? "—"}</Text>
-            {ad.primaryText && (
-              <Text style={styles.adCopy}>{truncate(ad.primaryText, 190)}</Text>
-            )}
+            <Text style={styles.adHeadline}>
+              {semEmoji(ad.headline ?? ad.adName ?? "") || "—"}
+            </Text>
+            {copy && <Text style={styles.adCopy}>{copy}</Text>}
 
             <View style={styles.adMetrics}>
               <View>
@@ -1121,11 +1127,5 @@ function Cartao({
 }
 
 /** Corta no limite de palavra — corte no meio da palavra parece defeito. */
-function truncate(text: string, max: number): string {
-  if (text.length <= max) return text;
-  const cut = text.slice(0, max);
-  const lastSpace = cut.lastIndexOf(" ");
-  return `${cut.slice(0, lastSpace > 0 ? lastSpace : max)}…`;
-}
 
 export { payloadHeadline };
