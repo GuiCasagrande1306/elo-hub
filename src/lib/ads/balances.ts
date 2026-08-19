@@ -542,6 +542,8 @@ async function carregar(comoSistema = false): Promise<{
     ? createSupabaseAdminClient()
     : await createSupabaseServerClient();
 
+  const t0 = Date.now();
+
   const [{ data: clients }, { data: metrics }, { data: integracoes }] =
     await Promise.all([
       supabase.from("clients").select("*").eq("status", "active").order("name"),
@@ -560,6 +562,12 @@ async function carregar(comoSistema = false): Promise<{
         .eq("billing_type", "prepaid")
         .eq("is_active", true),
     ]);
+
+  /* CRONÔMETRO POR ETAPA. A tela estourou o teto de 60s da função
+     enquanto o mesmo cálculo rodava em 1,8s com service_role — a
+     diferença é a RLS, e sem medir cada etapa em PRODUÇÃO a conclusão
+     seria chute. Vai para o log da Vercel, não para a tela. */
+  const msConsultas = Date.now() - t0;
 
   const prePagas = new Set(
     (integracoes ?? []).map((i) => `${i.client_id}:${i.platform}`),
@@ -581,6 +589,7 @@ async function carregar(comoSistema = false): Promise<{
      7 dias porque a recarga pode ser bem mais antiga — reaproveitar
      aquela subtrairia só a última semana e inflaria o saldo. */
   const gastoDesdeRecarga = new Map<string, number>();
+  const tRecarga = Date.now();
   if (fundos.size > 0) {
     const maisAntiga = [...fundos.values()].map((f) => f.desde).sort()[0];
 
@@ -636,6 +645,8 @@ async function carregar(comoSistema = false): Promise<{
     }
   }
 
+  const msRecarga = Date.now() - tRecarga;
+
   const mapa = new Map<string, number>();
   const dias = new Map<string, Set<string>>();
 
@@ -656,10 +667,17 @@ async function carregar(comoSistema = false): Promise<{
   /* As duas APIs em paralelo: são independentes, e em série a página
      esperaria a soma dos dois tempos. Cada uma engole as próprias
      falhas e devolve o que conseguiu. */
+  const tApis = Date.now();
   const [saldos, saldosGoogle] = await Promise.all([
     fetchPrepaidBalances(),
     fetchGoogleBalances(),
   ]);
+
+  console.log(
+    `[saldos] consultas ${msConsultas}ms · gastoDesdeRecarga ${msRecarga}ms · ` +
+      `APIs ${Date.now() - tApis}ms · ${(clients ?? []).length} contas, ` +
+      `${(metrics ?? []).length} métricas · sistema=${comoSistema}`,
+  );
 
   return {
     clients: (clients ?? []) as Client[],

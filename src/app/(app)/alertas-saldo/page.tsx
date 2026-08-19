@@ -70,8 +70,16 @@ export default async function BalanceAlertsPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const alerts = await getBalanceAlerts();
-  const aviso = await carregarDestinoDoAviso();
+  /* CRONÔMETRO NA PÁGINA, e não só no motor: a tela estourou o teto de
+     60s da função enquanto o mesmo cálculo roda em menos de dois
+     segundos fora dela. Sem medir cada etapa, a próxima conclusão sobre
+     onde o tempo vai seria chute.
+
+     `medir` existe porque `Date.now()` DENTRO do componente é recusado
+     pelo compilador do React — render tem de ser puro, e ele está
+     certo. Fora do componente, é só uma função assíncrona. */
+  const alerts = await medir("getBalanceAlerts", getBalanceAlerts);
+  const aviso = await medir("destino", carregarDestinoDoAviso);
 
   return (
     <PageContainer>
@@ -607,5 +615,16 @@ async function carregarDestinoDoAviso(): Promise<{
        causa do seletor. Sem grupos, ele aparece dizendo que ninguém está
        sendo avisado — que é a verdade. */
     return { grupos: [], jid: null, nome: null };
+  }
+}
+
+
+/** Executa e registra quanto demorou. Vai para o log, não para a tela. */
+async function medir<T>(nome: string, fn: () => Promise<T>): Promise<T> {
+  const inicio = Date.now();
+  try {
+    return await fn();
+  } finally {
+    console.log(`[alertas-saldo] ${nome}: ${Date.now() - inicio}ms`);
   }
 }
