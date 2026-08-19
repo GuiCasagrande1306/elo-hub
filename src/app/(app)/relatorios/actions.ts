@@ -382,6 +382,16 @@ export type ResumoDoPeriodo = {
   /** Cru, sem unidade aplicada — ver a nota da função. */
   conversions: number;
   revenueCents: number;
+  /**
+   * Quantas linhas de `daily_metrics` existem na janela.
+   *
+   * ZERO LINHA E ZERO REAL SÃO COISAS DIFERENTES, e a tela precisa
+   * distinguir: "a conta não gastou nada em julho" contra "julho nunca
+   * foi sincronizado". Os dois exibiam R$ 0,00 e a segunda leitura era
+   * indistinguível da primeira — foi exatamente assim que um mês
+   * inteiro sem backfill passou por relatório pronto para enviar.
+   */
+  linhas: number;
 };
 
 /**
@@ -433,7 +443,8 @@ export async function resumoDoPeriodo(
   const visivel = (await getClients()).some((c) => c.id === clientId);
   if (!visivel) return { ok: false, error: "Conta não encontrada." };
 
-  const totais = sumMetrics(await getMetrics(clientId, start, end));
+  const metricas = await getMetrics(clientId, start, end);
+  const totais = sumMetrics(metricas);
 
   return {
     ok: true,
@@ -441,6 +452,7 @@ export async function resumoDoPeriodo(
       spendCents: totais.spendCents,
       conversions: totais.conversions,
       revenueCents: totais.revenueCents,
+      linhas: metricas.length,
     },
   };
 }

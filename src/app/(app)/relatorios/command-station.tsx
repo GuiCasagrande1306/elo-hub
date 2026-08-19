@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
-  BarChart3, Check, Copy, FileDown, Image as ImageIcon,
+  AlertTriangle, BarChart3, Check, Copy, FileDown, Image as ImageIcon,
   MessageCircle, Target, TrendingUp,
 } from "lucide-react";
 
@@ -100,6 +100,12 @@ export function CommandStation({ clients }: { clients: ClientSummary[] }) {
   } | null>(null);
   const [buscando, setBuscando] = useState(false);
 
+  /* `true` só quando a busca VOLTOU e não achou linha nenhuma. Começa
+     `false` porque a janela inicial é a da meta, que o servidor já
+     somou. Ver a nota de `linhas` em `ResumoDoPeriodo`: zero real e
+     período nunca sincronizado apareciam iguais na tela. */
+  const [semDado, setSemDado] = useState(false);
+
   const periodoLabel = formatPeriod(periodo.inicio, periodo.fim);
 
   const spendCents = override?.spendCents ?? cliente?.spendCents ?? 0;
@@ -110,6 +116,7 @@ export function CommandStation({ clients }: { clients: ClientSummary[] }) {
     const alvo = clients.find((c) => c.id === id);
     setClientId(id);
     setOverride(null);
+    setSemDado(false);
     if (alvo) setPeriodo({ inicio: alvo.period.start, fim: alvo.period.end });
   }
 
@@ -134,6 +141,7 @@ export function CommandStation({ clients }: { clients: ClientSummary[] }) {
            não têm como discordar dela. Deixar o servidor escolher já
            produziu R$ 0,64 onde eram R$ 12.170,81 — ele resolveu
            contagem e a tela formatou como dinheiro. */
+        setSemDado(r.resumo.linhas === 0);
         setOverride({
           spendCents: r.resumo.spendCents,
           resultValue: goalExecutedFrom(cliente.metric, {
@@ -367,6 +375,25 @@ export function CommandStation({ clients }: { clients: ClientSummary[] }) {
             rows={9}
             className="mt-2 resize-y font-mono text-xs"
           />
+          {/* ZERO POR FALTA DE DADO NÃO PODE PARECER ZERO DE VERDADE.
+              Sem este aviso a tela mostra R$ 0,00 nos dois casos, e o
+              texto pronto para copiar sai afirmando ao cliente que ele
+              não investiu nada no mês. Foi o que aconteceu com julho de
+              2026: o sync de rotina só cobre o mês corrente, o mês
+              fechado nunca tinha sido buscado, e a tela não tinha como
+              dizer isso. */}
+          {semDado && (
+            <p className="mt-2 flex items-start gap-2 rounded-lg bg-warning-muted px-3 py-2 text-2xs text-warning">
+              <AlertTriangle className="mt-px size-3.5 shrink-0" />
+              <span>
+                <strong>Nenhum dado sincronizado neste período.</strong> Os
+                zeros acima são ausência de dado, não desempenho —{" "}
+                <strong>não envie</strong> esta mensagem. O robô busca o
+                período na madrugada do dia agendado; para conferir antes,
+                peça uma sincronização deste intervalo.
+              </span>
+            </p>
+          )}
           <p className="mt-1.5 text-2xs text-muted-foreground">
             Números somados das métricas sincronizadas na janela acima.
             Trocar o período rebusca no banco — o texto nunca fica

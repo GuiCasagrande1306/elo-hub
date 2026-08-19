@@ -61,6 +61,13 @@ export interface RelatorioDeDisparo {
   falhas: ResultadoCliente[];
   pulados: ResultadoCliente[];
   adiados: ResultadoCliente[];
+  /** Backfills disparados nesta rodada — ver `garantirDadosDoPeriodo`. */
+  sincronizados: {
+    slug: string;
+    janela: string;
+    linhas: number;
+    erro?: string;
+  }[];
 }
 
 /** Data corrente no fuso de São Paulo, como YYYY-MM-DD. */
@@ -91,6 +98,109 @@ function mesAnterior(hojeISO: string) {
   const referencia =
     mes === 1 ? `${ano - 1}-12` : `${ano}-${String(mes - 1).padStart(2, "0")}`;
   return intervaloDoMes(referencia);
+}
+
+/**
+ * Garante que a janela do relatório foi realmente buscada nas plataformas.
+ *
+ * O DEFEITO QUE ISTO CONSERTA
+ * ---------------------------------------------------------------------
+ * A rodada de sincronização usa `mode: "month"`, que é
+ * `currentMonthRange()` — do dia 1 do mês CORRENTE até hoje. O relatório
+ * mensal lê o mês ANTERIOR. São janelas que não se encostam, e o
+ * resultado é um relatório somando um período que o sync nunca pediu à
+ * Meta.
+ *
+ * Medido em 18/08/2026, antes do conserto: das 57 contas, 5 tinham
+ * qualquer linha em julho. Quarenta e uma começavam exatamente em
+ * 2026-08-01 — o piso do `currentMonthRange`, não uma coincidência. Uma
+ * delas, D'Billys Burguer, abria o relatório de julho com R$ 0,00 de
+ * investimento e R$ 0,00 de faturamento. O backfill do mesmo período
+ * trouxe 62 linhas, R$ 2.281,25 e R$ 16.970,00: o dado estava na Meta o
+ * tempo inteiro, só nunca tinha sido buscado.
+ *
+ * O semanal sofre do mesmo mal na virada do mês: "últimos 7 dias" em 03
+ * de setembro começa em 27 de agosto, e o sync do dia só cobre setembro.
+ *
+ * POR QUE AQUI, E NÃO NA ETAPA DE SYNC
+ * ---------------------------------------------------------------------
+ * A etapa de sync roda DEPOIS dos relatórios de propósito (ver a nota em
+ * `api/cron/daily`), então o que ela traz só serviria ao relatório de
+ * amanhã. Puxar aqui é o único ponto em que o dado chega antes de quem
+ * precisa dele.
+ *
+ * O custo entra no orçamento sozinho: `custoObservado` mede a iteração
+ * inteira, e a partir da segunda conta o job já sabe que um relatório de
+ * mês fechado custa o PDF mais o backfill.
+ *
+ * SÓ QUANDO PRECISA. Janela inteiramente dentro do mês corrente já foi
+ * coberta pela rodada de ontem — o semanal do meio do mês não paga nada.
+ */
+export function precisaDeBackfill(
+  janelaStart: string,
+  hojeISO: string,
+): boolean {
+  // O sync de rotina (`mode: "month"`) cobre do dia 1 deste mês até
+  // hoje. Só o que começa ANTES disso nunca foi pedido à plataforma.
+  return janelaStart < `${hojeISO.slice(0, 7)}-01`;
+}
+
+async function garantirDadosDoPeriodo(
+  cliente: Client,
+  janela: { start: string; end: string },
+  hojeISO: string,
+  jaFeitos: Set<string>,
+): Promise<RelatorioDeDisparo["sincronizados"][number] | null> {
+  if (isDemoMode) return null;
+  if (!precisaDeBackfill(janela.start, hojeISO)) return null;
+
+  const chave = `${cliente.id}|${janela.start}|${janela.end}`;
+  if (jaFeitos.has(chave)) return null;
+  jaFeitos.add(chave);
+
+  const registro = {
+    slug: cliente.slug,
+    janela: `${janela.start}..${janela.end}`,
+    linhas: 0,
+  };
+
+  try {
+    /* Import dinâmico: `sync.ts` carrega os dois provedores de anúncios
+       no topo. Estático, ele entraria em toda rota que importa este
+       módulo — inclusive a tela de relatórios, que só precisa das datas. */
+    const { syncAllClients } = await import("@/lib/ads/sync");
+
+    const relatorio = await syncAllClients({
+      clientId: cliente.id,
+      range: { since: janela.start, until: janela.end },
+    });
+
+    registro.linhas = relatorio.totalRowsUpserted;
+
+    /* Falha parcial NÃO interrompe. Uma conta com duas plataformas em
+       que só o Google recusa o token ainda tem os números da Meta, e um
+       relatório com um canal vale mais do que nenhum relatório. O que
+       falhou fica dito no corpo da resposta do cron. */
+    if (relatorio.failed > 0) {
+      return {
+        ...registro,
+        erro: relatorio.results
+          .filter((r) => !r.ok)
+          .map((r) => `${r.platform}: ${r.message ?? r.code ?? "erro sem mensagem"}`)
+          .join(" | "),
+      };
+    }
+
+    return registro;
+  } catch (error) {
+    // Também não interrompe: o relatório sai com o que já existe no
+    // banco. Sem dado nenhum ele sai zerado, que é o estado anterior a
+    // este conserto — nunca pior.
+    return {
+      ...registro,
+      erro: error instanceof Error ? error.message : "falha desconhecida",
+    };
+  }
 }
 
 /** Janela de N dias terminando ONTEM, ancorada numa data YYYY-MM-DD. */
@@ -149,7 +259,13 @@ export async function dispatchScheduledReports(options?: {
     falhas: [],
     pulados: [],
     adiados: [],
+    sincronizados: [],
   };
+
+  /* Um mesmo cliente pode cair duas vezes na rodada (mensal e semanal).
+     Sem esta memória, uma virada de mês pediria o mesmo backfill duas
+     vezes e pagaria dois segundos de API por nada. */
+  const backfillsFeitos = new Set<string>();
 
   /* `getUTCDay()` sobre o meio-dia UTC da data brasileira: o meio-dia
      evita que o deslocamento de fuso jogue a data para o dia anterior ou
@@ -213,6 +329,16 @@ export async function dispatchScheduledReports(options?: {
     // A janela é a da CADÊNCIA desta entrada, não a da rodada — e o
     // mesmo cliente pode aparecer duas vezes, com janelas diferentes.
     const janela = cadencia === "semanal" ? janelaSemanal : periodo;
+
+    /* ANTES DE GERAR, garante que o período existe no banco. Um mês
+       fechado nunca foi pedido à plataforma pela rodada de rotina. */
+    const backfill = await garantirDadosDoPeriodo(
+      cliente,
+      janela,
+      hoje,
+      backfillsFeitos,
+    );
+    if (backfill) base.sincronizados.push(backfill);
 
     const resultado = await generateAndDeliverReport({
       clientSlug: cliente.slug,
