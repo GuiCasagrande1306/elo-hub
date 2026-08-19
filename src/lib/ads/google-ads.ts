@@ -38,9 +38,27 @@ import type { AdsProvider, NormalizedMetricRow, ProviderResult } from "./types";
    uma versão morta NÃO é um JSON de erro: é a página HTML 404 do
    gateway. Foi assim que apareceu "[network_error] Unexpected token '<',
    \"<!DOCTYPE\"" na tela — erro de parse disfarçando um endpoint que
-   deixou de existir. Medido em 07/08/2026: v18 e v19 dão 404; v20 e v21
-   respondem. */
-export const API_VERSION = "v21";
+   deixou de existir.
+
+   ESTE COMENTÁRIO JÁ AVISAVA, e aconteceu de novo em DOZE DIAS. Medição
+   de 07/08/2026: v18 e v19 mortas, v20 e v21 vivas — e o código ficou em
+   v21. Medição de 19/08/2026, com o mesmo teste:
+
+       v17 … v21   404, página HTML     ← v21 morreu nesse intervalo
+       v22 … v25   200
+       v26         404 JSON "Method not found" (ainda não existe)
+
+   Parou TUDO do lado Google: as 10 contas do sync e a listagem de contas
+   da tela de configuração.
+
+   Vamos para a mais nova viva, não para a do meio: a distância até o
+   próximo apagão é a única coisa que essa escolha compra. A consulta de
+   métricas foi conferida em v22 e v25 lado a lado, mesma conta e mesmo
+   julho — 74 linhas, R$ 10.292,23, 264 conversões nas duas.
+
+   QUANDO ISTO REPETIR: rode o teste de versões antes de supor outra
+   coisa. Um 404 em HTML aqui nunca é problema de token. */
+export const API_VERSION = "v25";
 
 /** GAQL: uma linha por campanha por dia. */
 export const DAILY_METRICS_QUERY = `

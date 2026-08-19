@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { serverEnv } from "@/lib/env";
+import { API_VERSION, exchangeRefreshToken } from "@/lib/ads/google-ads";
 
 /**
  * GET /api/google/ad-accounts?clientId=<uuid>
@@ -21,10 +22,12 @@ import { serverEnv } from "@/lib/env";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/* A Google aposenta versão a cada poucos meses, e a resposta de uma
-   versão morta é a página HTML 404 do gateway — não um JSON de erro.
-   Manter em sincronia com `lib/ads/google-ads.ts`. */
-const API_VERSION = "v21";
+/* A VERSÃO VEM DE `lib/ads/google-ads.ts`, importada.
+   Aqui havia uma segunda declaração com um comentário pedindo "manter em
+   sincronia" — e as duas saíram de sincronia exatamente como esse tipo
+   de pedido costuma terminar. Quando a v21 morreu, corrigir num lugar
+   deixaria esta tela quebrada com o mesmo 404 e nenhuma pista de que
+   existia outra cópia. Uma constante, um dono. */
 
 interface ContaGoogle {
   id: string;
@@ -86,7 +89,7 @@ export async function GET(request: NextRequest) {
     } | null
   )?.integration_secrets;
 
-  if (!segredos?.access_token) {
+  if (!segredos?.refresh_token) {
     return NextResponse.json({
       ok: false,
       error:
@@ -94,8 +97,28 @@ export async function GET(request: NextRequest) {
     });
   }
 
+  /* TROCA O REFRESH POR UM ACCESS NOVO — não use o guardado.
+     O access token do Google vale UMA HORA. Esta rota lia
+     `refresh_token` no select e mandava `access_token` mesmo assim, o
+     que fazia a tela funcionar nos sessenta minutos seguintes ao
+     "Autorizar" e nunca mais. Medido em 19/08/2026: o token gravado
+     tinha expirado em 07/08, e a API respondia UNAUTHENTICATED.
+
+     Sem gravar o novo: depois desta mudança ninguém mais lê o
+     `access_token` guardado do Google — o sync passa o refresh direto
+     ao provider, que faz a própria troca. Guardar seria manter uma
+     terceira cópia de um segredo que já tem dono. */
+  const token = await exchangeRefreshToken(segredos.refresh_token);
+
+  if (!token.ok) {
+    return NextResponse.json({
+      ok: false,
+      error: `Não foi possível renovar o acesso ao Google: ${token.message}`,
+    });
+  }
+
   const headers = {
-    Authorization: `Bearer ${segredos.access_token}`,
+    Authorization: `Bearer ${token.accessToken}`,
     "developer-token": serverEnv.googleAdsDeveloperToken,
     "login-customer-id": serverEnv.googleAdsLoginCustomerId.replace(/\D/g, ""),
     "Content-Type": "application/json",
@@ -132,13 +155,24 @@ export async function GET(request: NextRequest) {
     );
 
     if (!resposta.ok) {
-      /* O corpo vai junto, cortado. Resposta de versão morta da API é
-         uma página HTML inteira, e sem o motivo a tela só dizia "não
-         foi possível" — foi o que travou o diagnóstico por duas voltas. */
-      const motivo = (await resposta.text()).slice(0, 300);
+      const corpo = await resposta.text();
+
+      /* PÁGINA HTML = VERSÃO MORTA, e vale dizer isso em vez de despejar
+         o 404 do gateway na tela. A versão anterior colava 300
+         caracteres de `<!DOCTYPE html><meta charset=utf-8>…` no aviso:
+         tecnicamente o motivo estava ali, e ninguém conseguia lê-lo.
+         O texto cru continua no fim, porque um 404 que NÃO seja isso
+         precisa aparecer inteiro. */
+      const ehPaginaHtml = corpo.trimStart().startsWith("<");
+
       return NextResponse.json({
         ok: false,
-        error: `Google recusou (${resposta.status}): ${motivo}`,
+        error: ehPaginaHtml
+          ? `A versão ${API_VERSION} da API do Google Ads foi descontinuada — ` +
+            "o endereço não existe mais. É correção de código: atualizar " +
+            "`API_VERSION` em `lib/ads/google-ads.ts` para a versão viva " +
+            "mais nova. Não adianta reautorizar."
+          : `Google recusou (${resposta.status}): ${corpo.slice(0, 300)}`,
       });
     }
 
