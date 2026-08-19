@@ -13,6 +13,10 @@ import {
 import { sessionSource, type ReportSource } from "./source";
 import { metricasDeCriativosNoPeriodo } from "./creative-insights";
 import { aplicarMetricas } from "./print-data";
+import {
+  vitrineDoCriativo,
+  type VitrineDoCriativo,
+} from "@/lib/ads/creative-goal";
 import { isDemoMode } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
@@ -47,6 +51,7 @@ import type {
 
 /* Reexportados: o documento PDF e a página A4 importam daqui. */
 export type { PlatformCampaign, PlatformDetail } from "./platform-detail";
+export { vitrineDoCriativo, type VitrineDoCriativo } from "@/lib/ads/creative-goal";
 
 /**
  * Acento quando ninguém definiu cor: um grafite frio, não uma cor de
@@ -148,7 +153,22 @@ export interface ReportCreative {
   cpaCents: number;
   ctr: number;
   clicks: number;
+  /**
+   * A VITRINE do card, decidida pelo que a campanha compra.
+   *
+   * Um card só de "Resultados / Custo por resultado" não diz a mesma
+   * coisa em campanha de venda e em campanha de perfil: na primeira o
+   * que importa é quanto voltou, na segunda quantas pessoas chegaram ao
+   * perfil e a que custo. `vitrine` é resolvida no servidor porque a
+   * regra depende de `optimization_goal`, que só existe aqui.
+   */
+  vitrine: VitrineDoCriativo;
+  /** Visitas ao perfil no período — só preenchido quando apurado. */
+  profileVisits: number;
+  /** Receita atribuída ao anúncio, dos mesmos eventos que contam. */
+  revenueCents: number;
 }
+
 
 /**
  * O renderizador de PDF só embute imagem raster. SVG e URLs relativas
@@ -271,6 +291,9 @@ export async function buildReportPayload(options: {
         cpaCents: ad.conversions > 0 ? ad.spend_cents / ad.conversions : 0,
         ctr: ad.impressions > 0 ? ad.clicks / ad.impressions : 0,
         clicks: ad.clicks,
+        vitrine: vitrineDoCriativo(ad.optimizationGoal, ad.objective),
+        profileVisits: ad.profileVisits,
+        revenueCents: ad.revenueCents,
       };
     }),
     sections: template.sections,

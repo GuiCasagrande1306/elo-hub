@@ -1,7 +1,10 @@
 import "server-only";
 
 import { isDemoMode } from "@/lib/env";
-import { metricasDeCriativosNoPeriodo } from "./creative-insights";
+import {
+  metricasDeCriativosNoPeriodo,
+  type MetricasDeCriativo,
+} from "./creative-insights";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   buildTrend,
@@ -202,12 +205,38 @@ export async function getPrintReportData(
  *
  * `null` = não deu para apurar: mantém o que veio do banco, sem zerar.
  */
+/**
+ * Criativo com o que a Graph API sabe e a tabela não guarda.
+ *
+ * `ad_creatives` é uma foto do último sync e não tem coluna para
+ * objetivo, visita ao perfil ou receita do anúncio. Esses quatro campos
+ * existem só na resposta do Insights da janela pedida, então viajam ao
+ * lado da linha do banco em vez de dentro dela.
+ *
+ * `null`/zero quando a apuração não aconteceu — o card cai na vitrine
+ * genérica, que é o comportamento de sempre.
+ */
+export type CriativoApurado = AdCreative & {
+  objective: string | null;
+  optimizationGoal: string | null;
+  profileVisits: number;
+  revenueCents: number;
+};
+
 export function aplicarMetricas(
   criativos: AdCreative[],
-  metricas: Map<string, { spendCents: number; conversions: number; impressions: number; clicks: number }> | null,
+  metricas: Map<string, MetricasDeCriativo> | null,
   limite: number,
-): AdCreative[] {
-  if (!metricas) return criativos.slice(0, limite);
+): CriativoApurado[] {
+  const semApuracao = (ad: AdCreative): CriativoApurado => ({
+    ...ad,
+    objective: null,
+    optimizationGoal: null,
+    profileVisits: 0,
+    revenueCents: 0,
+  });
+
+  if (!metricas) return criativos.slice(0, limite).map(semApuracao);
 
   return [...criativos]
     .map((ad) => {
@@ -215,11 +244,15 @@ export function aplicarMetricas(
       /* Sem linha nos insights = não veiculou na janela. Zero aqui é
          verdade, porque o mapa veio preenchido. */
       return {
-        ...ad,
+        ...semApuracao(ad),
         spend_cents: m?.spendCents ?? 0,
         conversions: m?.conversions ?? 0,
         impressions: m?.impressions ?? 0,
         clicks: m?.clicks ?? 0,
+        objective: m?.objective ?? null,
+        optimizationGoal: m?.optimizationGoal ?? null,
+        profileVisits: m?.profileVisits ?? 0,
+        revenueCents: m?.revenueCents ?? 0,
       };
     })
     .sort((a, b) => b.spend_cents - a.spend_cents)

@@ -16,6 +16,7 @@ import {
   formatCurrency,
   formatDate,
   formatDelta,
+  formatMultiplier,
   formatNumber,
   formatPercent,
   formatPeriod,
@@ -1001,6 +1002,68 @@ function AdGallery({ payload }: { payload: ReportPayload }) {
   );
 }
 
+/**
+ * As três colunas ao lado de "Investido", conforme o que a campanha compra.
+ *
+ * O card antigo era um só para tudo: Resultados, Custo/result. e CTR.
+ * Numa campanha de venda isso esconde o que o cliente quer saber — se
+ * voltou dinheiro —, e numa campanha de perfil "Resultados" é um número
+ * sem nome, porque o que ela entrega é visita.
+ *
+ * ⚠️ SEGUIDORES E CUSTO POR SEGUIDOR NÃO ENTRAM, e não é omissão.
+ * Medido em 19/08/2026 sobre 40 contas e 3.437 anúncios: nenhum dos 75
+ * `action_type` e nenhum dos 20 `results[].indicator` menciona
+ * seguidor, e a própria Graph API recusa `follows`,
+ * `instagram_follows` e `profile_visits` como campo do Insights
+ * (erro #100). Seguidor só existe na API ORGÂNICA do Instagram, no
+ * nível da conta — não dá para atribuir a um anúncio, e portanto não
+ * dá para dividir o investimento por ele. "Custo por visita ao perfil"
+ * ocupa esse lugar: é a mesma pergunta sobre o dado que existe.
+ */
+function colunasDoCriativo(ad: ReportPayload["creatives"][number]) {
+  if (ad.vitrine === "venda") {
+    /* Ticket médio pela RECEITA sobre as vendas do próprio anúncio.
+       Sem venda não há média: "—" em vez de divisão por zero. */
+    const ticket = ad.results > 0 ? ad.revenueCents / ad.results : 0;
+    const roas = ad.spendCents > 0 ? ad.revenueCents / ad.spendCents : 0;
+
+    return [
+      { rotulo: "Vendas", valor: formatNumber(ad.results) },
+      {
+        rotulo: "Ticket médio",
+        valor: ticket > 0 ? formatCurrency(ticket) : "—",
+      },
+      /* `formatMultiplier`, não `toFixed`: o documento inteiro usa
+         vírgula decimal, e "15.71x" no meio de "R$ 197,01" denuncia
+         número montado à mão. */
+      { rotulo: "ROAS", valor: roas > 0 ? formatMultiplier(roas) : "—" },
+    ];
+  }
+
+  if (ad.vitrine === "perfil") {
+    const custo =
+      ad.profileVisits > 0 ? ad.spendCents / ad.profileVisits : 0;
+
+    return [
+      { rotulo: "Visitas ao perfil", valor: formatNumber(ad.profileVisits) },
+      {
+        rotulo: "Custo/visita",
+        valor: custo > 0 ? formatCurrency(custo) : "—",
+      },
+      { rotulo: "CTR", valor: formatPercent(ad.ctr, 2) },
+    ];
+  }
+
+  return [
+    { rotulo: "Resultados", valor: formatNumber(ad.results) },
+    {
+      rotulo: "Custo/result.",
+      valor: ad.cpaCents > 0 ? formatCurrency(ad.cpaCents) : "—",
+    },
+    { rotulo: "CTR", valor: formatPercent(ad.ctr, 2) },
+  ];
+}
+
 function Cartao({
   ad,
   payload,
@@ -1045,24 +1108,12 @@ function Cartao({
                   {formatCurrency(ad.spendCents)}
                 </Text>
               </View>
-              <View>
-                <Text style={styles.adMetricLabel}>Resultados</Text>
-                <Text style={styles.adMetricValue}>
-                  {formatNumber(ad.results)}
-                </Text>
-              </View>
-              <View>
-                <Text style={styles.adMetricLabel}>Custo/result.</Text>
-                <Text style={styles.adMetricValue}>
-                  {ad.cpaCents > 0 ? formatCurrency(ad.cpaCents) : "—"}
-                </Text>
-              </View>
-              <View>
-                <Text style={styles.adMetricLabel}>CTR</Text>
-                <Text style={styles.adMetricValue}>
-                  {formatPercent(ad.ctr, 2)}
-                </Text>
-              </View>
+              {colunasDoCriativo(ad).map((coluna) => (
+                <View key={coluna.rotulo}>
+                  <Text style={styles.adMetricLabel}>{coluna.rotulo}</Text>
+                  <Text style={styles.adMetricValue}>{coluna.valor}</Text>
+                </View>
+              ))}
             </View>
       </View>
     </View>

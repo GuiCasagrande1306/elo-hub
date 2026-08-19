@@ -398,6 +398,26 @@ export interface AdInsight {
   conversions: number;
   impressions: number;
   clicks: number;
+  /**
+   * O que a campanha COMPRA, direto da Meta.
+   *
+   * `objective` é o guarda-chuva (OUTCOME_SALES, LINK_CLICKS) e
+   * `optimization_goal` é o que o leilão de fato otimiza
+   * (OFFSITE_CONVERSIONS, PROFILE_VISIT). O segundo é o discriminador
+   * bom: `LINK_CLICKS` sozinho aparece tanto em campanha de perfil
+   * quanto em campanha de site.
+   *
+   * Medido em 19/08/2026, 40 contas e 3.437 anúncios — os pares mais
+   * comuns: OUTCOME_SALES/OFFSITE_CONVERSIONS (1.019),
+   * OUTCOME_ENGAGEMENT/REPLIES (454), LINK_CLICKS/PROFILE_VISIT (290) e
+   * LINK_CLICKS/VISIT_INSTAGRAM_PROFILE (148).
+   */
+  objective: string | null;
+  optimizationGoal: string | null;
+  /** Campo próprio do Insights — ver `conversion-action.ts`. */
+  profileVisits: number;
+  /** `action_values` dos MESMOS tipos que contam como conversão. */
+  revenueCents: number;
 }
 
 interface MetaAdInsightRow {
@@ -406,6 +426,9 @@ interface MetaAdInsightRow {
   impressions?: string;
   clicks?: string;
   actions?: MetaAction[];
+  action_values?: MetaAction[];
+  objective?: string;
+  optimization_goal?: string;
   instagram_profile_visits?: string;
 }
 
@@ -441,8 +464,12 @@ export async function fetchAdInsights(
   url.searchParams.set("level", "ad");
   url.searchParams.set(
     "fields",
-    // Campos de métrica junto: visita ao perfil não existe em `actions`.
-    `ad_id,spend,impressions,clicks,actions,${CAMPOS_DE_METRICA.join(",")}`,
+    /* Campos de métrica junto: visita ao perfil não existe em `actions`.
+       `objective`/`optimization_goal` entram para o card do criativo
+       poder mudar de vitrine — campanha de venda mostra ticket médio e
+       ROAS, campanha de perfil mostra visita e custo por visita. */
+    `ad_id,spend,impressions,clicks,actions,action_values,` +
+      `objective,optimization_goal,${CAMPOS_DE_METRICA.join(",")}`,
   );
   url.searchParams.set("time_range", JSON.stringify({ since, until }));
   url.searchParams.set("limit", "300");
@@ -473,11 +500,29 @@ export async function fetchAdInsights(
         0,
       );
 
+      /* Receita pelos MESMOS tipos, exatamente como `toNormalizedRow`.
+         Campo de métrica (visita ao perfil) não tem contrapartida em
+         `action_values` e é pulado — somar ali daria NaN silencioso. */
+      const revenueCents = conversionActionTypes.reduce(
+        (acc, tipo) =>
+          isMetricField(tipo)
+            ? acc
+            : acc +
+              decimalToCents(
+                row.action_values?.find((a) => a.action_type === tipo)?.value,
+              ),
+        0,
+      );
+
       mapa.set(row.ad_id, {
         spendCents: decimalToCents(row.spend),
         conversions,
         impressions: toInt(row.impressions),
         clicks: toInt(row.clicks),
+        objective: row.objective ?? null,
+        optimizationGoal: row.optimization_goal ?? null,
+        profileVisits: toInt(row.instagram_profile_visits),
+        revenueCents,
       });
     }
   } catch {

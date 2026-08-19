@@ -38,6 +38,11 @@ export interface MetricasDeCriativo {
   conversions: number;
   impressions: number;
   clicks: number;
+  /** O que a campanha compra — decide a vitrine do card. Ver `AdInsight`. */
+  objective: string | null;
+  optimizationGoal: string | null;
+  profileVisits: number;
+  revenueCents: number;
 }
 
 /**
@@ -115,6 +120,10 @@ export async function metricasDeCriativosNoPeriodo(
           conversions: i.conversions,
           impressions: i.impressions,
           clicks: i.clicks,
+          objective: i.objective,
+          optimizationGoal: i.optimizationGoal,
+          profileVisits: i.profileVisits,
+          revenueCents: i.revenueCents,
         },
       ]),
     );
