@@ -1,4 +1,4 @@
-import { AtSign, Store } from "lucide-react";
+import { AtSign } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { rede } from "@/lib/social/networks";
@@ -65,17 +65,6 @@ function Marca({
         </svg>
       );
 
-    case "linkedin":
-      return (
-        <svg {...comum} {...TRACO}>
-          <rect x="3" y="3" width="18" height="18" rx="5" />
-          <circle cx="8.2" cy="8.5" r="0.95" fill="currentColor" stroke="none" />
-          <path d="M8.2 11.2v5.2" />
-          <path d="M11.9 16.4v-5.2" />
-          <path d="M11.9 13.6a2.3 2.3 0 0 1 4.6 0v2.8" />
-        </svg>
-      );
-
     case "tiktok":
       return (
         <svg {...comum} {...TRACO}>
@@ -97,28 +86,6 @@ function Marca({
           />
         </svg>
       );
-
-    case "x":
-      return (
-        <svg {...comum} {...TRACO}>
-          <path d="M5.5 5.5 18.5 18.5" />
-          <path d="M18.5 5.5 5.5 18.5" />
-        </svg>
-      );
-
-    case "pinterest":
-      return (
-        <svg {...comum} {...TRACO}>
-          <circle cx="12" cy="12" r="9" />
-          <path d="M10.4 17V8.2h2.9a2.6 2.6 0 0 1 0 5.2h-2.9" />
-        </svg>
-      );
-
-    case "threads":
-      return <AtSign className={className} strokeWidth={1.9} aria-hidden />;
-
-    case "google_business":
-      return <Store className={className} strokeWidth={1.9} aria-hidden />;
 
     default:
       return <AtSign className={className} strokeWidth={1.9} aria-hidden />;

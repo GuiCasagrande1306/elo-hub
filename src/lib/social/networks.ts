@@ -46,6 +46,12 @@ export interface RedeSocial {
   perfilBase: string | null;
 }
 
+/* QUATRO, não nove. LinkedIn, X, Pinterest, Threads e Google Meu
+   Negócio foram removidos na migration 49: estavam no esquema desde o
+   início e a medição antes de tirar deu 1 perfil cadastrado (Instagram),
+   0 posts e 0 destinos. O `check` das duas tabelas acompanha esta lista
+   — mexer aqui sem mexer lá faz a gravação falhar com violação de
+   restrição, que é o modo certo de falhar. */
 export const REDES: RedeSocial[] = [
   {
     id: "instagram",
@@ -74,14 +80,6 @@ export const REDES: RedeSocial[] = [
     perfilBase: "https://facebook.com/",
   },
   {
-    id: "linkedin",
-    label: "LinkedIn",
-    cor: "#0A66C2",
-    limite: 3000,
-    formatos: ["video_horizontal", "imagem", "carrossel", "artigo"],
-    perfilBase: "https://linkedin.com/company/",
-  },
-  {
     id: "tiktok",
     label: "TikTok",
     cor: "#EE3A5D",
@@ -99,39 +97,6 @@ export const REDES: RedeSocial[] = [
     formatos: ["video_vertical", "video_horizontal"],
     apelidos: { video_vertical: "Shorts" },
     perfilBase: "https://youtube.com/@",
-  },
-  {
-    id: "x",
-    label: "X",
-    cor: "#64748B",
-    limite: 280,
-    formatos: ["video_vertical", "video_horizontal", "imagem"],
-    perfilBase: "https://x.com/",
-  },
-  {
-    id: "pinterest",
-    label: "Pinterest",
-    cor: "#C8232C",
-    limite: 500,
-    formatos: ["video_vertical", "imagem", "carrossel"],
-    apelidos: { video_vertical: "Idea Pin" },
-    perfilBase: "https://pinterest.com/",
-  },
-  {
-    id: "threads",
-    label: "Threads",
-    cor: "#A1A1AA",
-    limite: 500,
-    formatos: ["video_vertical", "imagem", "carrossel"],
-    perfilBase: "https://threads.net/@",
-  },
-  {
-    id: "google_business",
-    label: "Google Meu Negócio",
-    cor: "#34A853",
-    limite: 1500,
-    formatos: ["imagem", "video_horizontal"],
-    perfilBase: null,
   },
 ];
 

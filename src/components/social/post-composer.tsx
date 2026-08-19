@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { NetworkGlyph } from "./network-glyph";
+import { ArtUploader } from "./art-uploader";
 import {
   carregarComentarios,
   comentarPost,
@@ -116,7 +117,10 @@ export function PostComposer({
   const [status, setStatus] = useState<SocialPostStatus>(post?.status ?? "rascunho");
   const [data, setData] = useState(partes.data || diaPadrao || "");
   const [hora, setHora] = useState(partes.hora);
-  const [midia, setMidia] = useState((post?.media_urls ?? []).join("\n"));
+  /* Lista, não texto com quebras de linha. O campo virou anexo de
+     arquivo (ver `ArtUploader`), e uma <textarea> não tem como carregar
+     miniatura nem ordem arrastável. */
+  const [midia, setMidia] = useState<string[]>(post?.media_urls ?? []);
   const [redes, setRedes] = useState<SocialNetwork[]>(
     post ? ordenarRedes(post.targets.map((t) => t.network)) : [],
   );
@@ -175,10 +179,7 @@ export function PostComposer({
         status,
         scheduledAt: montarAgendamento(data, hora),
         networks: redes,
-        mediaUrls: midia
-          .split("\n")
-          .map((l) => l.trim())
-          .filter(Boolean),
+        mediaUrls: midia,
       });
 
       if (!resultado.ok) {
@@ -371,15 +372,14 @@ export function PostComposer({
               )}
 
               <Campo
-                label="Links das artes"
-                hint="Um por linha. Aponte para onde o arquivo já está — o sistema não guarda a arte."
+                label="Arte"
+                hint="Sobe para o painel — o cliente vê a peça aqui, sem pedir acesso ao Drive."
               >
-                <Textarea
-                  value={midia}
-                  onChange={(e) => setMidia(e.target.value)}
-                  rows={2}
-                  placeholder="https://drive.google.com/…"
-                  className="resize-y font-mono text-xs"
+                <ArtUploader
+                  clientId={clientId || null}
+                  valores={midia}
+                  onChange={setMidia}
+                  disabled={salvando}
                 />
               </Campo>
             </div>

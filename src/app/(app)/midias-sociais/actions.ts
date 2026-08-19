@@ -5,6 +5,12 @@ import { z } from "zod";
 
 import { isDemoMode } from "@/lib/env";
 import { createSupabaseServerClient, getCurrentUser } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import {
+  BUCKET_ARTE,
+  caminhoDaArte,
+  ehArteDoPainel,
+} from "@/lib/social/media";
 import type {
   SocialNetwork,
   SocialPostComment,
@@ -24,17 +30,17 @@ import type {
  * de um componente nosso não torna o payload confiável.
  */
 
+/* A MESMA lista de `types/database.ts` e do `check` das duas tabelas.
+   Repetida aqui de propósito: o zod precisa de um literal em tempo de
+   compilação, e importar o tipo não gera valor em runtime. O `satisfies`
+   abaixo é a trava — sair de sincronia vira erro de compilação, não
+   descoberta em produção. */
 const REDES = [
   "instagram",
   "facebook",
-  "linkedin",
   "tiktok",
   "youtube",
-  "x",
-  "pinterest",
-  "threads",
-  "google_business",
-] as const;
+] as const satisfies readonly SocialNetwork[];
 
 const FORMATOS = [
   "video_vertical",
@@ -80,7 +86,23 @@ const postSchema = z.object({
   scheduledAt: z.string().datetime({ offset: true }).nullable().default(null),
   status: z.enum(STATUS).default("rascunho"),
   networks: z.array(z.enum(REDES)).min(1, "Escolha ao menos uma rede."),
-  mediaUrls: z.array(z.string().trim().url()).max(20).default([]),
+  /* URL externa OU caminho no bucket — ver `lib/social/media.ts`.
+     `.url()` sozinho recusava o caminho do arquivo enviado pelo painel,
+     e a peça salvava sem a arte que a pessoa acabara de anexar. */
+  mediaUrls: z
+    .array(
+      z
+        .string()
+        .trim()
+        .min(1)
+        .max(500)
+        .refine(
+          (v) => /^https?:\/\//i.test(v) || /^[^/]+\/[^/]+\/.+$/.test(v),
+          "Arte inválida: use um link http(s) ou um arquivo enviado aqui.",
+        ),
+    )
+    .max(20)
+    .default([]),
 });
 
 export type PostInput = z.input<typeof postSchema>;
@@ -750,4 +772,155 @@ export async function removerConta(input: {
 
   revalidatePath("/midias-sociais");
   return { ok: true };
+}
+
+/* ------------------------------------------------------------------ */
+/* Arte da peça                                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Recebe o arquivo e devolve o caminho no bucket.
+ *
+ * SOBE COM service_role, não com a sessão. O bucket não tem policy de
+ * INSERT para usuário final de propósito: dar esse direito significaria
+ * que qualquer pessoa autenticada escreve em qualquer pasta cujo uuid
+ * ela adivinhe. A autorização acontece AQUI, antes — sessão válida e
+ * cliente visível para quem pediu, checado com o cliente de sessão, que
+ * passa pela RLS.
+ *
+ * `FormData` e não base64 no corpo: um Reels de 30MB viraria 40MB de
+ * string e estouraria o limite de payload da Server Action.
+ */
+export async function enviarArte(
+  formData: FormData,
+): Promise<ActionResult<{ caminho: string; url: string }>> {
+  const arquivo = formData.get("arquivo");
+  const clientId = formData.get("clientId");
+
+  if (!(arquivo instanceof File) || arquivo.size === 0) {
+    return { ok: false, error: "Nenhum arquivo recebido." };
+  }
+  if (typeof clientId !== "string" || !clientId) {
+    return { ok: false, error: "Escolha o cliente antes de anexar a arte." };
+  }
+
+  /* O MESMO teto do bucket (migration 49). Checar aqui também para a
+     pessoa saber ANTES de esperar o upload inteiro subir e o Storage
+     recusar no fim. */
+  const TETO = 50 * 1024 * 1024;
+  if (arquivo.size > TETO) {
+    return {
+      ok: false,
+      error: `Arquivo de ${(arquivo.size / 1024 / 1024).toFixed(0)}MB — o limite é 50MB. Para vídeo maior, cole o link do Drive.`,
+    };
+  }
+
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Sessão expirada." };
+
+  if (isDemoMode) {
+    /* Demo não tem Storage. Devolve um data URL para a tela funcionar
+       ponta a ponta — inclusive a miniatura — sem inventar um caminho
+       que não existe em bucket nenhum. */
+    const base64 = Buffer.from(await arquivo.arrayBuffer()).toString("base64");
+    const url = `data:${arquivo.type};base64,${base64}`;
+    return { ok: true, dados: { caminho: url, url } };
+  }
+
+  /* Cliente de SESSÃO só para autorizar: se a RLS não devolve esta
+     conta, quem pediu não pode anexar arte nela. */
+  const sessao = await createSupabaseServerClient();
+  const { data: visivel } = await sessao
+    .from("clients")
+    .select("id")
+    .eq("id", clientId)
+    .maybeSingle();
+
+  if (!visivel) {
+    return { ok: false, error: "Cliente não encontrado ou sem permissão." };
+  }
+
+  const admin = createSupabaseAdminClient();
+  const caminho = caminhoDaArte(clientId, crypto.randomUUID(), arquivo.name);
+
+  const { error } = await admin.storage
+    .from(BUCKET_ARTE)
+    .upload(caminho, arquivo, {
+      contentType: arquivo.type || "application/octet-stream",
+      // `false`: o caminho já tem uma pasta aleatória por upload, então
+      // colisão aqui seria bug, não substituição desejada.
+      upsert: false,
+    });
+
+  if (error) {
+    return { ok: false, error: `Não deu para enviar a arte: ${error.message}` };
+  }
+
+  const url = await assinar(admin, caminho);
+  if (!url) {
+    return { ok: false, error: "Arte enviada, mas não deu para gerar a prévia." };
+  }
+
+  return { ok: true, dados: { caminho, url } };
+}
+
+/**
+ * URLs de exibição para as artes de uma peça.
+ *
+ * Devolve um mapa caminho → URL assinada. Link externo volta como ele
+ * mesmo, para quem chama não precisar separar os dois tipos antes.
+ *
+ * DUAS HORAS de validade: cobre uma sessão de revisão inteira sem
+ * transformar a URL num link permanente que circula por aí. Arte de
+ * campanha antes de ir ao ar é material sob embargo.
+ */
+export async function assinarArtes(
+  caminhos: string[],
+): Promise<ActionResult<Record<string, string>>> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Sessão expirada." };
+
+  const mapa: Record<string, string> = {};
+  const doPainel: string[] = [];
+
+  for (const c of caminhos.slice(0, 100)) {
+    if (ehArteDoPainel(c)) doPainel.push(c);
+    else mapa[c] = c;
+  }
+
+  if (isDemoMode || doPainel.length === 0) {
+    for (const c of doPainel) mapa[c] = c;
+    return { ok: true, dados: mapa };
+  }
+
+  const admin = createSupabaseAdminClient();
+
+  /* Assina com service_role, mas SÓ depois de a RLS confirmar quais
+     clientes esta pessoa enxerga. O primeiro trecho do caminho é o
+     cliente — é a mesma comparação que a policy do bucket faz, feita
+     aqui porque o service_role não passa por policy nenhuma. */
+  const sessao = await createSupabaseServerClient();
+  const { data: meus } = await sessao.from("clients").select("id");
+  const visiveis = new Set((meus ?? []).map((c) => c.id));
+
+  for (const caminho of doPainel) {
+    const dono = caminho.split("/")[0];
+    if (!dono || !visiveis.has(dono)) continue;
+
+    const url = await assinar(admin, caminho);
+    if (url) mapa[caminho] = url;
+  }
+
+  return { ok: true, dados: mapa };
+}
+
+async function assinar(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  caminho: string,
+): Promise<string | null> {
+  const { data } = await admin.storage
+    .from(BUCKET_ARTE)
+    .createSignedUrl(caminho, 2 * 60 * 60);
+
+  return data?.signedUrl ?? null;
 }

@@ -574,16 +574,24 @@ export interface ReportHistory {
 /* Mídias sociais                                                      */
 /* ------------------------------------------------------------------ */
 
+/**
+ * As quatro redes que a agência opera.
+ *
+ * Eram nove. LinkedIn, X, Pinterest, Threads e Google Meu Negócio saíram
+ * na migration 49 — estavam no esquema desde o começo e nunca foram
+ * usados: 1 perfil cadastrado (Instagram), 0 posts, 0 destinos. Uma
+ * grade de nove ícones para escolher entre quatro é ruído na hora de
+ * montar a pauta.
+ *
+ * Voltar a incluir uma rede é `alter table` no `check` das duas tabelas
+ * mais uma entrada em `lib/social/networks.ts`. Foi por isso que o
+ * esquema usa `check` e não `enum`.
+ */
 export type SocialNetwork =
   | "instagram"
   | "facebook"
-  | "linkedin"
   | "tiktok"
-  | "youtube"
-  | "x"
-  | "pinterest"
-  | "threads"
-  | "google_business";
+  | "youtube";
 
 /**
  * Formato da peça — descrito pelo ATIVO, não pelo nome comercial.

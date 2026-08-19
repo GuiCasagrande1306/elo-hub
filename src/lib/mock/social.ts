@@ -48,15 +48,15 @@ export const demoSocialAccounts: SocialAccount[] = [
   acc("c-verdi", "tiktok", "verdicosmeticos"),
   acc("c-atlas", "instagram", "atlasodonto"),
   acc("c-atlas", "facebook", "atlasodontologia"),
-  acc("c-atlas", "google_business", "atlas-odontologia"),
+  acc("c-atlas", "youtube", "atlas-odontologia"),
   acc("c-nord", "instagram", "nordperformance"),
-  acc("c-nord", "linkedin", "nord-performance"),
+  acc("c-nord", "facebook", "nord-performance"),
   acc("c-nord", "youtube", "nordperformance"),
   acc("c-lumen", "instagram", "lumenarq"),
-  acc("c-lumen", "pinterest", "lumenarq"),
+  acc("c-lumen", "tiktok", "lumenarq"),
   // Inativa: existe no cadastro, fora do contrato do mês. A tela de
   // perfis mostra apagada; o compositor não oferece.
-  { ...acc("c-lumen", "x", "lumenarq"), is_active: false },
+  { ...acc("c-lumen", "facebook", "lumenarq"), is_active: false },
 ];
 
 function acc(
@@ -172,7 +172,7 @@ export const demoSocialPosts: SocialPostWithRelations[] = [
     alvos: [
       { network: "instagram", status: "publicado", url: "https://instagram.com/p/exemplo2" },
       { network: "facebook" },
-      { network: "google_business" },
+      { network: "youtube" },
     ],
     comentarios: 1,
   }),
@@ -226,7 +226,7 @@ export const demoSocialPosts: SocialPostWithRelations[] = [
     scheduled_at: dia(4, 9),
     status: "aprovado",
     autor: ADMIN,
-    alvos: [{ network: "linkedin" }],
+    alvos: [{ network: "facebook" }],
   }),
   post({
     cliente: "atlas",
@@ -257,7 +257,7 @@ export const demoSocialPosts: SocialPostWithRelations[] = [
     caption: "A partir deste mês atendemos aos sábados até as 14h. Agende pelo WhatsApp.",
     scheduled_at: dia(2, 12),
     status: "aprovado",
-    alvos: [{ network: "instagram" }, { network: "google_business" }],
+    alvos: [{ network: "instagram" }, { network: "youtube" }],
   }),
   post({
     cliente: "nord",
@@ -266,7 +266,7 @@ export const demoSocialPosts: SocialPostWithRelations[] = [
     format: "carrossel",
     scheduled_at: dia(2, 15),
     status: "em_aprovacao",
-    alvos: [{ network: "instagram" }, { network: "linkedin" }],
+    alvos: [{ network: "instagram" }, { network: "facebook" }],
   }),
 
   /* --- Esperando o cliente ----------------------------------------- */
@@ -289,7 +289,7 @@ export const demoSocialPosts: SocialPostWithRelations[] = [
     format: "carrossel",
     scheduled_at: dia(9, 12),
     status: "em_aprovacao",
-    alvos: [{ network: "instagram" }, { network: "pinterest" }],
+    alvos: [{ network: "instagram" }, { network: "tiktok" }],
   }),
 
   /* --- Ajustes pedidos --------------------------------------------- */
