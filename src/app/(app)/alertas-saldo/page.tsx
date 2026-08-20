@@ -37,7 +37,10 @@ import { isDemoMode } from "@/lib/env";
 import { RegistrarSaldo } from "@/components/clients/registrar-saldo";
 import { FormaDeRecarga } from "@/components/clients/forma-de-recarga";
 import { AvisarCliente } from "@/components/clients/avisar-cliente";
-import { DIAS_PARA_AVISAR } from "@/lib/ads/recharge-notice";
+import {
+  DIAS_PARA_AVISAR,
+  linkDaCobranca,
+} from "@/lib/ads/recharge-notice";
 import type { BalanceAlert, BalanceStatus } from "@/lib/ads/balances";
 
 export const metadata: Metadata = { title: "Alertas de saldo" };
@@ -479,29 +482,6 @@ function BlocoPlataforma({
           Só para conta pré-paga com âncora manual. Verba de fatura vem
           da API do Google e não se digita; conta sem teto não tem o que
           informar. */}
-      {/* AVISAR O CLIENTE entra a partir de cinco dias, e só na Meta —
-          o link da cobrança é do gerenciador dela. Fora dessa janela o
-          botão não aparece: um botão sempre visível de "cobrar o
-          cliente" convida a usá-lo fora de hora. */}
-      {alert.platform === "meta_ads" &&
-        alert.daysLeft !== null &&
-        alert.daysLeft <= DIAS_PARA_AVISAR && (
-          <div className="mt-3 flex items-center justify-between gap-2 border-t border-hairline pt-3">
-            <span className="max-w-[50%] text-2xs text-muted-foreground">
-              {alert.destinoDoCliente
-                ? "O cliente pode recarregar sozinho — mande o link."
-                : "Sem grupo cadastrado para este cliente."}
-            </span>
-            <AvisarCliente
-              clientId={alert.clientId}
-              clientName={alert.clientName}
-              platform={alert.platform}
-              temGrupo={Boolean(alert.destinoDoCliente)}
-              avisadoEm={alert.avisoEnviadoEm}
-            />
-          </div>
-        )}
-
       {alert.status !== "unlimited" && (
         <div className="mt-3 flex items-center justify-between gap-2 border-t border-hairline pt-3">
           <span className="max-w-[52%] text-2xs text-muted-foreground">
@@ -518,6 +498,61 @@ function BlocoPlataforma({
           />
         </div>
       )}
+
+      {/* A PARTIR DE CINCO DIAS, e só na Meta — o link da cobrança é do
+          gerenciador dela. Fora dessa janela nada aparece: um botão
+          sempre visível de "cobrar o cliente" convida a usá-lo fora de
+          hora.
+
+          O QUE APARECE DEPENDE DA FORMA DE RECARGA, porque a ação é
+          outra. Pix: o cliente precisa pagar, então vai mensagem para o
+          grupo dele. Cartão: a conta se recarrega sozinha, e pedir
+          dinheiro seria cobrar duas vezes pela mesma verba — o que falta
+          é alguém da casa conferir se a cobrança passou. */}
+      {alert.platform === "meta_ads" &&
+        alert.daysLeft !== null &&
+        alert.daysLeft <= DIAS_PARA_AVISAR && (
+          <div className="mt-3 flex items-center justify-between gap-2 border-t border-hairline pt-3">
+            {alert.formaDeRecarga === "pix" ? (
+              <>
+                <span className="max-w-[50%] text-2xs text-muted-foreground">
+                  {alert.destinoDoCliente
+                    ? "O cliente precisa recarregar — mande o link."
+                    : "Sem grupo cadastrado para este cliente."}
+                </span>
+                <AvisarCliente
+                  clientId={alert.clientId}
+                  clientName={alert.clientName}
+                  platform={alert.platform}
+                  temGrupo={Boolean(alert.destinoDoCliente)}
+                  avisadoEm={alert.avisoEnviadoEm}
+                />
+              </>
+            ) : alert.formaDeRecarga === "cartao" ? (
+              <>
+                <span className="max-w-[52%] text-2xs text-muted-foreground">
+                  Recarrega no cartão — não avisamos o cliente. Confira se
+                  a cobrança está passando.
+                </span>
+                {alert.externalAccountId && (
+                  <a
+                    href={linkDaCobranca(alert.externalAccountId)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="shrink-0 rounded-lg border border-hairline px-2.5 py-1 text-2xs text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    Abrir cobrança na Meta
+                  </a>
+                )}
+              </>
+            ) : (
+              <span className="text-2xs text-warning">
+                Marque acima se é Pix ou Cartão — é isso que decide se o
+                cliente é avisado ou se alguém confere a cobrança.
+              </span>
+            )}
+          </div>
+        )}
 
       {(alert.balanceSource === "manual" ||
         alert.balanceSource === "indisponivel") &&

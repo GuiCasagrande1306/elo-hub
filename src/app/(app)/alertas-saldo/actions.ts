@@ -161,6 +161,24 @@ export async function enviarAvisoDeRecarga(
   );
 
   if (!alert) return { ok: false, error: "Conta não encontrada." };
+
+  /* SÓ PIX, e a checagem vive AQUI e não só no botão. O botão é
+     interface; a Server Action é endpoint HTTP público, e some com a
+     regra quem chamar direto.
+
+     Conta no cartão se recarrega sozinha: pedir dinheiro ao cliente
+     seria cobrar duas vezes pela mesma verba. O que ela precisa é que
+     alguém da casa confira se a cobrança passou. */
+  if (alert.formaDeRecarga !== "pix") {
+    return {
+      ok: false,
+      error:
+        alert.formaDeRecarga === "cartao"
+          ? "Esta conta recarrega no cartão — confira a cobrança na Meta em vez de avisar o cliente."
+          : "Marque a forma de recarga desta conta antes de avisar o cliente.",
+    };
+  }
+
   if (!alert.destinoDoCliente) {
     return {
       ok: false,
