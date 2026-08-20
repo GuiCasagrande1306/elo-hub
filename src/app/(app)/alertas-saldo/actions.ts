@@ -77,3 +77,46 @@ export async function definirGrupoDoAviso(
   revalidatePath("/alertas-saldo");
   return { ok: true };
 }
+
+/* ------------------------------------------------------------------ */
+/* Forma de recarga                                                    */
+/* ------------------------------------------------------------------ */
+
+const recargaSchema = z.object({
+  clientId: z.string().min(1),
+  platform: z.enum(["meta_ads", "google_ads"]),
+  /* String vazia limpa. "Não sei" é resposta legítima e precisa ser
+     dizível — forçar uma escolha faria alguém chutar, e chute aqui vira
+     alerta com a urgência errada. */
+  metodo: z.enum(["pix", "cartao", ""]),
+});
+
+export async function definirFormaDeRecarga(
+  input: z.input<typeof recargaSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = recargaSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Dados inválidos." };
+
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Sessão expirada." };
+
+  if (isDemoMode) return { ok: true };
+
+  const { clientId, platform, metodo } = parsed.data;
+
+  /* Cliente de SESSÃO, não admin: quem edita precisa enxergar a conta, e
+     a RLS de `client_integrations` já responde isso. */
+  const { createSupabaseServerClient } = await import("@/lib/supabase/server");
+  const supabase = await createSupabaseServerClient();
+
+  const { error } = await supabase
+    .from("client_integrations")
+    .update({ recharge_method: metodo === "" ? null : metodo })
+    .eq("client_id", clientId)
+    .eq("platform", platform);
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/alertas-saldo");
+  return { ok: true };
+}

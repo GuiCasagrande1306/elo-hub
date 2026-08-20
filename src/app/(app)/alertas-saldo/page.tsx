@@ -35,6 +35,7 @@ import {
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { isDemoMode } from "@/lib/env";
 import { RegistrarSaldo } from "@/components/clients/registrar-saldo";
+import { FormaDeRecarga } from "@/components/clients/forma-de-recarga";
 import type { BalanceAlert, BalanceStatus } from "@/lib/ads/balances";
 
 export const metadata: Metadata = { title: "Alertas de saldo" };
@@ -476,6 +477,23 @@ function BlocoPlataforma({
           Só para conta pré-paga com âncora manual. Verba de fatura vem
           da API do Google e não se digita; conta sem teto não tem o que
           informar. */}
+      {alert.status !== "unlimited" && (
+        <div className="mt-3 flex items-center justify-between gap-2 border-t border-hairline pt-3">
+          <span className="max-w-[52%] text-2xs text-muted-foreground">
+            {alert.formaDeRecarga === null
+              ? "Como esta conta é recarregada?"
+              : alert.formaDeRecarga === "pix"
+                ? "Recarga manual — alguém precisa fazer o Pix."
+                : "Recarrega sozinha no cartão."}
+          </span>
+          <FormaDeRecarga
+            clientId={alert.clientId}
+            platform={alert.platform}
+            atual={alert.formaDeRecarga}
+          />
+        </div>
+      )}
+
       {(alert.balanceSource === "manual" ||
         alert.balanceSource === "indisponivel") &&
         alert.status !== "unlimited" && (
@@ -560,7 +578,16 @@ function diagnostico(alert: BalanceAlert): string {
   }
 
   if (alert.currentBalance === 0) {
-    return "Sem saldo — anúncios podem estar fora do ar";
+    if (alert.formaDeRecarga === "cartao") {
+      /* Saldo zerado numa conta de cartão é a assinatura da recarga
+         automática falhando: ela deveria ter reposto antes de chegar
+         aqui. Foi o que a tela da Meta mostrou na Looka Modas —
+         "Falha no pagamento da recarga automática". */
+      return "Sem saldo e a recarga automática não repôs — confira a forma de pagamento na Meta";
+    }
+    return alert.formaDeRecarga === "pix"
+      ? "Sem saldo — recarregue por Pix, os anúncios podem estar fora do ar"
+      : "Sem saldo — anúncios podem estar fora do ar";
   }
 
   if (alert.daysLeft === null) {
@@ -569,11 +596,24 @@ function diagnostico(alert: BalanceAlert): string {
 
   /* "0 dias restantes" com saldo na conta lê como erro. O que o número
      diz é "menos de um dia". */
-  if (alert.daysLeft === 0) return "Acaba hoje no ritmo atual";
+  const prazo =
+    alert.daysLeft === 0
+      ? "Acaba hoje no ritmo atual"
+      : alert.daysLeft === 1
+        ? "Resta 1 dia no ritmo atual"
+        : `Restam ${alert.daysLeft} dias no ritmo atual`;
 
-  return alert.daysLeft === 1
-    ? "Resta 1 dia no ritmo atual"
-    : `Restam ${alert.daysLeft} dias no ritmo atual`;
+  /* A FORMA DE RECARGA MUDA O QUE FAZER, e é por isso que ela existe.
+     Em Pix ninguém recarrega sozinho; em cartão, a conta se vira — e o
+     que interessa saber é se a cobrança falhou. */
+  if (alert.status === "critical" || alert.status === "warning") {
+    if (alert.formaDeRecarga === "pix") return `${prazo} — recarregue por Pix`;
+    if (alert.formaDeRecarga === "cartao") {
+      return `${prazo} — se a recarga automática falhar, os anúncios param`;
+    }
+  }
+
+  return prazo;
 }
 
 

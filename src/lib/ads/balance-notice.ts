@@ -117,9 +117,20 @@ function montarMensagem(
       const quando =
         a.daysLeft === 0 ? "acaba hoje" : a.daysLeft === 1 ? "1 dia" : `${a.daysLeft} dias`;
 
+      /* A FORMA DE RECARGA VAI NA LINHA porque decide quem age. "Pix"
+         é tarefa para alguém agora; "cartão" pede conferir a cobrança,
+         não fazer o pagamento. Sem isso, quem lê o grupo tem de abrir o
+         painel só para descobrir o que fazer. */
+      const comoRecarrega =
+        a.formaDeRecarga === "pix"
+          ? " · Pix, recarregar"
+          : a.formaDeRecarga === "cartao"
+            ? " · cartão, conferir cobrança"
+            : "";
+
       linhas.push(
         `• ${a.clientName} (${a.platform === "meta_ads" ? "Meta" : "Google"}) — ` +
-          `${formatCurrency(a.currentBalance ?? 0)}, ${quando}`,
+          `${formatCurrency(a.currentBalance ?? 0)}, ${quando}${comoRecarrega}`,
       );
     }
     linhas.push("");

@@ -129,6 +129,18 @@ export interface BalanceAlert extends BalanceForecast {
   diasDesdeLeitura: number | null;
   /** Data do último dia com gasto — a prova de que a conta está no ar. */
   ultimoGastoEm: string | null;
+  /**
+   * Como a conta é recarregada: `pix`, `cartao` ou `null`.
+   *
+   * MUDA O QUE O ALERTA SIGNIFICA. Em Pix, saldo acabando é tarefa para
+   * alguém hoje. Em cartão, a conta se recarrega sozinha — e o alerta só
+   * é urgente quando a cobrança falha, que é justamente quando o saldo
+   * cai e não sobe.
+   *
+   * Não vem da API: a Central de Cobrança da Meta não é exposta. Ver a
+   * migration 51, que mede o que foi tentado.
+   */
+  formaDeRecarga: "pix" | "cartao" | null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -267,6 +279,7 @@ export async function getBalanceAlerts(
     saldosGoogle,
     fundos,
     gastoDesdeRecarga,
+    recargas,
   } = await carregar(comoSistema);
 
   const alertas: BalanceAlert[] = [];
@@ -413,6 +426,7 @@ export async function getBalanceAlerts(
         /* O divisor de fato, não a contagem crua: exibir "8 dias"
            enquanto a divisão usa 7 faria a tela desmentir o cálculo. */
         diasDeRitmo: Math.min(diasComGasto.get(chave)?.size ?? 0, JANELA_DIAS),
+        formaDeRecarga: recargas.get(chave) ?? null,
         diasDesdeLeitura: informado
           ? diasEntre(informado.desde.slice(0, 10), hojeISO)
           : null,
@@ -455,6 +469,7 @@ async function carregar(comoSistema = false): Promise<{
    * conta que tem uma linha por plataforma no mesmo dia.
    */
   diasComGasto: Map<string, Set<string>>;
+  recargas: Map<string, "pix" | "cartao">;
   /** Chaves `clientId:platform` das contas pré-pagas. */
   prePagas: Set<string>;
   /** `balance` do Meta (acumulado a pagar), por `client_id`. */
@@ -572,6 +587,15 @@ async function carregar(comoSistema = false): Promise<{
     return {
       clients: demoClients,
       gastoPorConta: mapa,
+      /* Alterna Pix e cartão no demo para as duas frases de alerta
+         aparecerem — uma tela de demonstração que só exercita um dos
+         caminhos esconde metade do comportamento. */
+      recargas: new Map(
+        demoClients.map((c, i) => [
+          `${c.id}:meta_ads`,
+          i % 2 === 0 ? ("pix" as const) : ("cartao" as const),
+        ]),
+      ),
       diasComGasto: dias,
       prePagas,
       saldos,
@@ -608,7 +632,9 @@ async function carregar(comoSistema = false): Promise<{
         .lte("metric_date", ateISO),
       supabase
         .from("client_integrations")
-        .select("client_id, platform, funds_cents, funds_recorded_at")
+        .select(
+          "client_id, platform, funds_cents, funds_recorded_at, recharge_method",
+        )
         .eq("billing_type", "prepaid")
         .eq("is_active", true),
     ]);
@@ -622,6 +648,12 @@ async function carregar(comoSistema = false): Promise<{
   const prePagas = new Set(
     (integracoes ?? []).map((i) => `${i.client_id}:${i.platform}`),
   );
+
+  const recargas = new Map<string, "pix" | "cartao">();
+  for (const i of integracoes ?? []) {
+    const m = i.recharge_method as "pix" | "cartao" | null;
+    if (m) recargas.set(`${i.client_id}:${i.platform}`, m);
+  }
 
   /* Saldo informado + a data de leitura, por conta. O desconto do gasto
      posterior é feito adiante, com `daily_metrics` — só a âncora é
@@ -738,6 +770,7 @@ async function carregar(comoSistema = false): Promise<{
     saldosGoogle,
     fundos,
     gastoDesdeRecarga,
+    recargas,
   };
 }
 
