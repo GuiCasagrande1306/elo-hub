@@ -34,9 +34,69 @@ export interface ContaSaldo {
   currency: string;
   /** `funding_source_details.type` da Graph API. */
   fundingType: number | null;
-  /** Ex.: "VISA *1346". */
+  /** Ex.: "VISA *1346" ou "Saldo disponível (R$171,43 BRL)". */
   fundingLabel: string | null;
   amountSpentCents: number;
+  /**
+   * O SALDO DE VERDADE, quando a conta é pré-paga.
+   *
+   * ⚠️ CORREÇÃO DE UMA AFIRMAÇÃO QUE SUSTENTAVA O MÓDULO INTEIRO. O
+   * cabeçalho de `balances.ts` dizia "a Graph API NÃO expõe a carteira"
+   * e daí saiu todo o desenho da âncora manual: alguém abria o
+   * gerenciador, lia o número e digitava no painel.
+   *
+   * A API expõe. Não no campo `balance` — esse é mesmo o acumulado a
+   * pagar, e sobe conforme veicula — e sim em
+   * `funding_source_details.display_string`, que numa conta pré-paga é
+   * literalmente "Saldo disponível (R$171,43 BRL)".
+   *
+   * Medido em 19/08/2026 nas 42 contas Meta ativas:
+   *
+   *     type 20   27 contas   display_string traz o saldo
+   *     type  1   14 contas   "VISA *1346" — cartão, não há saldo
+   *     sem tipo   1 conta
+   *
+   * `null` quando não há valor a extrair: cartão, moeda diferente de
+   * BRL, ou formato que este parser não reconhece. Null é "não sei",
+   * nunca zero — zero significa conta vazia e derruba anúncio.
+   */
+  availableCents: number | null;
+}
+
+/**
+ * O valor dentro de "Saldo disponível (R$1.206,01 BRL)".
+ *
+ * EXPORTADA PARA TESTE. É um parser sobre texto de interface, que é
+ * exatamente o tipo de coisa que quebra em silêncio quando a plataforma
+ * muda a frase — e o estrago aqui é um saldo errado com cara de certo.
+ *
+ * A moeda entra na checagem: a string traz o código no fim, e uma conta
+ * em dólar devolveria "1.206,01" com "R$" impresso por cima na tela.
+ * Fora BRL, devolve `null`.
+ *
+ * O formato é o brasileiro — ponto de milhar, vírgula decimal. Trocar
+ * na ordem errada ("1.206,01" -> 1.20601) é o defeito clássico deste
+ * parser, e por isso o ponto sai ANTES de a vírgula virar ponto.
+ */
+export function saldoDoTextoDePagamento(
+  texto: string | null | undefined,
+): number | null {
+  if (!texto) return null;
+
+  const dentroDosParenteses = texto.match(/\(([^)]*)\)/)?.[1];
+  if (!dentroDosParenteses) return null;
+
+  if (!/\bBRL\b/i.test(dentroDosParenteses)) return null;
+
+  const numero = dentroDosParenteses.match(/([\d.,]+)/)?.[1];
+  if (!numero) return null;
+
+  const emPontoDecimal = numero.replace(/\./g, "").replace(",", ".");
+  const valor = Number(emPontoDecimal);
+
+  if (!Number.isFinite(valor) || valor < 0) return null;
+
+  return Math.round(valor * 100);
 }
 
 interface RespostaConta {
@@ -68,7 +128,18 @@ export async function fetchPrepaidBalances(): Promise<
     .from("client_integrations")
     .select("client_id, external_account_id, integration_secrets(access_token)")
     .eq("platform", "meta_ads")
-    .eq("billing_type", "prepaid")
+    /* SEM filtro por `billing_type`, e essa remoção é metade do
+       conserto. A marcação é manual e estava errada nos dois sentidos:
+       medido em 19/08/2026, a Nuur estava como pré-paga sendo cartão
+       (VISA *1346), e NOVE contas com saldo real — Satö, Looka Modas,
+       D'Mori, Dom Leonello, Atacado de Pratas, Cura da Alma, Entre Nós,
+       Pizzaria D'Rancho e The Boris Burguer — estavam como pós-pagas e
+       nem eram consultadas.
+
+       Quem decide agora é a própria conta: `funding_source_details` diz
+       se há carteira ou cartão, e diz o número. Uma chamada a mais por
+       conta de cartão é barata; uma conta pré-paga invisível custa
+       anúncio fora do ar. */
     .eq("is_active", true);
 
   const linhas = (data ?? []) as unknown as {
@@ -108,6 +179,9 @@ export async function fetchPrepaidBalances(): Promise<
           currency: dado.currency ?? "BRL",
           fundingType: dado.funding_source_details?.type ?? null,
           fundingLabel: dado.funding_source_details?.display_string ?? null,
+          availableCents: saldoDoTextoDePagamento(
+            dado.funding_source_details?.display_string,
+          ),
           amountSpentCents: Number(dado.amount_spent ?? 0),
         });
       } catch {

@@ -50,6 +50,13 @@ export const DIAS_DE_ATENCAO = 7;
 const JANELA_DIAS = 7;
 
 export type BalanceSource =
+  /**
+   * Saldo lido da própria Meta, em `funding_source_details`.
+   *
+   * É a fonte boa e passou a ser o caminho principal — ver a nota em
+   * `meta-balance.ts`. As outras existem para quando esta não responde.
+   */
+  | "saldo_meta"
   | "manual"
   /** Verba de fatura lida da API — NÃO é saldo de conta pré-paga. */
   | "verba_fatura"
@@ -268,8 +275,22 @@ export async function getBalanceAlerts(
     for (const platform of ["meta_ads", "google_ads"] as const) {
       const chave = `${client.id}:${platform}`;
 
-      // Conta pós-paga não tem crédito a esgotar — nem entra na conta.
-      if (!prePagas.has(chave)) continue;
+      /* QUEM ENTRA NA LISTA: quem tem carteira, não quem foi marcado.
+         -----------------------------------------------------------------
+         A marcação `billing_type` é manual e estava errada nos dois
+         sentidos — medido em 19/08/2026, uma conta de cartão marcada
+         como pré-paga e nove contas com saldo real marcadas como
+         pós-pagas, invisíveis na tela.
+
+         Agora a conta entra se a Meta reporta carteira OU se alguém a
+         marcou como pré-paga. A marcação vira rede de segurança para
+         quando a API não responde, e deixa de ser a verdade. */
+      const carteiraMeta =
+        platform === "meta_ads"
+          ? saldos.get(client.id)?.availableCents ?? null
+          : null;
+
+      if (!prePagas.has(chave) && carteiraMeta === null) continue;
 
       const burnRate = calcularRitmo(
         gastoPorConta.get(chave) ?? 0,
@@ -323,18 +344,43 @@ export async function getBalanceAlerts(
               : "indisponivel";
         }
       } else {
-        /* Meta: âncora manual MENOS o gasto desde então. Só a leitura
-           inicial é manual; o desconto vem de `daily_metrics`, que
-           sincroniza todo dia.
+        /* META: A CONTA DIZ O SALDO. Sem âncora, sem subtração, sem
+           envelhecimento — o número é o que o gerenciador mostra, lido
+           na hora.
 
-           `null` quando ninguém informou — e não zero, como estava
-           antes. Zero significa "acabou" e disparava crítico numa conta
-           que podia estar cheia; `null` faz a tela pedir o número. */
-        balanceCents = informado
-          ? // Piso em zero: saldo estourado é zero, não dívida.
-            Math.max(0, informado.cents - (gastoDesdeRecarga.get(chave) ?? 0))
-          : null;
-        balanceSource = informado ? "manual" : "indisponivel";
+           A âncora manual continua atrás, para a conta que a API não
+           responde (rede, token, moeda estrangeira). Nesse caso vale o
+           desenho antigo: leitura menos o gasto desde então. */
+        /* CARTÃO NÃO TEM SALDO A ESGOTAR, e dizer isso é melhor que
+           inventar um.
+
+           Quando a Meta responde e o método de pagamento é cartão, a
+           conta só está aqui porque alguém a marcou como pré-paga —
+           medido na Nuur, marcada pré-paga com "VISA *1346". O caminho
+           antigo caía na âncora manual, que envelhecia sem parar e
+           produzia um "releia o saldo" eterno numa conta que nunca
+           acaba. */
+        const respondeu = saldoMeta !== undefined;
+        const ehCartao = respondeu && carteiraMeta === null;
+
+        if (ehCartao) {
+          balanceCents = null;
+          unlimited = true;
+          balanceSource = "saldo_meta";
+        } else if (carteiraMeta !== null) {
+          balanceCents = carteiraMeta;
+          balanceSource = "saldo_meta";
+        } else if (informado) {
+          // Piso em zero: saldo estourado é zero, não dívida.
+          balanceCents = Math.max(
+            0,
+            informado.cents - (gastoDesdeRecarga.get(chave) ?? 0),
+          );
+          balanceSource = "manual";
+        } else {
+          balanceCents = null;
+          balanceSource = "indisponivel";
+        }
       }
 
       /* TODA conta pré-paga entra na lista, em risco ou não. Antes só as
@@ -479,8 +525,12 @@ async function carregar(comoSistema = false): Promise<{
           {
             balanceCents: (semente % 801) * 100,
             currency: "BRL",
-            fundingType: 2,
-            fundingLabel: "Saldo pré-pago (demo)",
+            /* 20 é o tipo de carteira pré-paga na Graph API, e o rótulo
+               segue a frase real — o demo tem de exercitar o mesmo
+               caminho de leitura que produção. */
+            fundingType: 20,
+            fundingLabel: `Saldo disponível (R$${((semente % 801)).toLocaleString("pt-BR", { minimumFractionDigits: 2 })} BRL)`,
+            availableCents: (semente % 801) * 100,
             amountSpentCents: 0,
           },
         ];

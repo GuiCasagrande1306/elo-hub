@@ -500,6 +500,7 @@ function BlocoPlataforma({
 /* ------------------------------------------------------------------ */
 
 const ORIGEM: Record<BalanceAlert["balanceSource"], string> = {
+  saldo_meta: "Saldo da conta, lido da Meta",
   manual: "Informado na recarga",
   /* "Verba de fatura" e não "API do Google Ads": o rótulo antigo dizia
      de ONDE o número vinha e deixava o leitor supor O QUE ele era. A API
@@ -527,13 +528,21 @@ function rotuloCurto(alert: BalanceAlert): string {
 /** A frase que diz o que fazer, não só o que é. */
 function diagnostico(alert: BalanceAlert): string {
   if (alert.status === "unknown") {
+    /* Para a Meta isto virou EXCEÇÃO: o saldo vem da própria conta. Se
+       chegou aqui, a leitura falhou — rede, token ou moeda fora de BRL
+       —, e o pedido é diferente de "cadastre o número". */
     return alert.platform === "meta_ads"
-      ? "Informe o saldo em Contas de mídia para acompanhar"
-      : "Saldo não localizado na API — confira o faturamento da conta";
+      ? "Não deu para ler o saldo na Meta agora — informe abaixo para não ficar sem alerta"
+      : "Saldo não localizado na API — informe o saldo abaixo";
   }
 
   if (alert.status === "unlimited") {
-    return "Faturamento sem teto — não há saldo a esgotar";
+    /* Duas causas, uma frase para cada: verba de fatura sem teto no
+       Google, e cartão de crédito na Meta. Dizer "sem teto" para um
+       cartão soaria a erro de leitura. */
+    return alert.platform === "meta_ads"
+      ? `Pago por cartão${alert.fundingLabel ? ` (${alert.fundingLabel})` : ""} — não há saldo a esgotar`
+      : "Faturamento sem teto — não há saldo a esgotar";
   }
 
   /* A FRASE PRECISA EXPLICAR A CONTRADIÇÃO, não só pedir a releitura.
