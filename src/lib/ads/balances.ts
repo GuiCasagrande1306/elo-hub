@@ -141,6 +141,12 @@ export interface BalanceAlert extends BalanceForecast {
    * migration 51, que mede o que foi tentado.
    */
   formaDeRecarga: "pix" | "cartao" | null;
+  /** Id da conta na plataforma — monta o link da cobrança. */
+  externalAccountId: string | null;
+  /** Último aviso de recarga mandado ao grupo do cliente. */
+  avisoEnviadoEm: string | null;
+  /** Grupo do cliente no WhatsApp, o mesmo dos relatórios. */
+  destinoDoCliente: string | null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -280,6 +286,8 @@ export async function getBalanceAlerts(
     fundos,
     gastoDesdeRecarga,
     recargas,
+    contasExternas,
+    avisos,
   } = await carregar(comoSistema);
 
   const alertas: BalanceAlert[] = [];
@@ -427,6 +435,9 @@ export async function getBalanceAlerts(
            enquanto a divisão usa 7 faria a tela desmentir o cálculo. */
         diasDeRitmo: Math.min(diasComGasto.get(chave)?.size ?? 0, JANELA_DIAS),
         formaDeRecarga: recargas.get(chave) ?? null,
+        externalAccountId: contasExternas.get(chave) ?? null,
+        avisoEnviadoEm: avisos.get(chave) ?? null,
+        destinoDoCliente: client.whatsapp_phone ?? null,
         diasDesdeLeitura: informado
           ? diasEntre(informado.desde.slice(0, 10), hojeISO)
           : null,
@@ -470,6 +481,8 @@ async function carregar(comoSistema = false): Promise<{
    */
   diasComGasto: Map<string, Set<string>>;
   recargas: Map<string, "pix" | "cartao">;
+  contasExternas: Map<string, string>;
+  avisos: Map<string, string>;
   /** Chaves `clientId:platform` das contas pré-pagas. */
   prePagas: Set<string>;
   /** `balance` do Meta (acumulado a pagar), por `client_id`. */
@@ -590,6 +603,10 @@ async function carregar(comoSistema = false): Promise<{
       /* Alterna Pix e cartão no demo para as duas frases de alerta
          aparecerem — uma tela de demonstração que só exercita um dos
          caminhos esconde metade do comportamento. */
+      contasExternas: new Map(
+        demoClients.map((c) => [`${c.id}:meta_ads`, `act_${c.id.replace(/\D/g, "") || "100"}`]),
+      ),
+      avisos: new Map(),
       recargas: new Map(
         demoClients.map((c, i) => [
           `${c.id}:meta_ads`,
@@ -618,8 +635,11 @@ async function carregar(comoSistema = false): Promise<{
 
   const t0 = Date.now();
 
-  const [{ data: clients }, { data: metrics }, { data: integracoes }] =
-    await Promise.all([
+  const [
+    { data: clients, error: erroClients },
+    { data: metrics, error: erroMetrics },
+    { data: integracoes, error: erroIntegracoes },
+  ] = await Promise.all([
       supabase.from("clients").select("*").eq("status", "active").order("name"),
       supabase
         .from("daily_metrics")
@@ -632,8 +652,12 @@ async function carregar(comoSistema = false): Promise<{
         .lte("metric_date", ateISO),
       supabase
         .from("client_integrations")
+        /* LITERAL, não concatenação: o tipo do retorno é inferido do
+           texto do select em tempo de compilação, e uma soma de strings
+           apaga essa inferência — o resultado vira `GenericStringError`
+           e todo campo lido depois deixa de existir para o TypeScript. */
         .select(
-          "client_id, platform, funds_cents, funds_recorded_at, recharge_method",
+          "client_id, platform, funds_cents, funds_recorded_at, recharge_method, external_account_id, recharge_notice_sent_at",
         )
         .eq("billing_type", "prepaid")
         .eq("is_active", true),
@@ -645,14 +669,43 @@ async function carregar(comoSistema = false): Promise<{
      seria chute. Vai para o log da Vercel, não para a tela. */
   const msConsultas = Date.now() - t0;
 
+  /* ERRO DE CONSULTA NÃO PODE VIRAR LISTA VAZIA, e este módulo já pagou
+     por isso. O Supabase devolve `{ data: null, error }` sem lançar; o
+     código lia `integracoes ?? []` e seguia como se não houvesse conta
+     pré-paga nenhuma.
+
+     Aconteceu de verdade em 19/08/2026: a coluna `recharge_notice_sent_at`
+     entrou no select antes de a migration rodar, o Postgres recusou com
+     42703, e as contas do Google sumiram da tela — de 31 linhas para 27,
+     sem aviso nenhum. Numa tela cujo trabalho é dizer quais contas vão
+     parar, sumir em silêncio é o pior desfecho possível.
+
+     Lançar deixa a página cair no boundary de erro, que é visível. */
+  const falha = erroClients ?? erroMetrics ?? erroIntegracoes;
+  if (falha) {
+    throw new Error(
+      `Alertas de saldo: consulta recusada pelo banco — ${falha.message}`,
+    );
+  }
+
   const prePagas = new Set(
     (integracoes ?? []).map((i) => `${i.client_id}:${i.platform}`),
   );
 
   const recargas = new Map<string, "pix" | "cartao">();
+  const contasExternas = new Map<string, string>();
+  const avisos = new Map<string, string>();
+
   for (const i of integracoes ?? []) {
+    const chave = `${i.client_id}:${i.platform}`;
     const m = i.recharge_method as "pix" | "cartao" | null;
-    if (m) recargas.set(`${i.client_id}:${i.platform}`, m);
+    if (m) recargas.set(chave, m);
+
+    const conta = i.external_account_id as string | null;
+    if (conta) contasExternas.set(chave, conta);
+
+    const aviso = i.recharge_notice_sent_at as string | null;
+    if (aviso) avisos.set(chave, aviso);
   }
 
   /* Saldo informado + a data de leitura, por conta. O desconto do gasto
@@ -771,6 +824,8 @@ async function carregar(comoSistema = false): Promise<{
     fundos,
     gastoDesdeRecarga,
     recargas,
+    contasExternas,
+    avisos,
   };
 }
 

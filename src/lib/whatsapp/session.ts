@@ -8,6 +8,7 @@ import {
   evolutionRequest,
   isGroupJid,
   normalizePhone,
+  sendTextMessage,
 } from "./index";
 import { serverEnv } from "@/lib/env";
 
@@ -529,4 +530,48 @@ function nomeDeArquivo(valor: string): string {
       .replace(/[^a-zA-Z0-9]+/g, "_")
       .replace(/(^_|_$)/g, "") || "Cliente"
   );
+}
+
+/**
+ * Manda TEXTO pelo celular do usuário.
+ *
+ * O par de `sendReportFromUser`, sem o anexo. Existe para o aviso de
+ * recarga, que vai ao grupo do cliente e precisa chegar assinado por uma
+ * pessoa que está ali dentro — não por um número da agência que o
+ * cliente não reconhece.
+ *
+ * ⚠️ O celular precisa PARTICIPAR do grupo. O WhatsApp não deixa postar
+ * em grupo do qual não se faz parte, e a Evolution devolve isso como
+ * erro genérico — por isso o estado da sessão é checado antes, e a
+ * mensagem de falha é traduzida.
+ */
+export async function sendTextFromUser(
+  userId: string,
+  to: string,
+  texto: string,
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  const status = await getSessionStatus(userId);
+
+  if (status.state !== "open") {
+    return {
+      success: false,
+      error:
+        status.state === "absent"
+          ? "Seu WhatsApp não está conectado. Leia o QR em Configurações."
+          : "Sua conexão caiu. Releia o QR em Configurações.",
+    };
+  }
+
+  const resultado = await sendTextMessage(to, texto, instanceNameFor(userId));
+
+  if (!resultado.success) {
+    return {
+      success: false,
+      error:
+        resultado.error ??
+        "Não deu para enviar. Confirme que seu número participa do grupo.",
+    };
+  }
+
+  return { success: true, messageId: resultado.messageId };
 }

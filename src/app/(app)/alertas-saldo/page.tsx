@@ -36,6 +36,8 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { isDemoMode } from "@/lib/env";
 import { RegistrarSaldo } from "@/components/clients/registrar-saldo";
 import { FormaDeRecarga } from "@/components/clients/forma-de-recarga";
+import { AvisarCliente } from "@/components/clients/avisar-cliente";
+import { DIAS_PARA_AVISAR } from "@/lib/ads/recharge-notice";
 import type { BalanceAlert, BalanceStatus } from "@/lib/ads/balances";
 
 export const metadata: Metadata = { title: "Alertas de saldo" };
@@ -477,6 +479,29 @@ function BlocoPlataforma({
           Só para conta pré-paga com âncora manual. Verba de fatura vem
           da API do Google e não se digita; conta sem teto não tem o que
           informar. */}
+      {/* AVISAR O CLIENTE entra a partir de cinco dias, e só na Meta —
+          o link da cobrança é do gerenciador dela. Fora dessa janela o
+          botão não aparece: um botão sempre visível de "cobrar o
+          cliente" convida a usá-lo fora de hora. */}
+      {alert.platform === "meta_ads" &&
+        alert.daysLeft !== null &&
+        alert.daysLeft <= DIAS_PARA_AVISAR && (
+          <div className="mt-3 flex items-center justify-between gap-2 border-t border-hairline pt-3">
+            <span className="max-w-[50%] text-2xs text-muted-foreground">
+              {alert.destinoDoCliente
+                ? "O cliente pode recarregar sozinho — mande o link."
+                : "Sem grupo cadastrado para este cliente."}
+            </span>
+            <AvisarCliente
+              clientId={alert.clientId}
+              clientName={alert.clientName}
+              platform={alert.platform}
+              temGrupo={Boolean(alert.destinoDoCliente)}
+              avisadoEm={alert.avisoEnviadoEm}
+            />
+          </div>
+        )}
+
       {alert.status !== "unlimited" && (
         <div className="mt-3 flex items-center justify-between gap-2 border-t border-hairline pt-3">
           <span className="max-w-[52%] text-2xs text-muted-foreground">
