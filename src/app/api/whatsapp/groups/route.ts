@@ -1,10 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 
 import {
   createSupabaseServerClient,
   getCurrentUser,
 } from "@/lib/supabase/server";
 import { fetchAllGroups } from "@/lib/whatsapp/session";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 /**
  * GET /api/whatsapp/groups
@@ -28,7 +29,7 @@ export const dynamic = "force-dynamic";
    que a falha seja NOSSA e tratada, e não a função sendo morta. */
 export const maxDuration = 60;
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
@@ -44,6 +45,17 @@ export async function GET() {
 
      Quem preenche `whatsapp_groups` é `scripts/evolution.mjs
      sincronizar`, rodado de fora da Vercel. Ver a migration 26. */
+  /* `?atualizar=1` PULA A TABELA e vai à Evolution, gravando o
+     resultado. Sem isso não havia como um grupo NOVO aparecer: a rota
+     devolvia a tabela sempre que ela tivesse linhas, e a tabela só era
+     preenchida por um script rodado fora da Vercel.
+
+     Medido em 19/08/2026: 512 grupos salvos, todos da sincronização de
+     06 de agosto. Onze clientes seguiam sem destino, e três deles
+     TINHAM grupo criado depois dessa data — invisível para sempre pelo
+     seletor. */
+  const atualizar = request.nextUrl.searchParams.get("atualizar") === "1";
+
   const supabase = await createSupabaseServerClient();
   const { data: salvos } = await supabase
     .from("whatsapp_groups")
@@ -51,7 +63,7 @@ export async function GET() {
     .eq("user_id", user.id)
     .order("name");
 
-  if (salvos && salvos.length > 0) {
+  if (!atualizar && salvos && salvos.length > 0) {
     return NextResponse.json(
       {
         ok: true,
@@ -68,17 +80,51 @@ export async function GET() {
   const resultado = await fetchAllGroups(user.id);
 
   if (!resultado.ok) {
-    // 200 com `ok:false`, não 5xx: a lista indisponível é um estado
-    // esperado (WhatsApp limitando, celular desconectado), não uma
-    // falha do servidor — e o formulário precisa exibir o motivo em vez
-    // de tratar como erro de rede.
-    return NextResponse.json(resultado, {
-      status: 200,
-      headers: { "Cache-Control": "no-store" },
-    });
+    /* 200 com `ok:false`, não 5xx: a lista indisponível é um estado
+       esperado (WhatsApp limitando, celular desconectado), não uma
+       falha do servidor — e o formulário precisa exibir o motivo em vez
+       de tratar como erro de rede.
+
+       NUMA ATUALIZAÇÃO, a lista salva volta junto: falhar a varredura
+       não pode esvaziar o seletor de quem só queria ver se apareceu
+       grupo novo. */
+    return NextResponse.json(
+      salvos && salvos.length > 0
+        ? {
+            ...resultado,
+            groups: salvos.map((g) => ({ id: g.jid, name: g.name })),
+            cached: true,
+          }
+        : resultado,
+      { status: 200, headers: { "Cache-Control": "no-store" } },
+    );
   }
 
-  return NextResponse.json(resultado, {
-    headers: { "Cache-Control": "no-store" },
-  });
+  /* GRAVA O QUE VEIO. Sem isto a varredura serviria a uma tela e se
+     perderia — a próxima abertura leria a tabela velha de novo, e o
+     grupo recém-criado sumiria outra vez.
+
+     `upsert` e não `delete`+`insert`: um grupo do qual a pessoa saiu
+     deixa de vir na varredura, e apagar tudo antes faria uma falha no
+     meio da gravação zerar a lista inteira. Sobra de grupo antigo é
+     ruído; lista vazia é a tela sem saída. */
+  if (resultado.groups.length > 0) {
+    const admin = createSupabaseAdminClient();
+    const agora = new Date().toISOString();
+
+    await admin.from("whatsapp_groups").upsert(
+      resultado.groups.map((g) => ({
+        user_id: user.id,
+        jid: g.id,
+        name: g.name,
+        updated_at: agora,
+      })),
+      { onConflict: "user_id,jid" },
+    );
+  }
+
+  return NextResponse.json(
+    { ...resultado, sincronizados: resultado.groups.length },
+    { headers: { "Cache-Control": "no-store" } },
+  );
 }

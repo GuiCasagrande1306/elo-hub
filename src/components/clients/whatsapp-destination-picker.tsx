@@ -51,20 +51,30 @@ export function WhatsAppDestinationPicker({
   const [busca, setBusca] = useState("");
   const [buscou, setBuscou] = useState(false);
 
-  /* Sem parâmetro de "forçar": o servidor memoiza a lista por 10
-     minutos e NÃO memoiza falha, então este mesmo `carregar` serve para
-     a primeira abertura e para o "Tentar de novo" — depois de um erro
-     não há entrada em cache para atrapalhar. */
-  const carregar = useCallback(async () => {
+  /* `atualizar` VARRE O WHATSAPP DE NOVO e regrava a tabela.
+     ---------------------------------------------------------------
+     Sem ele, grupo criado depois da última sincronização não aparecia
+     NUNCA: a rota devolve a tabela sempre que ela tem linhas, e a
+     tabela era preenchida por um script rodado fora da Vercel. Medido
+     em 19/08/2026 — 512 grupos salvos, todos de 06 de agosto, e três
+     clientes sem destino cujo grupo existia e era invisível. */
+  const carregar = useCallback(async (atualizar = false) => {
     setCarregando(true);
     setErro(null);
 
     try {
-      const r = await fetch("/api/whatsapp/groups", { cache: "no-store" });
+      const r = await fetch(
+        `/api/whatsapp/groups${atualizar ? "?atualizar=1" : ""}`,
+        { cache: "no-store" },
+      );
       const d = await r.json();
 
+      /* A lista salva volta junto quando a varredura falha, então
+         preencher antes de olhar o `ok` evita esvaziar o seletor de
+         quem só queria conferir se apareceu grupo novo. */
+      if (Array.isArray(d.groups)) setGrupos(d.groups);
+
       if (d.ok) {
-        setGrupos(d.groups ?? []);
         if ((d.groups ?? []).length === 0) {
           setErro("Nenhum grupo encontrado neste WhatsApp.");
         }
@@ -161,7 +171,20 @@ export function WhatsAppDestinationPicker({
             )}
 
             {!carregando && !erro && (
-              <CommandEmpty>Nenhum grupo com esse nome.</CommandEmpty>
+              <CommandEmpty>
+                <p>Nenhum grupo com esse nome.</p>
+                {/* A SAÍDA PARA GRUPO NOVO fica aqui, que é onde a
+                    pessoa está quando descobre que ele não existe na
+                    lista — procurando pelo nome e não achando. */}
+                <button
+                  type="button"
+                  onClick={() => void carregar(true)}
+                  className="mt-2 inline-flex items-center gap-1.5 text-2xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                >
+                  <RefreshCw className="size-3" />
+                  Buscar grupos novos no WhatsApp
+                </button>
+              </CommandEmpty>
             )}
 
             {podeUsarDigitado && (
@@ -177,6 +200,30 @@ export function WhatsAppDestinationPicker({
                   <span className="truncate font-mono text-xs">{digitado}</span>
                 </CommandItem>
               </CommandGroup>
+            )}
+
+            {grupos.length > 0 && !carregando && (
+              <div className="border-t border-hairline px-2 py-1.5">
+                <button
+                  type="button"
+                  onClick={() => void carregar(true)}
+                  className="inline-flex items-center gap-1.5 text-2xs text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  <RefreshCw className="size-3" />
+                  Atualizar lista — grupo criado hoje só aparece aqui
+                </button>
+                {/* O AVISO DE QUE PODE NÃO DAR CERTO É HONESTO, não
+                    pessimismo. A varredura foi medida em 8,8s numa hora
+                    boa e 106,5s numa hora em que a Meta estava
+                    limitando — e o teto da função é 60s. Quando estoura,
+                    a lista salva continua na tela e o erro explica; sem
+                    este texto, a pessoa clicaria de novo achando que
+                    errou o clique. */}
+                <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
+                  Leva alguns segundos. Se o WhatsApp estiver limitando,
+                  pode falhar — tente de novo em alguns minutos.
+                </p>
+              </div>
             )}
 
             {grupos.length > 0 && (
