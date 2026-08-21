@@ -36,6 +36,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { NetworkGlyph } from "./network-glyph";
 import { ArtUploader } from "./art-uploader";
+import { ClientPicker } from "./client-picker";
 import {
   carregarComentarios,
   comentarPost,
@@ -313,25 +314,12 @@ export function PostComposer({
                 </Campo>
 
                 <Campo label="Cliente">
-                  <Select
+                  <ClientPicker
+                    clients={clients}
+                    accounts={accounts}
                     value={clientId}
-                    onValueChange={(v) => setClientId(v ?? "")}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue>
-                        {(v: string) =>
-                          clients.find((c) => c.id === v)?.name ?? "Escolher"
-                        }
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {clients.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {c.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    onChange={setClientId}
+                  />
                 </Campo>
               </div>
 

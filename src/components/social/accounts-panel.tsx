@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/popover";
 import { NetworkGlyph } from "./network-glyph";
 import { removerConta, salvarConta } from "@/app/(app)/midias-sociais/actions";
+import { ImportarInstagram } from "./importar-instagram";
 import { REDES, rede, urlDoPerfil } from "@/lib/social/networks";
 import { cn } from "@/lib/utils";
 import type { Client, SocialAccount, SocialNetwork } from "@/types/database";
@@ -61,6 +62,13 @@ export function AccountsPanel({
 
   return (
     <section className="flex flex-col gap-3">
+      {/* IMPORTAR O QUE A META JÁ SABE, antes de pedir digitação.
+          Cadastrar 61 perfis à mão é tarefa que começa e para na décima
+          conta. `connected_instagram_accounts` devolve o @ vinculado à
+          conta de anúncios — medido em 20/08/2026, dez das 46 contas
+          respondem. Dez a menos é dez. */}
+      {podeEditar && <ImportarInstagram />}
+
       {semNenhum.length > 0 && (
         <p className="rounded-xl bg-warning-muted px-4 py-3 text-xs text-warning">
           <strong className="font-semibold tabular-nums">

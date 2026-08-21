@@ -924,3 +924,78 @@ async function assinar(
 
   return data?.signedUrl ?? null;
 }
+
+/* ------------------------------------------------------------------ */
+/* Importar os @ que a Meta já conhece                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Cadastra de uma vez os Instagram vinculados às contas de anúncios.
+ *
+ * NÃO SOBRESCREVE o que já existe: `onConflict` ignora a linha quando o
+ * par (cliente, rede) já está cadastrado. Um @ corrigido à mão vale mais
+ * que o que a Meta devolve — a plataforma às vezes traz o perfil antigo
+ * de uma conta que trocou de nome.
+ */
+export async function importarInstagramDaMeta(): Promise<
+  ActionResult<{ importados: number; jaTinham: number; total: number }>
+> {
+  const user = await getCurrentUser();
+  if (user?.role !== "admin") {
+    return { ok: false, error: "Só administradores cadastram perfis." };
+  }
+
+  if (isDemoMode) {
+    return { ok: true, dados: { importados: 0, jaTinham: 0, total: 0 } };
+  }
+
+  const { descobrirInstagramVinculado } = await import(
+    "@/lib/ads/instagram-vinculado"
+  );
+
+  const encontrados = await descobrirInstagramVinculado();
+  if (encontrados.length === 0) {
+    return {
+      ok: false,
+      error:
+        "Nenhuma conta de anúncios tem Instagram vinculado no gerenciador da Meta.",
+    };
+  }
+
+  const admin = createSupabaseAdminClient();
+
+  const { data: existentes } = await admin
+    .from("social_accounts")
+    .select("client_id")
+    .eq("network", "instagram");
+
+  const jaCadastrados = new Set((existentes ?? []).map((e) => e.client_id));
+  const novos = encontrados.filter((e) => !jaCadastrados.has(e.clientId));
+
+  if (novos.length > 0) {
+    const agora = new Date().toISOString();
+    const { error } = await admin.from("social_accounts").insert(
+      novos.map((n) => ({
+        client_id: n.clientId,
+        network: "instagram",
+        handle: n.handle,
+        is_active: true,
+        created_at: agora,
+        updated_at: agora,
+      })),
+    );
+
+    if (error) return { ok: false, error: error.message };
+  }
+
+  revalidatePath("/midias-sociais");
+
+  return {
+    ok: true,
+    dados: {
+      importados: novos.length,
+      jaTinham: encontrados.length - novos.length,
+      total: encontrados.length,
+    },
+  };
+}
