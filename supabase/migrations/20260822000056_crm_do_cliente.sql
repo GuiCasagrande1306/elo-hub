@@ -115,10 +115,24 @@ create index if not exists lead_contacts_client_idx
 
 
 /* ---------------------------------------------------------------------
-   4. Leads
+   4. Leads — a tabela chama `lead_deals`, e não `leads`
+
+   ⚠️ JÁ EXISTE UMA TABELA `public.leads` NESTE BANCO, e ela não é deste
+   módulo: colunas `nome, telefone, origem, servico, observacao, status,
+   criado_em`, em português, com cara de captação de formulário de
+   landing page. Está vazia, mas está lá.
+
+   Um `create table if not exists public.leads` vira NO-OP silencioso
+   sobre ela — foi o que aconteceu na primeira tentativa desta migration,
+   e o erro só apareceu adiante, na policy: "column client_id does not
+   exist". A tabela não era minha, e o `if not exists` escondeu isso.
+
+   `lead_deals` porque é o vocabulário do próprio CRM: o que anda pelo
+   funil é um negócio. E não colide com `crm_deals`, que é o funil de
+   venda DA AGÊNCIA.
    ------------------------------------------------------------------ */
 
-create table if not exists public.leads (
+create table if not exists public.lead_deals (
   id          uuid primary key default gen_random_uuid(),
   client_id   uuid not null references public.clients (id) on delete cascade,
   pipeline_id uuid not null references public.lead_pipelines (id) on delete cascade,
@@ -160,20 +174,20 @@ create table if not exists public.leads (
   updated_at  timestamptz not null default now()
 );
 
-create index if not exists leads_quadro_idx
-  on public.leads (client_id, pipeline_id, stage_id, position);
+create index if not exists lead_deals_quadro_idx
+  on public.lead_deals (client_id, pipeline_id, stage_id, position);
 
-create index if not exists leads_contato_idx
-  on public.leads (contact_id) where contact_id is not null;
+create index if not exists lead_deals_contato_idx
+  on public.lead_deals (contact_id) where contact_id is not null;
 
 /* Entrada por formulário precisa ser idempotente: a Meta reenvia o
    mesmo lead quando o webhook não confirma, e sem isto o mesmo contato
    aparece três vezes no quadro. Preenchido só pela ingestão. */
-alter table public.leads
+alter table public.lead_deals
   add column if not exists external_id text;
 
-create unique index if not exists leads_externo_unico
-  on public.leads (client_id, source, external_id)
+create unique index if not exists lead_deals_externo_unico
+  on public.lead_deals (client_id, source, external_id)
   where external_id is not null;
 
 
@@ -183,18 +197,18 @@ create unique index if not exists leads_externo_unico
 
 create table if not exists public.lead_notes (
   id         uuid primary key default gen_random_uuid(),
-  lead_id    uuid not null references public.leads (id) on delete cascade,
+  deal_id    uuid not null references public.lead_deals (id) on delete cascade,
   author_id  uuid references public.profiles (id) on delete set null,
   body       text not null check (length(btrim(body)) between 1 and 4000),
   created_at timestamptz not null default now()
 );
 
-create index if not exists lead_notes_lead_idx
-  on public.lead_notes (lead_id, created_at desc);
+create index if not exists lead_notes_deal_idx
+  on public.lead_notes (deal_id, created_at desc);
 
 create table if not exists public.lead_tasks (
   id         uuid primary key default gen_random_uuid(),
-  lead_id    uuid not null references public.leads (id) on delete cascade,
+  deal_id    uuid not null references public.lead_deals (id) on delete cascade,
   title      text not null check (length(btrim(title)) between 1 and 200),
 
   /* PRAZO OBRIGATÓRIO. Tarefa de CRM sem data é lembrete que ninguém
@@ -209,7 +223,7 @@ create table if not exists public.lead_tasks (
 );
 
 create index if not exists lead_tasks_agenda_idx
-  on public.lead_tasks (lead_id, due_at) where done_at is null;
+  on public.lead_tasks (deal_id, due_at) where done_at is null;
 
 
 /* ---------------------------------------------------------------------
@@ -230,14 +244,14 @@ create index if not exists lead_tasks_agenda_idx
 alter table public.lead_pipelines  enable row level security;
 alter table public.lead_stages     enable row level security;
 alter table public.lead_contacts   enable row level security;
-alter table public.leads           enable row level security;
+alter table public.lead_deals      enable row level security;
 alter table public.lead_notes      enable row level security;
 alter table public.lead_tasks      enable row level security;
 
 grant select, insert, update, delete on public.lead_pipelines to authenticated;
 grant select, insert, update, delete on public.lead_stages    to authenticated;
 grant select, insert, update, delete on public.lead_contacts  to authenticated;
-grant select, insert, update, delete on public.leads          to authenticated;
+grant select, insert, update, delete on public.lead_deals     to authenticated;
 grant select, insert, update, delete on public.lead_notes     to authenticated;
 grant select, insert, update, delete on public.lead_tasks     to authenticated;
 
@@ -249,7 +263,7 @@ do $$
 declare
   t text;
 begin
-  foreach t in array array['lead_pipelines', 'lead_contacts', 'leads'] loop
+  foreach t in array array['lead_pipelines', 'lead_contacts', 'lead_deals'] loop
     execute format('drop policy if exists %I_rw on public.%I', t, t);
     execute format($f$
       create policy %I_rw on public.%I for all to authenticated
@@ -290,14 +304,14 @@ begin
       create policy %I_rw on public.%I for all to authenticated
         using (
           exists (
-            select 1 from public.leads l
-            where l.id = lead_id and app.client_is_visible(l.client_id)
+            select 1 from public.lead_deals d
+            where d.id = deal_id and app.client_is_visible(d.client_id)
           )
         )
         with check (
           exists (
-            select 1 from public.leads l
-            where l.id = lead_id and app.client_is_visible(l.client_id)
+            select 1 from public.lead_deals d
+            where d.id = deal_id and app.client_is_visible(d.client_id)
           )
         )
     $f$, t, t);
