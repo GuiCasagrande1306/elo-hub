@@ -422,7 +422,21 @@ export async function getBalanceAlerts(
         ultimoGastoEm !== null && diasEntre(ultimoGastoEm, hojeISO) <= 2;
 
       alertas.push({
-        ...projetar(balanceCents, burnRate, { unlimited, gastandoAgora }),
+        ...projetar(balanceCents, burnRate, {
+          unlimited,
+          /* SÓ A ÂNCORA MANUAL PODE ESTAR VENCIDA.
+             ---------------------------------------------------------
+             `stale` nasceu para o saldo digitado à mão: ele envelhece, e
+             uma conta que continua veiculando com a projeção zerada
+             significa que alguém recarregou sem avisar o painel.
+
+             Com o saldo lido da Meta na hora, zero é zero — a conta
+             gastou ontem e acabou hoje. Marcar isso como "releia o
+             saldo" mandaria conferir um número que já está certo, e
+             enterraria uma conta com anúncio fora do ar no meio das
+             pendências de cadastro. */
+          gastandoAgora: balanceSource === "manual" && gastandoAgora,
+        }),
         clientId: client.id,
         clientName: client.name,
         clientSlug: client.slug,
@@ -645,11 +659,26 @@ async function carregar(comoSistema = false): Promise<{
         .from("daily_metrics")
         /* `metric_date` entra no select para o divisor do ritmo: sem a
            data não dá para saber se os 7 dias de gasto vieram de 7 dias
-           ou de 2. Ver `calcularRitmo`. */
+           ou de 2. Ver `calcularRitmo`.
+
+           ⚠️ LIMITE EXPLÍCITO, e ele é a trava de segurança. Esta
+           consulta varre a carteira inteira e não filtra por cliente.
+           Medida em 20/08/2026: 713 linhas em sete dias — 71% do teto
+           de mil do PostgREST, que corta em silêncio. Não estoura hoje;
+           estoura sozinha quando a carteira passar de ~85 contas, e o
+           sintoma seria ritmo de gasto menor do que o real, ou seja
+           alerta de saldo tarde demais.
+
+           `PAGINA * 2` como teto declarado: se um dia a consulta
+           devolver exatamente isso, o `throw` abaixo avisa em vez de
+           truncar. Melhor a tela cair com mensagem do que projetar dias
+           restantes sobre metade do gasto. */
         .select("client_id, platform, spend_cents, metric_date")
         .gte("metric_date", desdeISO)
         // Sem o `.lte` a linha parcial de hoje entrava na janela.
-        .lte("metric_date", ateISO),
+        .lte("metric_date", ateISO)
+        .order("id")
+        .range(0, 1999),
       supabase
         .from("client_integrations")
         /* LITERAL, não concatenação: o tipo do retorno é inferido do
@@ -685,6 +714,17 @@ async function carregar(comoSistema = false): Promise<{
   if (falha) {
     throw new Error(
       `Alertas de saldo: consulta recusada pelo banco — ${falha.message}`,
+    );
+  }
+
+  /* CHEGOU NO TETO = tem mais, e o resto sumiu. Ver a nota no `.range`
+     acima. Falhar aqui é a escolha certa: um ritmo de gasto calculado
+     sobre metade das linhas produz "restam 12 dias" numa conta que zera
+     em seis, e ninguém tem como desconfiar do número. */
+  if ((metrics ?? []).length >= 2000) {
+    throw new Error(
+      "Alertas de saldo: a janela de 7 dias passou de 2000 linhas e foi " +
+        "truncada. A leitura precisa virar paginada antes de a tela voltar.",
     );
   }
 

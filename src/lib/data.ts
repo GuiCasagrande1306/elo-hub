@@ -150,6 +150,61 @@ export async function getClientBySlug(slug: string): Promise<Client | null> {
 /* Métricas                                                            */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Lê TODAS as linhas de uma consulta, página por página.
+ *
+ * ⚠️ O POSTGREST CORTA EM 1000 LINHAS E NÃO AVISA. `max_rows` está
+ * declarado em `supabase/config.toml`; ao bater no teto ele devolve mil
+ * linhas com status 200, sem cabeçalho de aviso e sem erro. Quem lê o
+ * resultado soma o que veio e imprime um número menor com toda a
+ * confiança do mundo.
+ *
+ * MEDIDO em 20/08/2026, na consulta que desenha o gráfico da visão
+ * geral — julho inteiro, carteira toda:
+ *
+ *     sem paginar   1000 linhas   R$ 19.793,58
+ *     paginando     2637 linhas   R$ 58.026,98
+ *
+ * A tela mostrava 34% do investimento real, e a forma da curva também
+ * estava errada: sem `order`, quais linhas sobrevivem ao corte muda a
+ * cada carregamento.
+ *
+ * A ordenação por `id` não é enfeite. `metric_date` não é único — a
+ * tabela é granular por campanha —, e com chave ambígua o `range` pode
+ * repetir ou pular linha na virada da página, que aqui vira gasto
+ * contado duas vezes ou nenhuma.
+ */
+async function lerPaginado(
+  /* `unknown[]` e não um genérico: o construtor do Supabase devolve um
+     tipo derivado do texto do `select`, e amarrá-lo a `T` faz o
+     compilador recusar toda chamada. Quem chama converte no fim, que é
+     onde ele sabe o formato que pediu. */
+  montarConsulta: (de: number, ate: number) => PromiseLike<{
+    data: unknown[] | null;
+    error: { message: string } | null;
+  }>,
+): Promise<unknown[]> {
+  const PAGINA = 1000;
+  const tudo: unknown[] = [];
+
+  for (let inicio = 0; ; inicio += PAGINA) {
+    const { data, error } = await montarConsulta(inicio, inicio + PAGINA - 1);
+
+    /* Erro NÃO vira lista vazia. O Supabase devolve `{ data: null,
+       error }` sem lançar, e engolir isso num `?? []` transforma uma
+       consulta recusada em "não há dado" — exatamente o defeito que a
+       tela de alertas de saldo já pagou. */
+    if (error) {
+      throw new Error(`Leitura de métricas recusada: ${error.message}`);
+    }
+
+    const pagina = data ?? [];
+    tudo.push(...pagina);
+
+    if (pagina.length < PAGINA) return tudo;
+  }
+}
+
 export async function getMetrics(
   clientId: string,
   start: string,
@@ -1527,13 +1582,19 @@ async function getAgencyTrend(
     }
 
     const supabase = await createSupabaseServerClient();
-    const { data } = await supabase
-      .from("daily_metrics")
-      .select("metric_date, spend_cents, revenue_cents")
-      .gte("metric_date", start)
-      .lte("metric_date", end);
 
-    return (data ?? []) as DailyMetric[];
+    /* PAGINADA. Esta consulta não filtra por cliente — varre a carteira
+       inteira — e é a que mais sofre com o teto de mil linhas. Ver
+       `lerPaginado`. */
+    return (await lerPaginado((de, ate) =>
+      supabase
+        .from("daily_metrics")
+        .select("metric_date, spend_cents, revenue_cents")
+        .gte("metric_date", start)
+        .lte("metric_date", end)
+        .order("id")
+        .range(de, ate),
+    )) as DailyMetric[];
   })();
 
   const porDia = new Map<string, { spend: number; revenue: number }>();
