@@ -4,8 +4,9 @@ import {
   AlertTriangle,
   CalendarClock,
   CircleDollarSign,
+  Gauge,
   Target,
-  Users,
+  TrendingUp,
 } from "lucide-react";
 
 import { GoalHealthChart } from "./goal-health-chart";
@@ -14,7 +15,11 @@ import { AgencyTrendChart } from "./agency-trend-chart";
 import { SyncButton } from "@/components/admin/sync-button";
 import { PageContainer, PageHeader } from "@/components/layout/page-header";
 import { getAgencyDashboard, getAgencyOverview } from "@/lib/data";
-import { formatCurrency, formatNumber } from "@/lib/format";
+import {
+  formatCurrency,
+  formatMultiplier,
+  formatNumber,
+} from "@/lib/format";
 import { formatDueDate } from "@/lib/format";
 import { PersonAvatar } from "@/components/team/person-avatar";
 import { cn } from "@/lib/utils";
@@ -51,7 +56,17 @@ export async function AdminDashboard({ user }: { user: Profile }) {
       />
 
       {/* KPIs ---------------------------------------------------------- */}
-      <div className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:gap-4">
+      {/* SEIS NÚMEROS, DUAS LINHAS, SEM ÓRFÃO.
+          -------------------------------------------------------------
+          Eram cinco em grade de quatro: o quinto caía sozinho numa
+          segunda fileira, com três vãos vazios ao lado. Seis em grade
+          de três fecha as duas fileiras — e o sexto não é enchimento, é
+          o número que faltava.
+
+          `grid-cols-2` no celular em vez de uma coluna: cinco cartões
+          empilhados davam 2,5 telas de rolagem, medido em 812px de
+          altura. Agora os seis cabem antes do gráfico. */}
+      <div className="mt-7 grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-3 lg:gap-4">
         {/* Dinheiro primeiro: é a pergunta que o dono faz ao abrir. Os
             dois vêm somados de `daily_metrics`, não de coluna guardada —
             não existe `actual_spent` neste sistema, e um total congelado
@@ -62,6 +77,32 @@ export async function AdminDashboard({ user }: { user: Profile }) {
           label="Investimento gerenciado"
           value={formatCurrency(agencia.spendCents)}
           hint="somado no mês corrente"
+        />
+        {/* FATURAMENTO E RETORNO ESTAVAM CALCULADOS E NÃO APARECIAM.
+            `getAgencySummary` já devolvia `revenueCents` — o painel
+            mostrava quanto a agência INVESTE e escondia quanto isso
+            devolve, que é a pergunta seguinte de quem olha a primeira.
+
+            ⚠️ É receita ATRIBUÍDA pelas plataformas, não faturamento
+            confirmado na loja. Medido no Atacado de Pratas em julho: as
+            plataformas reportaram R$ 220.519,86 e a loja confirmou
+            R$ 96.499,52 — 2,3x de diferença, entre atribuição dupla e
+            pedido cancelado. Por isso o rótulo diz "atribuído". */}
+        <StatCard
+          icon={TrendingUp}
+          label="Faturamento atribuído"
+          value={formatCurrency(agencia.revenueCents)}
+          hint="receita que as plataformas atribuem"
+        />
+        <StatCard
+          icon={Gauge}
+          label="Retorno"
+          value={
+            agencia.spendCents > 0
+              ? formatMultiplier(agencia.revenueCents / agencia.spendCents)
+              : "—"
+          }
+          hint="faturamento atribuído ÷ investimento"
         />
         <StatCard
           icon={Target}
@@ -80,12 +121,10 @@ export async function AdminDashboard({ user }: { user: Profile }) {
           }
           tone={agencia.atrasadas > 0 ? "alerta" : "neutro"}
         />
-        <StatCard
-          icon={Users}
-          label="Clientes ativos"
-          value={painel.activeClients}
-          hint="na carteira da agência"
-        />
+        {/* "Clientes ativos" saiu daqui. É cadastro, não decisão: o
+            número muda uma vez por mês e já aparece na barra lateral,
+            na lista de contas. Ocupava um dos seis lugares da primeira
+            tela, que agora é do retorno. */}
         <StatCard
           icon={CalendarClock}
           label="Tarefas hoje"
@@ -133,8 +172,12 @@ export async function AdminDashboard({ user }: { user: Profile }) {
         </section>
 
         <section className="surface-card p-5 lg:col-span-2">
+          {/* `min-w-0` no filho de flex, senão ele se recusa a encolher.
+              Sem isso, no celular a frase empurrava o "ver quadro" para
+              fora do cartão e o link aparecia cortado como "ver qua…" —
+              um link truncado no meio da palavra parece defeito, e é. */}
           <div className="flex items-end justify-between gap-3">
-            <div>
+            <div className="min-w-0">
               <h2 className="text-sm font-semibold">Radar da equipe</h2>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 O que vence primeiro — e quem está com cada uma.
