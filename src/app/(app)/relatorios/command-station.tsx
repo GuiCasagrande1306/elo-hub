@@ -23,6 +23,7 @@ import {
   DateRangePicker,
   type Intervalo,
 } from "@/components/ui/date-range-picker";
+import { mensagemDoCliente } from "@/lib/reports/mensagem-do-cliente";
 import { resumoDoPeriodo } from "./actions";
 
 /* =====================================================================
@@ -169,27 +170,23 @@ export function CommandStation({ clients }: { clients: ClientSummary[] }) {
       ? resultValue / spendCents
       : null;
 
+  /* O TEXTO NÃO É MONTADO AQUI — ver `lib/reports/mensagem-do-cliente`.
+     Esta tela e o envio pelo WhatsApp chamam a mesma função; enquanto
+     cada um montava o seu, a equipe conferia um texto e o cliente
+     recebia outro. */
   const mensagem = useMemo(() => {
     if (!cliente) return "";
     const { metric } = cliente;
 
-    return [
-      "Olá! Segue o resumo da campanha.",
-      "",
-      /* O período entra como CAMPO, na mesma lista dos números — não
-         embutido na saudação. Colado neles, não há como ler um sem o
-         outro; era exatamente essa separação que deixava a frase dizer
-         "7 dias" sobre o gasto de um mês. */
-      `• Período: ${periodoLabel}`,
-      `• Investimento: ${formatCurrency(spendCents)}`,
-      `• ${metric.label}: ${formatGoalValue(metric, resultValue)}`,
-      cpl ? `• ${metric.costLabel}: ${formatCurrency(Math.round(cpl))}` : null,
-      roas ? `• Retorno: ${formatMultiplier(roas)} sobre o investido` : null,
-      "",
-      "Qualquer dúvida, é só chamar por aqui.",
-    ]
-      .filter((l) => l !== null)
-      .join("\n");
+    return mensagemDoCliente({
+      periodoLabel,
+      investimento: formatCurrency(spendCents),
+      resultadoLabel: metric.label,
+      resultado: formatGoalValue(metric, resultValue),
+      custoLabel: metric.costLabel,
+      custo: cpl ? formatCurrency(Math.round(cpl)) : null,
+      retorno: roas ? formatMultiplier(roas) : null,
+    });
   }, [cliente, periodoLabel, spendCents, resultValue, cpl, roas]);
 
   async function copiar() {

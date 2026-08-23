@@ -55,8 +55,29 @@ export function LoginForm() {
     router.refresh();
   }
 
+  /* O QUE ACONTECEU COM O CONVITE, quando a pessoa chega desviada de
+     `/auth/confirm`. Sem este aviso ela vê a tela de login limpa depois
+     de clicar num link que a agência disse que funcionaria, e a
+     conclusão razoável é que o sistema está quebrado. */
+  const convite = searchParams.get("convite");
+
   return (
     <form onSubmit={handleSubmit} className="mt-8 flex flex-col gap-4">
+      {convite && (
+        <div className="rounded-lg border border-hairline bg-surface-2/60 px-3.5 py-3">
+          <p className="text-sm font-medium">
+            {convite === "expirado"
+              ? "Esse link não vale mais"
+              : "Link de convite incompleto"}
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            {convite === "expirado"
+              ? "Links de acesso são de uso único e expiram. Peça um novo à Elo Marketing — leva um minuto."
+              : "Copie o endereço inteiro da mensagem: links quebram quando o aplicativo corta o final."}
+          </p>
+        </div>
+      )}
+
       <div className="flex flex-col gap-2">
         <Label htmlFor="email">E-mail</Label>
         <Input

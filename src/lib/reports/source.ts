@@ -61,6 +61,22 @@ export interface ReportSource {
   listTemplates(): Promise<ReportTemplate[]>;
   metrics(clientId: string, start: string, end: string): Promise<MetricsWindow>;
   creatives(clientId: string, limit: number): Promise<AdCreative[]>;
+  /**
+   * A meta que cobre o período do relatório.
+   *
+   * Existe por causa da MENSAGEM, não do documento: é `results_metric`
+   * que decide se a conta chama o resultado de "Pedidos" ou de
+   * "Faturamento", e sem isso o texto enviado sairia com o rótulo
+   * genérico enquanto a tela mostra o específico.
+   *
+   * `null` quando não há meta no período — aí o segmento decide o
+   * rótulo, que é o mesmo que a tela faz.
+   */
+  goal(
+    clientId: string,
+    start: string,
+    end: string,
+  ): Promise<{ results_metric: "count" | "revenue" | null } | null>;
   /** Cliente Supabase usado para gravar em `report_history`. */
   db(): Promise<ReportWriter>;
   /** Quem fica em `generated_by`. O cron não tem ninguém: null. */
@@ -111,6 +127,18 @@ export function sessionSource(): ReportSource {
       };
     },
     creatives: (clientId, limit) => getCreatives(clientId, limit),
+    goal: async (clientId, start, end) => {
+      if (isDemoMode) {
+        const { demoGoals } = await import("@/lib/mock/data");
+        return metaQueCobre(demoGoals, clientId, start, end);
+      }
+      const supabase = await createSupabaseServerClient();
+      const { data } = await supabase
+        .from("client_goals")
+        .select("client_id, period_start, period_end, results_metric")
+        .eq("client_id", clientId);
+      return metaQueCobre(data ?? [], clientId, start, end);
+    },
     db: async () => (await createSupabaseServerClient()) as unknown as ReportWriter,
     actorId: async () => {
       const supabase = await createSupabaseServerClient();
@@ -223,9 +251,69 @@ export function systemSource(): ReportSource {
       return (data ?? []) as AdCreative[];
     },
 
+    goal: async (clientId, start, end) => {
+      if (isDemoMode) {
+        const { demoGoals } = await import("@/lib/mock/data");
+        return metaQueCobre(demoGoals, clientId, start, end);
+      }
+      const { data } = await createSupabaseAdminClient()
+        .from("client_goals")
+        .select("client_id, period_start, period_end, results_metric")
+        .eq("client_id", clientId);
+      return metaQueCobre(data ?? [], clientId, start, end);
+    },
+
     db: async () => createSupabaseAdminClient() as unknown as ReportWriter,
 
     // Ninguém disparou: o autor é o sistema.
     actorId: async () => null,
   };
+}
+
+/* ------------------------------------------------------------------ */
+
+interface LinhaDeMeta {
+  client_id: string;
+  period_start: string;
+  period_end: string;
+  results_metric: "count" | "revenue" | null;
+}
+
+/**
+ * A meta que cobre a janela do relatório — e não a vigente hoje.
+ *
+ * A diferença aparece no dia 3, gerando o fechamento do mês passado: a
+ * meta de hoje já é a do mês novo, e se a conta trocou de unidade entre
+ * os dois (contagem → faturamento) o número de agosto sairia rotulado
+ * com a unidade de setembro. Rotular o passado com a régua do presente
+ * é o mesmo defeito que a coluna `results_metric` foi criada para
+ * evitar — ver a migration 20260806000025.
+ *
+ * "Cobre" é sobreposição, não contenção: relatório de 20 a 21 de agosto
+ * está dentro da meta de agosto, e uma janela que atravessa a virada do
+ * mês pega a primeira que encostar. Sem nenhuma, devolve `null` e quem
+ * chama cai no padrão do segmento — que é o que a tela faz.
+ */
+function metaQueCobre(
+  linhas: LinhaDeMeta[],
+  clientId: string,
+  start: string,
+  end: string,
+): { results_metric: "count" | "revenue" | null } | null {
+  const daConta = linhas.filter((g) => g.client_id === clientId);
+
+  const cobre = daConta.find(
+    (g) => g.period_start <= end && g.period_end >= start,
+  );
+
+  if (cobre) return { results_metric: cobre.results_metric };
+
+  /* Sem meta no período, a mais recente ainda diz em que unidade esta
+     conta pensa. É melhor que o padrão do segmento, que chutaria
+     "Faturamento" numa pizzaria que sempre mediu pedidos. */
+  const maisRecente = daConta.sort((a, b) =>
+    b.period_start.localeCompare(a.period_start),
+  )[0];
+
+  return maisRecente ? { results_metric: maisRecente.results_metric } : null;
 }

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "motion/react";
 
-import { isNavActive, primaryNav } from "./nav-config";
+import { isNavActive, navDoMobile } from "./nav-config";
 import { cn } from "@/lib/utils";
 
 /* =====================================================================
@@ -34,13 +34,16 @@ import { cn } from "@/lib/utils";
    navegação parecerem o mesmo produto.
    ===================================================================== */
 
-export function MobileNavigation() {
+export function MobileNavigation({ role }: { role: string }) {
   const pathname = usePathname();
 
   // A barra inferior carrega apenas os destinos principais. Contas,
   // configurações e perfil continuam na gaveta do topo — cinco itens é
   // o limite antes de os rótulos começarem a truncar.
-  const items = primaryNav;
+  //
+  // Para um usuário de cliente a lista é outra: só o funil dele. Ver
+  // `navDoMobile`.
+  const items = navDoMobile(role);
 
   return (
     <nav

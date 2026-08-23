@@ -25,6 +25,14 @@ export default async function OverviewPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
+  /* CLIENTE NÃO TEM VISÃO GERAL — a dele é o próprio funil.
+     Sem este desvio, quem entra com acesso de cliente cai numa tela
+     montada para a agência: os painéis consultam carteira, esteira e
+     financeiro, e o RLS devolve vazio em tudo. O resultado não é um
+     bloqueio, é uma tela quebrada — que parece defeito do sistema e
+     não limite de acesso. */
+  if (user.role === "client") redirect("/crm");
+
   return user.role === "admin" ? (
     <AdminDashboard user={user} />
   ) : (

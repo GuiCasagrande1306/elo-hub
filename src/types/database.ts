@@ -8,7 +8,15 @@
  * projeto compile e rode antes de existir um projeto Supabase.
  */
 
-export type UserRole = "admin" | "collaborator";
+/**
+ * `client` é o papel de FORA da agência.
+ *
+ * Quem tem esse papel enxerga uma coisa só — o próprio funil, em
+ * `/crm` — e nada da carteira. A contenção não é a interface: é a RLS,
+ * provada com dois usuários reais em 22/08/2026 (migrations 54 a 59).
+ * A interface só evita oferecer porta que o banco vai fechar na cara.
+ */
+export type UserRole = "admin" | "collaborator" | "client";
 export type AccessLevel = "viewer" | "editor" | "manager";
 
 export type ClientStatus = "lead" | "onboarding" | "active" | "paused" | "churned";
@@ -133,6 +141,8 @@ export interface Profile {
   job_title: string | null;
   role: UserRole;
   is_active: boolean;
+  /** Preenchido só para `role = "client"` — a empresa daquela pessoa. */
+  client_id: string | null;
   created_at: string;
 }
 

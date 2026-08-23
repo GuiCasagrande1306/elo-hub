@@ -18,6 +18,16 @@ import {
   type VitrineDoCriativo,
 } from "@/lib/ads/creative-goal";
 import { isDemoMode } from "@/lib/env";
+import { formatCurrency, formatMultiplier, formatPeriod } from "@/lib/format";
+import {
+  formatGoalValue,
+  goalExecutedFrom,
+  goalMetricFor,
+} from "@/lib/metrics/goal-metric";
+import {
+  mensagemDoCliente,
+  type ResumoParaCliente,
+} from "./mensagem-do-cliente";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   buildPlatformDetail,
@@ -134,6 +144,19 @@ export interface ReportPayload {
   /** Texto escrito pelo time; vazio quando ainda não preenchido. */
   insights: string;
   nextSteps: string[];
+  /**
+   * Os números da mensagem que vai junto do PDF, na unidade da conta.
+   *
+   * Vive no payload — e não é recalculado na hora do envio — porque o
+   * `snapshot` é o que prova o que foi enviado: um relatório preparado
+   * hoje e despachado depois de amanhã precisa sair com o texto que a
+   * equipe conferiu, não com um remontado sobre dados que mudaram.
+   *
+   * OPCIONAL por causa dos snapshots antigos. Relatórios gravados antes
+   * de 23/08/2026 não têm este campo, e o reenvio deles cai no texto
+   * montado a partir dos KPIs — ver `buildGroupCaption`.
+   */
+  resumoParaCliente?: ResumoParaCliente;
 }
 
 /** Criativo já com os derivados calculados — o PDF não faz conta. */
@@ -207,10 +230,14 @@ export async function buildReportPayload(options: {
      galeria mostrava "os 6 que mais gastaram" segundo outra janela: os
      números errados vinham em cards errados. Buscando um conjunto maior
      dá para reordenar aqui, depois de aplicar as métricas certas. */
-  const [metrics, candidatos, metricasDoPeriodo] = await Promise.all([
+  const [metrics, candidatos, metricasDoPeriodo, metaDaConta] = await Promise.all([
     source.metrics(client.id, periodStart, periodEnd),
     source.creatives(client.id, Math.max(creativeLimit * 8, 48)),
     metricasDeCriativosNoPeriodo(client.id, periodStart, periodEnd),
+    /* A meta entra só pela MENSAGEM: é `results_metric` que decide se
+       esta conta chama o resultado de "Pedidos" ou de "Faturamento".
+       O documento não usa — ele rotula pelo template. */
+    source.goal(client.id, periodStart, periodEnd),
   ]);
 
   /* `null` = não deu para apurar (conta sem Meta, token vencido, rede).
@@ -246,6 +273,13 @@ export async function buildReportPayload(options: {
   const agency = await resolverAgencia(client.agency_partner);
 
   return {
+    resumoParaCliente: resumoDoPeriodo(
+      client,
+      metaDaConta?.results_metric,
+      periodStart,
+      periodEnd,
+      metrics.currentTotals,
+    ),
     meta: {
       generatedAt: new Date().toISOString(),
       periodStart,
@@ -303,38 +337,81 @@ export async function buildReportPayload(options: {
 }
 
 /**
- * Resumo em texto que acompanha o PDF no WhatsApp.
+ * Os números da mensagem, na unidade em que ESTA conta pensa.
  *
- * Precisa fazer sentido sozinho: muita gente lê a mensagem no celular e
- * só abre o anexo depois — ou nunca. Por isso os três números que
- * definem a conta vêm no corpo da mensagem.
+ * Repete a conta que a estação de comando faz na tela — de propósito,
+ * e com as mesmas funções (`goalExecutedFrom`, `formatGoalValue`,
+ * `formatPeriod`). O que não pode acontecer é as duas divergirem, e é
+ * por isso que nenhuma delas monta o TEXTO: as duas entregam estes
+ * campos a `mensagemDoCliente`.
  */
+function resumoDoPeriodo(
+  client: Client,
+  resultsMetric: "count" | "revenue" | null | undefined,
+  periodStart: string,
+  periodEnd: string,
+  totals: { spendCents: number; conversions: number; revenueCents: number },
+): ResumoParaCliente {
+  const metric = goalMetricFor(client.segment, resultsMetric);
+  const resultValue = goalExecutedFrom(metric, totals);
+
+  /* Custo por resultado dividido na hora, nunca guardado: assim ele não
+     tem como discordar do gasto e do resultado que aparecem ao lado. */
+  const cpl =
+    metric.costLabel && resultValue > 0 ? totals.spendCents / resultValue : null;
+
+  const roas =
+    metric.isCurrency && totals.spendCents > 0
+      ? resultValue / totals.spendCents
+      : null;
+
+  return {
+    periodoLabel: formatPeriod(periodStart, periodEnd),
+    investimento: formatCurrency(totals.spendCents),
+    resultadoLabel: metric.label,
+    resultado: formatGoalValue(metric, resultValue),
+    custoLabel: metric.costLabel,
+    custo: cpl ? formatCurrency(Math.round(cpl)) : null,
+    retorno: roas ? formatMultiplier(roas) : null,
+  };
+}
+
 /**
- * Legenda que acompanha o PDF quando o destino é um GRUPO.
+ * A legenda que vai junto do PDF no WhatsApp.
  *
- * Tom diferente do resumo formal: grupo tem a equipe do cliente junto,
- * e a mensagem precisa fazer alguém abrir o anexo. Os três números vêm
- * no corpo porque muita gente lê no celular e nunca abre o PDF — se o
- * essencial só estiver no arquivo, não foi comunicado.
+ * É A MESMA MENSAGEM QUE A TELA MOSTRA em "Texto para o cliente" —
+ * `resumoParaCliente` foi congelado no payload no momento em que o
+ * relatório nasceu, e aqui só vira texto. Ver o cabeçalho de
+ * `mensagem-do-cliente.ts` para o que havia antes e por que mudou.
+ *
+ * O CAMINHO DE BAIXO É PARA SNAPSHOT ANTIGO. Relatórios gravados antes
+ * de 23/08/2026 não têm o resumo; para eles a mensagem é remontada a
+ * partir dos KPIs, com o rótulo do template — "Pedidos", "Leads" — que
+ * é o mais perto que dá para chegar sem a meta da época.
  */
 export function buildGroupCaption(payload: ReportPayload): string {
+  if (payload.resumoParaCliente) {
+    return mensagemDoCliente(payload.resumoParaCliente);
+  }
+
   const find = (key: MetricKey) => payload.kpis.find((k) => k.key === key);
 
   const spend = find("spend");
-  const results = find("results");
   const cpa = find("cpa");
+  /* O destaque do template é o número que aquela conta olha primeiro;
+     `results` é o que sobra quando o template não define destaque. */
+  const resultado = payload.highlight ?? find("results") ?? find("revenue");
+  const roas = find("roas");
 
-  const linhas = [
-    "Fala equipe! 🚀 Segue o relatório de performance fechado.",
-    "",
-    spend && results && cpa
-      ? `Investimos *${spend.formatted}* e geramos *${results.formatted} resultados* a um custo de *${cpa.formatted}* cada.`
-      : "Os números do período estão no PDF em anexo.",
-    "",
-    "Baixe o PDF para ver os anúncios que mais performaram! 📊",
-  ];
-
-  return linhas.filter((l, i) => l !== "" || i > 0).join("\n");
+  return mensagemDoCliente({
+    periodoLabel: formatPeriod(payload.meta.periodStart, payload.meta.periodEnd),
+    investimento: spend?.formatted ?? "—",
+    resultadoLabel: resultado?.label ?? "Resultados",
+    resultado: resultado?.formatted ?? "—",
+    custoLabel: cpa && !cpa.indefinido ? cpa.label : null,
+    custo: cpa && !cpa.indefinido ? cpa.formatted : null,
+    retorno: roas && roas.value > 0 ? roas.formatted : null,
+  });
 }
 
 export function buildWhatsAppSummary(payload: ReportPayload): string {

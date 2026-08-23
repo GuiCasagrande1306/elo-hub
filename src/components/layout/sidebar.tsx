@@ -19,7 +19,7 @@ import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { initials } from "@/lib/format";
 import { ClientAvatar } from "@/components/clients/client-avatar";
-import { isNavActive, navGroups } from "./nav-config";
+import { isNavActive, navGroups, podeVerNav } from "./nav-config";
 import type { Client, Profile } from "@/types/database";
 
 interface SidebarProps {
@@ -50,15 +50,14 @@ export function Sidebar({ user, clients, onNavigate }: SidebarProps) {
     router.replace("/login");
     router.refresh();
   }
-  const isAdmin = user.role === "admin";
 
   /* "Sistema" sai do laço principal e é desenhado DEPOIS das contas —
      é a ordem do pedido, e faz sentido: configuração fica no fim, longe
      do que se usa todo dia. */
   const gruposDoTopo = navGroups.filter((g) => g.label !== "Sistema");
   const grupoSistema = navGroups.find((g) => g.label === "Sistema");
-  const itensSistema = (grupoSistema?.items ?? []).filter(
-    (item) => !item.adminOnly || isAdmin,
+  const itensSistema = (grupoSistema?.items ?? []).filter((item) =>
+    podeVerNav(item, user.role),
   );
 
   return (
@@ -106,7 +105,7 @@ export function Sidebar({ user, clients, onNavigate }: SidebarProps) {
           /* Grupo cujos itens são todos adminOnly some inteiro para
              colaborador — título órfão sobre lista vazia é pior que a
              ausência da seção. */
-          const itens = group.items.filter((i) => !i.adminOnly || isAdmin);
+          const itens = group.items.filter((i) => podeVerNav(i, user.role));
           if (itens.length === 0) return null;
 
           return (
@@ -159,8 +158,14 @@ export function Sidebar({ user, clients, onNavigate }: SidebarProps) {
 
         {/* Atalho para as contas -------------------------------------
             Colaborador só vê aqui o que o RLS já devolveu — a lista
-            chega filtrada do servidor, não é escondida no cliente. */}
-        {clients.length > 0 && (
+            chega filtrada do servidor, não é escondida no cliente.
+
+            Usuário de CLIENTE não vê o bloco. O RLS devolveria a
+            própria empresa, uma linha só, e o link levaria a
+            `/clientes/<slug>` — uma tela da agência, com contrato e
+            mensalidade. Atalho para porta fechada é pior que atalho
+            nenhum. */}
+        {user.role !== "client" && clients.length > 0 && (
           <div className="mt-7">
             <div className="flex items-center justify-between px-2.5 pb-2">
               <span className="eyebrow">Contas</span>
@@ -257,9 +262,16 @@ export function Sidebar({ user, clients, onNavigate }: SidebarProps) {
                     {user.full_name}
                   </p>
                   <p className="truncate text-2xs leading-tight text-muted-foreground">
+                    {/* "Colaborador" era o padrão para todo mundo que não
+                        fosse admin — e desde que existe acesso de cliente,
+                        isso mostrava "Colaborador" para quem é de fora da
+                        agência. Rótulo errado no canto da tela é pequeno;
+                        dizer a alguém do cliente que ele é da equipe, não. */}
                     {user.role === "admin"
                       ? "Administrador"
-                      : user.job_title || "Colaborador"}
+                      : user.role === "client"
+                        ? "Acesso do cliente"
+                        : user.job_title || "Colaborador"}
                   </p>
                 </div>
                 <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />

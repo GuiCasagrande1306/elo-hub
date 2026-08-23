@@ -15,7 +15,7 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import { navGroups } from "./nav-config";
+import { navGroups, podeVerNav } from "./nav-config";
 import { ranquear } from "@/lib/search/match";
 import { cn } from "@/lib/utils";
 import type { Client, Profile } from "@/types/database";
@@ -125,7 +125,7 @@ export function GlobalSearch({
 
   const links = useMemo(() => {
     const todos = navGroups.flatMap((g) => g.items);
-    const visiveis = todos.filter((i) => !i.adminOnly || role === "admin");
+    const visiveis = todos.filter((i) => podeVerNav(i, role));
     return ranquear(visiveis, termo, (i) => i.label);
   }, [role, termo]);
 

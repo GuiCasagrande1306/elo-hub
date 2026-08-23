@@ -76,6 +76,7 @@ export const demoProfiles: Profile[] = [
     job_title: "Head de Performance",
     role: "admin",
     is_active: true,
+    client_id: null,
     created_at: daysAgo(400),
   },
   {
@@ -86,6 +87,7 @@ export const demoProfiles: Profile[] = [
     job_title: "Gestora de Tráfego",
     role: "collaborator",
     is_active: true,
+    client_id: null,
     created_at: daysAgo(220),
   },
   {
@@ -96,6 +98,7 @@ export const demoProfiles: Profile[] = [
     job_title: "Designer",
     role: "collaborator",
     is_active: true,
+    client_id: null,
     created_at: daysAgo(180),
   },
   {
@@ -106,6 +109,7 @@ export const demoProfiles: Profile[] = [
     job_title: "Social Media",
     role: "collaborator",
     is_active: true,
+    client_id: null,
     created_at: daysAgo(90),
   },
 ];

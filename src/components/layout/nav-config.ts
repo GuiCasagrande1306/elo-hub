@@ -4,11 +4,13 @@ import {
   Handshake,
   CheckSquare,
   FileText,
+  Funnel,
+  KeyRound,
   Landmark,
   LayoutGrid,
   Repeat,
-  NotebookPen,
   MessagesSquare,
+  NotebookPen,
   Settings,
   Share2,
   TriangleAlert,
@@ -71,6 +73,23 @@ export const navGroups: NavGroup[] = [
          viraria o link que ninguém abre. */
       { href: "/comercial", label: "Comercial", icon: Handshake, matchPrefix: true },
       { href: "/clientes", label: "Clientes", icon: Users, matchPrefix: true },
+      /* O CRM do cliente vem logo depois de Clientes porque é a mesma
+         conta vista de outro ângulo: lá está o contrato, aqui está o
+         funil de vendas que ele opera. Não confundir com `/comercial`,
+         que é o funil da AGÊNCIA — dois quadros parecidos, negócios
+         diferentes.
+
+         Fora da barra do mobile pelo mesmo motivo de Conteúdo: ela já
+         carrega sete itens e o oitavo trunca o rótulo de todos. O
+         cliente que abre `/crm` no celular chega pelo link direto, não
+         pela barra da agência. */
+      {
+        href: "/crm",
+        label: "CRM do cliente",
+        icon: Funnel,
+        matchPrefix: true,
+        foraDaBarraMobile: true,
+      },
       { href: "/esteira", label: "Esteira", icon: Repeat, matchPrefix: true },
       { href: "/tarefas", label: "Tarefas", icon: CheckSquare, matchPrefix: true },
       /* Conteúdo fecha Operação, e não Análise: o brief é o que se
@@ -147,6 +166,16 @@ export const navGroups: NavGroup[] = [
         adminOnly: true,
       },
       { href: "/configuracoes/equipe", label: "Equipe", icon: Users, adminOnly: true },
+      /* Acesso de CLIENTE é lista à parte da Equipe de propósito: as
+         duas mexem em `profiles`, mas uma responde "quem da Elo faz o
+         quê" e a outra "quem de fora vê a base de quem". Juntas, um
+         clique errado troca uma coisa pela outra. */
+      {
+        href: "/configuracoes/acessos",
+        label: "Acesso dos clientes",
+        icon: KeyRound,
+        adminOnly: true,
+      },
       { href: "/configuracoes", label: "Configurações", icon: Settings, adminOnly: true },
     ],
   },
@@ -176,6 +205,39 @@ export const primaryNav: NavItem[] = navGroups
 
 export const secondaryNav: NavItem[] =
   navGroups.find((g) => g.label === "Sistema")?.items ?? [];
+
+/**
+ * O que um usuário de CLIENTE enxerga — e é só isto.
+ *
+ * A lista é de permissão, não de bloqueio: um módulo novo da agência
+ * nasce invisível para o cliente sem ninguém precisar lembrar de
+ * escondê-lo. O inverso — listar o que esconder — erra por omissão, e o
+ * erro por omissão aqui é mostrar a carteira inteira para quem é de
+ * fora.
+ *
+ * Continua sendo cosmético: quem barra o acesso é a policy no Postgres.
+ * Isto evita oferecer uma porta que o banco vai fechar na cara.
+ */
+const VISIVEL_PARA_CLIENTE = new Set(["/crm"]);
+
+export function podeVerNav(item: NavItem, role: string): boolean {
+  if (role === "client") return VISIVEL_PARA_CLIENTE.has(item.href);
+  return !item.adminOnly || role === "admin";
+}
+
+/**
+ * A barra inferior do celular, já filtrada por papel.
+ *
+ * Para o cliente ela não é `primaryNav` recortada: `/crm` fica fora da
+ * barra por espaço no lado da agência, e para quem só tem essa tela
+ * deixá-la de fora entregaria uma barra vazia.
+ */
+export function navDoMobile(role: string): NavItem[] {
+  if (role === "client") {
+    return navGroups.flatMap((g) => g.items).filter((i) => podeVerNav(i, role));
+  }
+  return primaryNav;
+}
 
 export function isNavActive(item: NavItem, pathname: string): boolean {
   if (item.href === "/") return pathname === "/";
