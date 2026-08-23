@@ -1,0 +1,639 @@
+{
+  "titulo": "Bastidores da Brazzo",
+  "destaque": "Brazzo",
+  "resumo": "O formato que já fez meio milhão de views no perfil, decodificado — e dez roteiros que usam os problemas reais de uma operação de pizza para conversar com quem come, não com quem vende.",
+  "carimbos": [
+    {
+      "rotulo": "Cliente",
+      "valor": "Brazzo Pizza Delivery"
+    },
+    {
+      "rotulo": "Formato",
+      "valor": "Reels vertical"
+    },
+    {
+      "rotulo": "Ciclo",
+      "valor": "Terça a domingo"
+    },
+    {
+      "rotulo": "Base",
+      "valor": "Cronograma 18"
+    }
+  ],
+  "blocos": [
+    {
+      "tipo": "secao",
+      "eyebrow": "01 — O que as visualizações mostram",
+      "titulo": "Três vídeos carregam o perfil inteiro. E dois deles são exatamente esse tema.",
+      "prosa": [],
+      "lede": "Com os dados de visualização, o quadro fica muito mais nítido do que só com curtidas. O perfil já teve dois vídeos de quase meio milhão de views. O conteúdo publicado em agosto está entre 814 e 4.761."
+    },
+    {
+      "tipo": "tabela",
+      "colunas": [
+        {
+          "rotulo": "Vídeo",
+          "numerica": false
+        },
+        {
+          "rotulo": "Data",
+          "numerica": false
+        },
+        {
+          "rotulo": "Views",
+          "numerica": true
+        },
+        {
+          "rotulo": "Curtidas",
+          "numerica": true
+        },
+        {
+          "rotulo": "Coment.",
+          "numerica": true
+        },
+        {
+          "rotulo": "Curt./com.",
+          "numerica": true
+        }
+      ],
+      "linhas": [
+        {
+          "celulas": [
+            "“Fomos denunciados por esgoto”",
+            "28 abr",
+            "488 mil",
+            "31.127",
+            "520",
+            "60"
+          ],
+          "destaque": true
+        },
+        {
+          "celulas": [
+            "“Quando o chefe fica olhando você trabalhar”",
+            "17 jun",
+            "444 mil",
+            "11.263",
+            "70",
+            "161"
+          ],
+          "destaque": false
+        },
+        {
+          "celulas": [
+            "“Mussarela que usamos aqui na Brazzo”",
+            "15 mai",
+            "93,9 mil",
+            "1.991",
+            "95",
+            "21"
+          ],
+          "destaque": true
+        },
+        {
+          "celulas": [
+            "Desafio do cheiro com a gerente",
+            "14 ago",
+            "2.768",
+            "122",
+            "7",
+            "17"
+          ],
+          "destaque": false
+        },
+        {
+          "celulas": [
+            "Pepperoni nos filmes americanos",
+            "11 ago",
+            "2.113",
+            "74",
+            "6",
+            "12"
+          ],
+          "destaque": false
+        },
+        {
+          "celulas": [
+            "Foodporn portuguesa",
+            "13 ago",
+            "1.220",
+            "—",
+            "—",
+            "—"
+          ],
+          "destaque": false
+        },
+        {
+          "celulas": [
+            "“Falta isso pro teu sábado ficar perfeito”",
+            "08 ago",
+            "814",
+            "—",
+            "—",
+            "—"
+          ],
+          "destaque": false
+        }
+      ]
+    },
+    {
+      "tipo": "secao",
+      "eyebrow": "01 — A leitura dos números",
+      "titulo": "O que as curtidas escondem.",
+      "prosa": [
+        "**A leitura por curtidas engana.** Olhando só curtidas, o vídeo do chefe (11.263) parece o segundo melhor da casa. Olhando conversa, ele é o pior dos três: **161 curtidas para cada comentário**, contra 21 do vídeo da mussarela. Ou seja: 444 mil pessoas riram e foram embora sem dizer nada sobre a Brazzo.",
+        "**O vídeo da mussarela é o mais subestimado do perfil.** Ele tem menos de um quinto do alcance dos outros dois, mas produziu a conversa mais densa que a conta já teve. E o assunto dele é literalmente “qual queijo entra na sua pizza” — bastidor de operação, contado pro consumidor. É a prova direta da tese.",
+        "**E existe uma queda a explicar.** Abril, maio e junho entregaram 488 mil, 93,9 mil e 444 mil. Agosto inteiro está na casa de mil. Não dá para atribuir isso ao algoritmo sem investigar — mas o que mudou no meio do caminho foi o tipo de conteúdo: a linha de bastidor e conflito deu lugar a foodporn, ranking e meme de áudio."
+      ]
+    },
+    {
+      "tipo": "secao",
+      "eyebrow": "02 — Os três arquétipos, decodificados",
+      "titulo": "Um deles alcança. Um deles qualifica. Um deles é armadilha.",
+      "prosa": []
+    },
+    {
+      "tipo": "colunas",
+      "colunas": [
+        {
+          "tom": "sim",
+          "titulo": "A · Acusação — 488 mil",
+          "itens": [
+            "**“Fomos denunciados por esgoto”.** A marca é publicamente acusada e precisa se defender na frente de todo mundo.",
+            "**Por que viaja:** conflito com resolução pendente. O espectador não consegue sair sem saber o final.",
+            "**Por que gera comentário:** ele não está opinando sobre pizza, está **tomando partido**. 520 comentários e 6,4% de curtida sobre view — a maior taxa da conta.",
+            "**Limite:** depende de um fato real. Denúncia encenada queima a marca de vez."
+          ]
+        },
+        {
+          "tom": "sim",
+          "titulo": "C · Transparência — 93,9 mil",
+          "itens": [
+            "**“Mussarela que usamos aqui”.** Os pacotes reais na bancada, marcas à mostra, sem edição.",
+            "**Por que funciona:** quase nenhuma pizzaria mostra. Virou informação rara — e informação rara é salva e enviada.",
+            "**Por que qualifica:** 21 curtidas por comentário, a conversa mais densa do perfil. Quem comenta ali é quem come pizza e quer saber o que come.",
+            "**Vantagem:** matéria-prima infinita. Cada insumo da cozinha é um episódio."
+          ]
+        },
+        {
+          "tom": "nao",
+          "titulo": "B · Humor de trabalho — 444 mil",
+          "itens": [
+            "**“Quando o chefe fica olhando você trabalhar”.** Piada de ambiente de trabalho; a pizzaria é só cenário.",
+            "**O problema:** 161 curtidas por comentário. Alcance enorme, vínculo zero.",
+            "**O problema maior:** esse alcance é nacional e indiferente. A Brazzo entrega em Balneário Camboriú.",
+            "**Uso correto:** eventual, para respiro. Nunca como estratégia — é o formato que mais infla número e menos move pedido."
+          ]
+        }
+      ]
+    },
+    {
+      "tipo": "callout",
+      "tom": "padrao",
+      "titulo": "O formato perfeito é o A com a carga do C",
+      "paragrafos": [
+        "A acusação é o **motor de alcance**. A transparência é a **carga útil**. Sozinha, a transparência fica em 90 mil; sozinha, a acusação depende de acontecer algo. Juntando as duas você tem um formato que pode ser produzido toda semana: **uma acusação real como abertura e a prova da operação como resposta**."
+      ]
+    },
+    {
+      "tipo": "secao",
+      "eyebrow": "03 — O formato",
+      "titulo": "“A Denúncia”: série semanal, matéria-prima infinita.",
+      "prosa": [],
+      "lede": "O vídeo do esgoto funcionou porque havia uma acusação real. A série resolve a dependência do acaso: a acusação passa a vir de onde ela sempre existe — comentários, avaliações do iFood e do Google, direct. A Brazzo tem 4.9 de média, o que significa que as poucas notas baixas são raras, específicas e perfeitamente utilizáveis."
+    },
+    {
+      "tipo": "formula",
+      "partes": [
+        {
+          "etapa": "0–2s · A acusação",
+          "texto": "A reclamação real na tela, lida em voz alta. Print de avaliação, comentário ou mensagem. Nome sempre coberto."
+        },
+        {
+          "etapa": "3–10s · A apuração",
+          "texto": "Levantar da cadeira e ir até a cozinha. O movimento físico é o que segura a retenção."
+        },
+        {
+          "etapa": "10–35s · A prova",
+          "texto": "O insumo, a balança, o forno, a câmara fria. Marca à mostra. Sem corte no momento decisivo."
+        },
+        {
+          "etapa": "Final · O veredito",
+          "texto": "Assumir quando o cliente tem razão, explicar quando não tem. Nunca terminar sem posição."
+        }
+      ]
+    },
+    {
+      "tipo": "roteiro",
+      "numero": "00",
+      "faixa": "piloto",
+      "formato": [
+        "Reels · 50–60s",
+        "Print + cozinha"
+      ],
+      "titulo": "A Denúncia — episódio piloto",
+      "gancho": "“Recebemos essa aqui ontem. E eu vou responder na cozinha, não aqui na frente.”",
+      "desenvolvimento": [
+        "_(lê o print em voz alta, sem edulcorar)_ “[reclamação real, nome coberto].",
+        "Então vamos lá. _(levanta, câmera acompanha até a cozinha)_ Se a acusação é essa, ela tem que aparecer aqui. [Mostrar o ponto exato da operação que a reclamação toca: a bancada, o insumo, o forno, a bag.]”",
+        "_Se o cliente tinha razão:_ “E ele tem razão. Errou aqui, foi nosso. Já falamos com ele e já mudamos [o quê].”",
+        "_Se não tinha:_ “E não é o que aconteceu. Olha aqui. [prova]. Mas eu prefiro mostrar do que discutir.”"
+      ],
+      "cta": "“Se algum dia a sua chegar errada, manda print. Vira vídeo e vira resposta.”",
+      "legenda": [
+        "Toda reclamação vira episódio 🚨",
+        "A gente prefere responder na cozinha do que na caixinha de comentário.",
+        "Manda a sua que a gente apura 👇"
+      ],
+      "direcao": "O print precisa ser legível nos primeiros 2s — é ele que segura o scroll, igual ao vídeo do esgoto. Nome, foto e @ sempre cobertos. O trajeto até a cozinha em plano único. Assumir erro quando houver erro: é o que separa a série de propaganda, e é o que gerou os 520 comentários no vídeo do esgoto."
+    },
+    {
+      "tipo": "callout",
+      "tom": "alerta",
+      "titulo": "Antes de rodar a série",
+      "paragrafos": [
+        "Alinhar com o cliente que **episódio de erro assumido vai ao ar**. Se a regra virar “só publica quando a gente está certo”, o formato perde exatamente a tensão que o fez funcionar e vira institucional. E confirmar juridicamente o óbvio: nenhum dado identificável do reclamante na tela."
+      ]
+    },
+    {
+      "tipo": "secao",
+      "eyebrow": "04 — O filtro anti-dono-de-pizzaria",
+      "titulo": "Falar de operação sem virar conteúdo pra empresário.",
+      "prosa": [],
+      "lede": "Esse é o risco real do tema. O algoritmo entrega para quem interage, e conteúdo de bastidor atrai dono de negócio com facilidade. A separação está no vocabulário e em quem é o “você” da frase."
+    },
+    {
+      "tipo": "colunas",
+      "colunas": [
+        {
+          "tom": "nao",
+          "titulo": "Nunca entra",
+          "itens": [
+            "**Palavras de gestão:** operação, processo, padronização, custo, margem, CMV, ficha técnica, equipe, fornecedor, giro.",
+            "**O “você” operador:** “se você tem uma pizzaria”, “dica pra pizzarias”, “todo dono sabe que…”.",
+            "**Números de negócio:** faturamento, ticket médio, quantos pedidos por noite, quanto custa o insumo pra loja.",
+            "**Tom de aula:** “passo 1, passo 2”, “o segredo do sucesso”, quadro branco, slide.",
+            "**Bastidor sem consequência:** mostrar a câmara fria só porque é bonito, sem dizer o que muda no prato dele."
+          ]
+        },
+        {
+          "tom": "sim",
+          "titulo": "Sempre entra",
+          "itens": [
+            "**O “você” que come:** “a sua pizza”, “quando você abre a caixa”, “no seu último pedido”.",
+            "**Vocabulário de mesa:** puxa, esfarela, encharca, estufa, esfria, gruda, queima, escorrega.",
+            "**Memória ruim compartilhada:** “já te entregaram assim?”, “quem nunca?”. Isso é o que gera comentário.",
+            "**Prova física na mão:** fita métrica, balança, dois pedaços lado a lado, cronômetro.",
+            "**Veredito portátil:** algo que ele usa no próximo pedido, mesmo que não seja na Brazzo."
+          ]
+        }
+      ]
+    },
+    {
+      "tipo": "callout",
+      "tom": "alerta",
+      "titulo": "Regra de segurança",
+      "paragrafos": [
+        "Ataque a **prática**, nunca um concorrente com nome, região ou imagem reconhecível. E só afirme sobre a Brazzo o que for verificável — cada trecho em [colchete] nos roteiros abaixo precisa ser confirmado com o cliente antes de gravar. Um dado inventado nesse tipo de conteúdo destrói exatamente a autoridade que ele constrói."
+      ]
+    },
+    {
+      "tipo": "secao",
+      "eyebrow": "05 — Os dez roteiros",
+      "titulo": "Cronograma da semana.",
+      "prosa": [],
+      "lede": "Distribuição invertida em relação ao Cronograma 18: cinco de topo, três de meio, dois de fundo. Todos são do arquétipo C — transparência com prova física — porque é o que produz conversa densa sem depender de um fato externo acontecer. A série “A Denúncia” roda por cima destes, um episódio por semana, sempre que houver reclamação real na fila."
+    },
+    {
+      "numero": "01",
+      "faixa": "topo",
+      "formato": [
+        "Reels · 40–50s",
+        "Pedro + close de borda"
+      ],
+      "titulo": "A borda “queimada” que não queimou",
+      "gancho": "“Se você olha pra essa pizza e pensa ‘queimou’, te ensinaram errado a vida inteira.”",
+      "desenvolvimento": [
+        "“Essas manchas escuras na borda têm nome: leopardagem. É o que acontece quando a massa fermentou de verdade e encontrou um forno muito quente. Massa que não fermentou não faz isso — ela sai lisa, pálida e dura.",
+        "O que virou padrão no Brasil é a borda uniforme, amarelinha. E ela é uniforme porque a massa cresceu em quarenta minutos e assou em forno morno. A nossa fermenta [X horas]. Então sim, ela mancha. E é pra manchar.”"
+      ],
+      "cta": "“Na próxima vez que sua pizza chegar com a borda malhada, repara antes de reclamar. Provavelmente é a melhor que você já comeu.”",
+      "legenda": [
+        "Não queimou. Chama leopardagem 🐆",
+        "É o que a longa fermentação faz num forno de verdade — e quase ninguém sabe disso.",
+        "Você reparava ou já ia reclamar? 👇"
+      ],
+      "direcao": "Close extremo na borda nos primeiros 2s, antes de qualquer fala. Apertar a borda na mão e mostrar ela voltando. Se der, colocar uma borda pálida ao lado para comparação. Texto na tela idêntico ao gancho falado.",
+      "tipo": "roteiro"
+    },
+    {
+      "numero": "02",
+      "faixa": "topo",
+      "formato": [
+        "Reels · 45–55s",
+        "Bag + moto + relógio"
+      ],
+      "titulo": "Por que a sua pizza chega fria",
+      "gancho": "“A sua pizza chegou fria porque ela não foi só na sua casa.”",
+      "desenvolvimento": [
+        "“Isso ninguém te conta. Quando o movimento aperta, é comum o entregador sair com três, quatro pedidos de uma vez. E a sua pode ser a última da rota. Ou seja: a sua pizza rodou vinte, vinte e cinco minutos dentro da bag passando na porta de outras pessoas antes de chegar em você.",
+        "E tem a parte pior: pra fechar essa rota, a pizza fica pronta e espera. Ela já sai murcha de casa. Aqui a gente [descrever a política real de rota da Brazzo].”"
+      ],
+      "cta": "“Pergunta pra pizzaria que você pede: a minha vai sozinha ou vai junto com mais três?”",
+      "legenda": [
+        "Pizza fria quase nunca é culpa da distância 👀",
+        "É da rota. E é a coisa que menos se fala no delivery.",
+        "Quantas vezes já aconteceu com você? 👇"
+      ],
+      "direcao": "Abrir na bag fechada com contador de minutos subindo na tela. Regravar o gancho olhando pra câmera, sem sorrir. ⚠️ Não gravar antes de confirmar a política de entrega — se a Brazzo também faz rota casada em pico, o roteiro precisa mudar de rumo (falar de tempo máximo em vez de exclusividade).",
+      "tipo": "roteiro"
+    },
+    {
+      "numero": "03",
+      "faixa": "topo",
+      "formato": [
+        "Reels · 35–45s",
+        "Teste comparativo"
+      ],
+      "titulo": "O teste do fio: queijo que puxa e queijo que racha",
+      "gancho": "“Se o queijo da sua pizza não puxa, ele tem amido. Deixa eu provar.”",
+      "desenvolvimento": [
+        "“Muçarela ralada de pacote leva antiumectante pra não empelotar dentro da embalagem. Só que é justamente isso que atrapalha o queijo a derreter direito. Ele amolece, mas não vira fio.",
+        "Trouxe os dois. [Descrever a muçarela usada na Brazzo] de um lado, ralada de pacote do outro. Mesmo forno, mesmo tempo. Agora puxa.” _(puxa os dois na câmera, sem corte)_"
+      ],
+      "cta": "“Faz esse teste na próxima pizza que chegar na sua casa. Se rachar, você já sabe o motivo.”",
+      "legenda": [
+        "Puxa ou racha? 🧀",
+        "O teste do fio entrega na hora que tipo de queijo tem na sua pizza.",
+        "Marca aqui quem sempre reclama do queijo 👇"
+      ],
+      "direcao": "Esse é a **continuação direta do vídeo de 93,9 mil views** — lá vocês mostraram quais pacotes entram; aqui vocês provam por que aqueles e não outros. Abrir citando o vídeo anterior ativa quem já viu. O puxão precisa estar em plano único, sem corte: corte aqui mata a prova. Fundo escuro para o fio aparecer. Não citar marca do queijo ruim.",
+      "tipo": "roteiro"
+    },
+    {
+      "numero": "04",
+      "faixa": "topo",
+      "formato": [
+        "Reels · 50–60s",
+        "Pedido real pelo app"
+      ],
+      "titulo": "Foto do cardápio contra a pizza que chega",
+      "gancho": "“Vou pedir uma pizza do nosso próprio cardápio e comparar com a foto. Sem editar nada.”",
+      "desenvolvimento": [
+        "“Todo mundo já pediu uma pizza que na foto era assim e chegou assim. Isso acontece porque boa parte das fotos de cardápio não é comida — é montagem: queijo cru pra parecer mais alto, cola no lugar do molho, glicerina pro brilho. Aquilo não vai pro forno e não ia pra sua casa.",
+        "A nossa foto é pizza que saiu do forno igual à sua. Então bora conferir: pedi pelo app como cliente, chegou agora, e vou abrir aqui do lado da foto.” _(abre a caixa, encosta o celular com a foto ao lado)_"
+      ],
+      "cta": "“Peça a sua e compara também. Se não bater, marca a gente que a gente resolve.”",
+      "legenda": [
+        "Foto x realidade, sem corte e sem edição 📸",
+        "Pedimos pelo app, como qualquer cliente.",
+        "Qual foi a pior “foto x realidade” que já te entregaram? 👇"
+      ],
+      "direcao": "Mostrar a tela do pedido com horário. Da abertura da caixa até o lado a lado, plano único. Esse é o roteiro de maior risco e maior retorno: só gravar se a entrega padrão realmente sustentar a comparação — testar internamente antes.",
+      "tipo": "roteiro"
+    },
+    {
+      "numero": "05",
+      "faixa": "topo",
+      "formato": [
+        "Reels · 35–45s",
+        "Bancada + latas"
+      ],
+      "titulo": "Quando a pizza tem gosto de ketchup",
+      "gancho": "“Se a sua pizza tem gosto de ketchup, o problema é esse aqui.”",
+      "desenvolvimento": [
+        "“Extrato de tomate. É barato, é grosso e é doce. Batido com água e sal, vira ‘molho’ em muito lugar — e é de onde vem aquele docinho estranho que fica no fundo da boca.",
+        "Molho de pizza é tomate, sal e manjericão. Ele é levemente ácido, não doce. Quando você sente açúcar, quase sempre é açúcar mesmo, colocado pra disfarçar tomate ruim. O nosso é [descrever o molho da Brazzo].”"
+      ],
+      "cta": "“Presta atenção no próximo pedido. Doce demais não é sabor, é disfarce.”",
+      "legenda": [
+        "Doce demais não é sabor. É disfarce 🍅",
+        "Depois desse vídeo você não desprova mais.",
+        "Você já tinha reparado nisso? 👇"
+      ],
+      "direcao": "Provar o extrato puro na colher e fazer careta — a reação é o que segura o vídeo. Cobrir rótulos de marca. Terminar provando o molho da casa, sem narração.",
+      "tipo": "roteiro"
+    },
+    {
+      "numero": "06",
+      "faixa": "meio",
+      "formato": [
+        "Reels · 35–45s",
+        "Caixa + vapor"
+      ],
+      "titulo": "A caixa que sua por dentro",
+      "gancho": "“Se a sua pizza chega mole embaixo, o problema não é a massa. É a caixa.”",
+      "desenvolvimento": [
+        "“Pizza sai do forno fervendo e solta vapor por vários minutos. Se ela vai direto pra uma caixa fechada e sem respiro, esse vapor não tem pra onde ir: ele condensa, vira água e volta pro fundo da massa. Papelão encharcado, massa borrachuda.",
+        "É por isso que aqui a gente [descrever: tempo de descanso antes de fechar / caixa com furo / grelha]. Parece detalhe bobo, mas é a diferença entre morder e crocar ou morder e dobrar.”"
+      ],
+      "cta": "“Na próxima entrega, olha a caixa antes de olhar a pizza. Ela te conta tudo.”",
+      "legenda": [
+        "A culpada é a caixa 📦",
+        "Pizza molenga tem explicação — e não é a massa.",
+        "Já abriu uma caixa encharcada? Conta aí 👇"
+      ],
+      "direcao": "Sequência da mesinha funcionou pelo mesmo motivo: objeto na mão do cliente. Filmar o vapor saindo (contraluz ajuda). Se possível, mostrar o fundo de uma caixa mal fechada com a marca de umidade.",
+      "tipo": "roteiro"
+    },
+    {
+      "numero": "07",
+      "faixa": "meio",
+      "formato": [
+        "Reels · 45–55s",
+        "Câmara fria + massa"
+      ],
+      "titulo": "Não é você que comeu demais",
+      "gancho": "“Se você fica estufado depois da pizza, não é porque você comeu demais.”",
+      "desenvolvimento": [
+        "“É a massa. Massa que fermenta em uma hora chega no seu estômago com o trabalho pela metade — e quem termina esse trabalho é você. Daí o peso, o gás e aquela sede no meio da noite.",
+        "Fermentação longa faz o contrário: o tempo quebra aquilo antes, fora de você. A nossa massa descansa [X horas em câmara fria]. É por isso que ela é leve mesmo sendo pizza — e é a única coisa da nossa receita que não dá pra apressar.”"
+      ],
+      "cta": "“Faz o teste com a nossa e repara em como você dorme.”",
+      "legenda": [
+        "Não é você. É a massa ⏳",
+        "Longa fermentação não é frescura de pizzaiolo — é o que decide como você passa a noite.",
+        "Quem já perdeu o sono por causa de uma pizza? 🙋 👇"
+      ],
+      "direcao": "Mostrar a câmara fria com as massas em bandeja e a data marcada. Evitar qualquer promessa de saúde ou digestão “garantida” — falar de leveza percebida, não de efeito médico.",
+      "tipo": "roteiro"
+    },
+    {
+      "numero": "08",
+      "faixa": "meio",
+      "formato": [
+        "Reels · 30–40s",
+        "Fita métrica"
+      ],
+      "titulo": "Grande de quem?",
+      "gancho": "“Grande de quem? Porque não existe regra nenhuma sobre isso.”",
+      "desenvolvimento": [
+        "“Cada pizzaria chama de grande o que quiser. Então eu trouxe a fita. A nossa grande tem [X] centímetros e [X] fatias.",
+        "E tem uma pegadinha de matemática aqui: pizza é área, não é linha. Uma pizza de 30 centímetros parece só um pouquinho menor que uma de 35 — mas tem quase trinta por cento menos pizza. Você paga cinco reais a menos e leva um terço a menos.”"
+      ],
+      "cta": "“Antes de comparar preço, compara centímetro. Mede a sua próxima e me conta.”",
+      "legenda": [
+        "Mede a sua 📏",
+        "“Grande” não quer dizer nada — e a conta da área engana todo mundo.",
+        "Qual o tamanho da grande da sua pizzaria favorita? 👇"
+      ],
+      "direcao": "Fita métrica esticada sobre a pizza inteira nos primeiros 2s. Conferir a conta de área com os diâmetros reais antes de gravar e ajustar o percentual falado. Não citar tamanho de concorrente nominalmente.",
+      "tipo": "roteiro"
+    },
+    {
+      "numero": "09",
+      "faixa": "fundo",
+      "formato": [
+        "Reels · 40–50s",
+        "Cronômetro + forno"
+      ],
+      "titulo": "A pizza que ficou esperando",
+      "gancho": "“A sua pizza pode ter ficado quinze minutos parada no balcão antes de sair pra sua casa.”",
+      "desenvolvimento": [
+        "“Funciona assim: a pizza fica pronta, mas o entregador ainda está na rua. Aí ela espera. E pizza parada não espera de graça — em dez minutos o queijo firma, a borda endurece e o molho encharca a massa por baixo.",
+        "Por isso aqui a pizza só entra no forno quando [descrever o gatilho real: entregador a caminho / X minutos antes]. Ela sai do forno pra bag e da bag pra sua porta.”"
+      ],
+      "cta": "“Pede a sua agora e cronometra. Link na bio.”",
+      "legenda": [
+        "Pizza parada é pizza perdida ⏱",
+        "Aqui ela vai do forno direto pra bag.",
+        "Peça a sua no link da bio 🍕"
+      ],
+      "direcao": "Cronômetro real na tela do começo ao fim. Primeiro roteiro de fundo da semana — CTA direto, mas só depois de entregar a informação. Publicar na sexta ou sábado.",
+      "tipo": "roteiro"
+    },
+    {
+      "numero": "10",
+      "faixa": "fundo",
+      "formato": [
+        "Reels · 40–50s",
+        "Balança + frigideira"
+      ],
+      "titulo": "A conta da pizza de filé",
+      "gancho": "“Por que a pizza de filé custa quase o dobro da de calabresa? Eu vou pesar as duas.”",
+      "desenvolvimento": [
+        "“Essa é a calabresa que vai numa pizza. E esse é o filé. _(pesa os dois)_ Peso parecido, preço bem diferente — e ainda tem uma coisa que ninguém conta: o filé perde cerca de um terço do peso quando encontra o fogo. A calabresa não perde quase nada.",
+        "Então pra chegar na mesma quantidade em cima da pizza, entra bem mais filé do que parece. Não é a pizzaria querendo ganhar mais em cima de você. É que filé é filé — e o nosso ainda vai com Grana Padano, que é o ingrediente mais caro da casa.”"
+      ],
+      "cta": "“Se você nunca provou a nossa de filé com padano, hoje é o dia. Link na bio.”",
+      "legenda": [
+        "A conta da pizza de filé 🥩",
+        "Pesamos antes e depois do fogo pra te mostrar de onde vem a diferença.",
+        "Vale ou não vale? 👇 Peça no link da bio."
+      ],
+      "direcao": "Aproveita a ideia do Grana Padano do Cronograma 18, mas com tensão: ali era um anúncio, aqui é uma pergunta que o cliente já se fez. Pesar de verdade na câmera, antes e depois de selar. Confirmar o percentual de perda com a cozinha.",
+      "tipo": "roteiro"
+    },
+    {
+      "tipo": "secao",
+      "eyebrow": "06 — Banco de ganchos",
+      "titulo": "Próximas semanas, mesma fórmula.",
+      "prosa": [],
+      "lede": "Todos já passados pelo filtro anti-dono. Servem para manter a linha rodando sem repetir tema por pelo menos dois meses."
+    },
+    {
+      "tipo": "banco",
+      "itens": [
+        {
+          "numero": "11",
+          "gancho": "“Você já reparou que a pizza fica melhor gelada no dia seguinte? Tem explicação.”",
+          "nota": "o amido retrograda e a gordura firma — vira outra textura"
+        },
+        {
+          "numero": "12",
+          "gancho": "“Se o recheio todo escorregou pro mesmo canto, alguém carregou sua pizza errado.”",
+          "nota": "bag inclinada, moto em pé, molho em excesso"
+        },
+        {
+          "numero": "13",
+          "gancho": "“Toda vez que você corta a pizza com faca de serra, você estraga a borda.”",
+          "nota": "demonstração com cortador de roda"
+        },
+        {
+          "numero": "14",
+          "gancho": "“Aquele óleo alaranjado que junta em cima da calabresa: é bom sinal ou ruim?”",
+          "nota": "gordura da calabresa x óleo adicionado"
+        },
+        {
+          "numero": "15",
+          "gancho": "“Por que a pizza do rodízio nunca é tão boa quanto a do delivery?”",
+          "nota": "pizza que espera na roda x pizza feita sob pedido"
+        },
+        {
+          "numero": "16",
+          "gancho": "“Se a sua pizza vem com o meio afundado, ela foi montada com pressa.”",
+          "nota": "molho demais no centro, massa não descansou"
+        },
+        {
+          "numero": "17",
+          "gancho": "“Requentar pizza no micro-ondas é o que arruína a sua sobra. Frigideira, tampa, 4 minutos.”",
+          "nota": "tutorial curto, altíssimo salvamento"
+        },
+        {
+          "numero": "18",
+          "gancho": "“Você paga por borda recheada achando que é mais pizza. É menos.”",
+          "nota": "medir a área que a borda recheada rouba do recheio"
+        },
+        {
+          "numero": "19",
+          "gancho": "“Metade das pizzas doces do Brasil usa chocolate que não é chocolate.”",
+          "nota": "cobertura fracionada x chocolate — leitura de rótulo"
+        },
+        {
+          "numero": "20",
+          "gancho": "“A pizza que você acha simples é a mais difícil de fazer.”",
+          "nota": "margherita não tem onde esconder erro"
+        },
+        {
+          "numero": "21",
+          "gancho": "“Se a massa fizer isso quando você dobra, ela não presta.”",
+          "nota": "o teste da dobra, na mão, em close"
+        },
+        {
+          "numero": "22",
+          "gancho": "“Por que ninguém consegue fazer em casa a pizza que sai daqui?”",
+          "nota": "temperatura de forno: 250 °C x forno de pizzaria"
+        }
+      ]
+    },
+    {
+      "tipo": "secao",
+      "eyebrow": "07 — Antes de gravar",
+      "titulo": "O que precisa vir do cliente.",
+      "prosa": [],
+      "lede": "Cada item preenche um [colchete] dos roteiros. Sem eles, o vídeo perde a prova — que é o que faz esse formato funcionar."
+    },
+    {
+      "tipo": "checklist",
+      "itens": [
+        "Horas de fermentação da massa e onde ela descansa (roteiros 01 e 07).",
+        "Política de rota do delivery: quantos pedidos por viagem em horário de pico (roteiro 02). **Se houver rota casada, o roteiro 02 precisa ser reescrito.**",
+        "Qual muçarela é usada e se é fatiada na casa (roteiro 03).",
+        "Composição do molho e se leva açúcar (roteiro 05).",
+        "Tratamento da caixa: tempo antes de fechar, existência de respiro (roteiro 06).",
+        "Diâmetro e número de fatias de cada tamanho do cardápio (roteiro 08).",
+        "Gatilho de produção: em que momento a pizza entra no forno em relação ao entregador (roteiro 09).",
+        "Perda de peso do filé depois de selado e custo relativo dos dois recheios (roteiro 10).",
+        "Aval do cliente para o roteiro 04 — a comparação foto x realidade precisa ser testada internamente antes de ir ao ar."
+      ]
+    },
+    {
+      "tipo": "callout",
+      "tom": "padrao",
+      "titulo": "Como medir se funcionou",
+      "paragrafos": [
+        "Curtida não serve de bússola aqui: o vídeo do chefe fez 11 mil curtidas e não moveu nada. Use **curtidas por comentário** — quanto menor, mais densa a conversa. A mussarela ficou em 21, o esgoto em 60, o humor de trabalho em 161.",
+        "Meta por roteiro: **abaixo de 40** curtidas por comentário, o tema entra em rotação e ganha desdobramento. **Acima de 100**, o vídeo alcançou gente errada — mesmo que a view esteja alta. E acompanhe à parte o indicador que realmente importa: **quantos pedidos entraram nas 24h seguintes**, cruzando com o horário de publicação."
+      ]
+    },
+    {
+      "tipo": "rodape",
+      "itens": [
+        "Elo Marketing",
+        "Brazzo Pizza Delivery",
+        "Balneário Camboriú · SC",
+        "Views, curtidas e comentários coletados em 19/08/2026, perfil público"
+      ]
+    }
+  ]
+}

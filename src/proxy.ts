@@ -61,7 +61,24 @@ export async function proxy(request: NextRequest) {
      * token HMAC de vida curta na query e responde 404 sem ele — ver
      * `lib/reports/print-token.ts`.
      */
-    pathname.startsWith("/reports/render/");
+    pathname.startsWith("/reports/render/") ||
+    /**
+     * Mesma história para o brief de conteúdo: o Chromium fotografa
+     * esta rota para gerar o PDF e chega sem sessão. Ela exige um token
+     * HMAC de vida curta na query e responde 404 sem ele — ver
+     * `lib/content/print-token.ts`.
+     */
+    pathname.startsWith("/briefs/render/") ||
+    /**
+     * O documento que o cliente abre. É público de verdade: quem tem o
+     * link entra, sem conta no sistema.
+     *
+     * "Público" para pouca coisa, ainda assim. O token tem 24 bytes
+     * aleatórios, a consulta filtra por igualdade exata no servidor
+     * (`getBriefPorToken`) e a página é `noindex` — o endereço é para
+     * uma pessoa, não para o Google.
+     */
+    pathname.startsWith("/c/");
 
   /**
    * Rotas de API nunca são redirecionadas.

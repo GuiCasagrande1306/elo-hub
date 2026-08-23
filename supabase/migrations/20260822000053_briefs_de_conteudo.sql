@@ -131,6 +131,21 @@ comment on column public.content_briefs.share_token is
 
 alter table public.content_briefs enable row level security;
 
+/* GRANT EXPLÍCITO — não é redundante com a RLS, e sem ele nada funciona.
+
+   Este projeto NÃO usa os `alter default privileges` do Supabase: toda
+   tabela concede na própria migration (ver `20260803000002_rls.sql`).
+   Sem a linha abaixo, o Postgres barra por PRIVILÉGIO antes de sequer
+   avaliar as policies, e a tela inteira responde
+   "permission denied for table content_briefs" para todo mundo — um
+   erro que não se parece nem um pouco com o que é.
+
+   `anon` fica de fora de propósito. O link público não é lido pela
+   chave anônima: `/c/[token]` consulta com a service role e filtra pelo
+   token no servidor. Conceder a `anon` abriria a tabela para qualquer
+   pessoa com a chave que vai no bundle do browser. */
+grant select, insert, update, delete on public.content_briefs to authenticated;
+
 drop policy if exists content_briefs_select on public.content_briefs;
 drop policy if exists content_briefs_insert on public.content_briefs;
 drop policy if exists content_briefs_update on public.content_briefs;

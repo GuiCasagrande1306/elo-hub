@@ -1,0 +1,725 @@
+/* =====================================================================
+   Brief de conteúdo — folha de estilo do documento
+   ---------------------------------------------------------------------
+   TUDO sob `.brief-doc`. O documento tem paleta, tipografia e escala
+   próprias, e não deve encostar no design system do painel: ele
+   aparece dentro do app, num link público sem app nenhum em volta, e
+   dentro de um PDF. Uma regra vazando daqui para fora mudaria a
+   aparência de telas que não têm nada a ver com conteúdo.
+
+   Por isso é CSS, e não Tailwind. As classes utilitárias do painel
+   herdam os tokens do painel (`bg-background`, `text-foreground`) — que
+   é exatamente o que este documento NÃO pode herdar.
+
+   TRÊS CONTEXTOS, UMA FOLHA
+     .brief-doc            dentro do painel, acompanha o tema
+     .brief-doc--papel     PDF e impressão: claro sempre, ver abaixo
+     (link público)        acompanha o tema do sistema do visitante
+   ===================================================================== */
+
+.brief-doc {
+  --brief-ground: #e9eae6;
+  --brief-surface: #f7f7f4;
+  --brief-sunk: #dfe1db;
+  --brief-ink: #161815;
+  --brief-ink-soft: #4a4e47;
+  --brief-ink-faint: #7a7f76;
+  --brief-rule: #c9ccc4;
+  --brief-rule-soft: #d9dbd3;
+  --brief-ember: #d0451a;
+  --brief-ember-ink: #a63512;
+  --brief-ember-wash: #f7e3da;
+  --brief-signal: #2f6b4f;
+  --brief-warn: #8a5b12;
+  --brief-warn-wash: #f1e7d2;
+  --brief-shadow: 0 1px 0 rgba(22, 24, 21, 0.05),
+    0 8px 24px -18px rgba(22, 24, 21, 0.5);
+
+  /* Escala fluida: o mesmo documento é lido num iPhone na cozinha da
+     pizzaria e num monitor de 27". Tamanho fixo serve bem a um dos
+     dois. */
+  --brief-step--1: clamp(0.78rem, 0.76rem + 0.1vw, 0.84rem);
+  --brief-step-0: clamp(1rem, 0.97rem + 0.16vw, 1.09rem);
+  --brief-step-1: clamp(1.2rem, 1.13rem + 0.32vw, 1.4rem);
+  --brief-step-2: clamp(1.45rem, 1.32rem + 0.6vw, 1.85rem);
+  --brief-step-3: clamp(1.9rem, 1.6rem + 1.4vw, 2.9rem);
+  --brief-step-4: clamp(2.4rem, 1.8rem + 2.9vw, 4.6rem);
+
+  background: var(--brief-ground);
+  color: var(--brief-ink);
+  font-family: var(--font-brief-serif), Georgia, "Times New Roman", serif;
+  font-size: var(--brief-step-0);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* O painel marca o escuro com `.dark` no <html> (next-themes). */
+.dark .brief-doc:not(.brief-doc--papel) {
+  --brief-ground: #131412;
+  --brief-surface: #1c1e1b;
+  --brief-sunk: #0e0f0d;
+  --brief-ink: #e9eae5;
+  --brief-ink-soft: #b0b4ac;
+  --brief-ink-faint: #82877e;
+  --brief-rule: #33362f;
+  --brief-rule-soft: #26291f;
+  --brief-ember: #ff7043;
+  --brief-ember-ink: #ff8a5e;
+  --brief-ember-wash: #2e1c13;
+  --brief-signal: #6dbd93;
+  --brief-warn: #d9ac63;
+  --brief-warn-wash: #2a2114;
+  --brief-shadow: 0 1px 0 rgba(0, 0, 0, 0.4), 0 10px 30px -20px #000;
+}
+
+/* ---------------------------------------------------------------------
+   Papel
+
+   O PDF é sempre claro, e não é preferência de gosto: o Puppeteer roda
+   com o tema que a página tiver, então um gestor com o painel no escuro
+   geraria um arquivo de fundo carvão — ilegível impresso e caro de
+   imprimir. `print-color-adjust: exact` é obrigatório: sem ele o Chrome
+   descarta os fundos e a página sai com os destaques em branco.
+   ------------------------------------------------------------------ */
+.brief-doc--papel {
+  background: #fff;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+.brief-doc *,
+.brief-doc *::before,
+.brief-doc *::after {
+  box-sizing: border-box;
+}
+
+.brief-doc .brief-page {
+  max-width: 74rem;
+  margin: 0 auto;
+  padding: clamp(1.25rem, 3vw, 3.5rem) clamp(1.1rem, 4vw, 3rem) 5rem;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(2.5rem, 5vw, 4.5rem);
+}
+
+.brief-doc h1,
+.brief-doc h2,
+.brief-doc h3 {
+  font-family: var(--font-brief-sans), "Helvetica Neue", Arial, sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.04;
+  text-wrap: balance;
+  margin: 0;
+}
+
+.brief-doc p {
+  margin: 0;
+}
+
+/* ── eyebrow ───────────────────────────────────────────────────────── */
+.brief-doc .brief-eyebrow {
+  font-family: var(--font-brief-mono), ui-monospace, Menlo, monospace;
+  font-size: var(--brief-step--1);
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--brief-ink-faint);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+/* A régua que sobra à direita do rótulo. Some no papel: numa folha A4
+   ela costuma cair no fim de uma página e parecer defeito de impressão. */
+.brief-doc .brief-eyebrow::after {
+  content: "";
+  flex: 1;
+  min-width: 2rem;
+  height: 1px;
+  background: var(--brief-rule);
+}
+
+/* ── masthead ──────────────────────────────────────────────────────── */
+.brief-doc .brief-masthead {
+  display: flex;
+  flex-direction: column;
+  gap: 1.4rem;
+  padding-bottom: clamp(1.5rem, 3vw, 2.5rem);
+  border-bottom: 2px solid var(--brief-ink);
+}
+
+.brief-doc .brief-masthead h1 {
+  font-size: var(--brief-step-4);
+  max-width: 16ch;
+}
+
+.brief-doc .brief-masthead h1 em {
+  font-style: normal;
+  color: var(--brief-ember);
+}
+
+.brief-doc .brief-standfirst {
+  font-size: var(--brief-step-1);
+  color: var(--brief-ink-soft);
+  max-width: 52ch;
+}
+
+.brief-doc .brief-stamp {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1.6rem;
+  font-family: var(--font-brief-mono), ui-monospace, Menlo, monospace;
+  font-size: var(--brief-step--1);
+  color: var(--brief-ink-faint);
+  letter-spacing: 0.04em;
+}
+
+.brief-doc .brief-stamp b {
+  color: var(--brief-ink);
+  font-weight: 600;
+}
+
+/* ── seção ─────────────────────────────────────────────────────────── */
+.brief-doc .brief-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.brief-doc .brief-section > h2 {
+  font-size: var(--brief-step-3);
+  max-width: 22ch;
+}
+
+.brief-doc .brief-lede {
+  max-width: 62ch;
+  color: var(--brief-ink-soft);
+  font-size: var(--brief-step-1);
+}
+
+.brief-doc .brief-prose {
+  max-width: 62ch;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.brief-doc .brief-prose strong {
+  font-weight: 600;
+  color: var(--brief-ink);
+}
+
+/* ── tabela ────────────────────────────────────────────────────────── */
+/* Rolagem própria: a tabela de views tem seis colunas e o corpo da
+   página não pode rolar na horizontal por causa dela. */
+.brief-doc .brief-scroller {
+  overflow-x: auto;
+}
+
+.brief-doc table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 34rem;
+  font-family: var(--font-brief-mono), ui-monospace, Menlo, monospace;
+  font-size: var(--brief-step--1);
+  font-variant-numeric: tabular-nums;
+}
+
+.brief-doc thead th {
+  text-align: left;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--brief-ink-faint);
+  padding: 0 1rem 0.6rem 0;
+  border-bottom: 1px solid var(--brief-ink);
+}
+
+.brief-doc thead th.brief-n,
+.brief-doc tbody td.brief-n {
+  text-align: right;
+  padding-right: 1.4rem;
+}
+
+.brief-doc tbody td {
+  padding: 0.7rem 1rem 0.7rem 0;
+  border-bottom: 1px solid var(--brief-rule-soft);
+  color: var(--brief-ink-soft);
+}
+
+.brief-doc tbody td.brief-n {
+  font-weight: 600;
+  color: var(--brief-ink);
+}
+
+.brief-doc tbody tr.brief-hit td {
+  color: var(--brief-ink);
+  font-weight: 600;
+  background: var(--brief-ember-wash);
+}
+
+.brief-doc tbody tr.brief-hit td:first-child {
+  box-shadow: inset 3px 0 0 var(--brief-ember);
+  padding-left: 0.9rem;
+}
+
+/* ── callout ───────────────────────────────────────────────────────── */
+.brief-doc .brief-callout {
+  background: var(--brief-surface);
+  border: 1px solid var(--brief-rule);
+  border-left: 4px solid var(--brief-ember);
+  padding: clamp(1.1rem, 2.5vw, 1.6rem);
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  box-shadow: var(--brief-shadow);
+}
+
+.brief-doc .brief-callout h3 {
+  font-size: var(--brief-step-1);
+}
+
+.brief-doc .brief-callout p {
+  max-width: 66ch;
+  color: var(--brief-ink-soft);
+}
+
+.brief-doc .brief-callout--alerta {
+  border-left-color: var(--brief-warn);
+  background: var(--brief-warn-wash);
+}
+
+.brief-doc .brief-callout--alerta p {
+  color: var(--brief-ink);
+}
+
+/* ── fórmula ───────────────────────────────────────────────────────── */
+.brief-doc .brief-formula {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 0.5rem;
+  font-family: var(--font-brief-mono), ui-monospace, Menlo, monospace;
+  font-size: var(--brief-step--1);
+}
+
+.brief-doc .brief-formula .brief-part {
+  flex: 1 1 11rem;
+  background: var(--brief-surface);
+  border: 1px solid var(--brief-rule);
+  padding: 0.85rem 0.95rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.brief-doc .brief-formula .brief-part span {
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--brief-ember);
+  font-weight: 600;
+  font-size: 0.72rem;
+}
+
+.brief-doc .brief-formula .brief-part b {
+  font-weight: 500;
+  color: var(--brief-ink);
+  line-height: 1.4;
+}
+
+.brief-doc .brief-formula .brief-plus {
+  align-self: center;
+  color: var(--brief-ink-faint);
+  font-weight: 600;
+  padding: 0 0.1rem;
+}
+
+/* ── colunas sim / não ─────────────────────────────────────────────── */
+.brief-doc .brief-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  gap: 1rem;
+}
+
+.brief-doc .brief-col {
+  background: var(--brief-surface);
+  border: 1px solid var(--brief-rule);
+  padding: clamp(1rem, 2.2vw, 1.5rem);
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.brief-doc .brief-col--nao {
+  border-top: 3px solid var(--brief-ember);
+}
+.brief-doc .brief-col--sim {
+  border-top: 3px solid var(--brief-signal);
+}
+
+.brief-doc .brief-col h3 {
+  font-size: var(--brief-step-0);
+  font-family: var(--font-brief-mono), ui-monospace, Menlo, monospace;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.brief-doc .brief-col--nao h3 {
+  color: var(--brief-ember);
+}
+.brief-doc .brief-col--sim h3 {
+  color: var(--brief-signal);
+}
+
+.brief-doc .brief-col ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.brief-doc .brief-col li {
+  position: relative;
+  padding-left: 1.7rem;
+  font-size: var(--brief-step--1);
+  line-height: 1.5;
+  color: var(--brief-ink-soft);
+}
+
+.brief-doc .brief-col li::before {
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-family: var(--font-brief-mono), monospace;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.brief-doc .brief-col--nao li::before {
+  content: "×";
+  color: var(--brief-ember);
+}
+.brief-doc .brief-col--sim li::before {
+  content: "→";
+  color: var(--brief-signal);
+}
+
+.brief-doc .brief-col li strong {
+  color: var(--brief-ink);
+  font-weight: 600;
+}
+
+/* ── roteiro ───────────────────────────────────────────────────────── */
+.brief-doc .brief-roteiros {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.brief-doc .brief-roteiro {
+  display: grid;
+  grid-template-columns: 8.5rem 1fr;
+  background: var(--brief-surface);
+  border: 1px solid var(--brief-rule);
+  box-shadow: var(--brief-shadow);
+}
+
+.brief-doc .brief-rail {
+  border-right: 1px solid var(--brief-rule);
+  background: var(--brief-sunk);
+  padding: 1.2rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  align-items: flex-start;
+}
+
+.brief-doc .brief-rail .brief-num {
+  font-family: var(--font-brief-sans), sans-serif;
+  font-weight: 800;
+  font-size: 2.6rem;
+  line-height: 0.85;
+  letter-spacing: -0.05em;
+  color: var(--brief-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.brief-doc .brief-tag {
+  font-family: var(--font-brief-mono), ui-monospace, Menlo, monospace;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 0.22rem 0.45rem;
+  border: 1px solid currentColor;
+}
+
+.brief-doc .brief-tag--piloto,
+.brief-doc .brief-tag--topo {
+  color: var(--brief-ember);
+}
+.brief-doc .brief-tag--meio {
+  color: var(--brief-warn);
+}
+.brief-doc .brief-tag--fundo {
+  color: var(--brief-signal);
+}
+
+.brief-doc .brief-rail .brief-fmt {
+  font-family: var(--font-brief-mono), ui-monospace, Menlo, monospace;
+  font-size: 0.7rem;
+  color: var(--brief-ink-faint);
+  letter-spacing: 0.04em;
+  line-height: 1.5;
+}
+
+.brief-doc .brief-rbody {
+  padding: clamp(1.1rem, 2.4vw, 1.7rem);
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+  /* Sem isto, um parágrafo longo empurra a coluna do grid e o card
+     estoura a largura da página em vez de quebrar a linha. */
+  min-width: 0;
+}
+
+.brief-doc .brief-rbody > h3 {
+  font-size: var(--brief-step-2);
+  max-width: 26ch;
+}
+
+.brief-doc .brief-blk {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.brief-doc .brief-lbl {
+  font-family: var(--font-brief-mono), ui-monospace, Menlo, monospace;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--brief-ink-faint);
+}
+
+.brief-doc .brief-blk p {
+  max-width: 64ch;
+}
+
+.brief-doc .brief-hook {
+  font-family: var(--font-brief-sans), sans-serif;
+  font-weight: 600;
+  font-size: var(--brief-step-1);
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: var(--brief-ink);
+  border-left: 3px solid var(--brief-ember);
+  padding-left: 0.85rem;
+  max-width: 40ch;
+}
+
+.brief-doc .brief-blk--legenda {
+  background: var(--brief-ground);
+  border: 1px dashed var(--brief-rule);
+  padding: 0.85rem 1rem;
+}
+
+.brief-doc .brief-blk--legenda p {
+  font-size: var(--brief-step--1);
+  color: var(--brief-ink-soft);
+}
+
+.brief-doc .brief-blk--dir {
+  border-top: 1px solid var(--brief-rule-soft);
+  padding-top: 0.9rem;
+}
+
+.brief-doc .brief-blk--dir p {
+  font-size: var(--brief-step--1);
+  color: var(--brief-ink-soft);
+  font-family: var(--font-brief-mono), ui-monospace, Menlo, monospace;
+  line-height: 1.65;
+}
+
+/* A pendência. Amarelo no claro, âmbar no escuro, e sempre com um
+   sublinhado — cor sozinha não sobrevive a um print em preto e branco
+   nem a quem não distingue o amarelo do fundo. */
+.brief-doc .brief-ph {
+  background: var(--brief-warn-wash);
+  color: var(--brief-warn);
+  font-family: var(--font-brief-mono), ui-monospace, Menlo, monospace;
+  font-size: 0.82em;
+  font-weight: 500;
+  padding: 0.05em 0.3em;
+  border-bottom: 1px solid var(--brief-warn);
+}
+
+/* ── banco de ganchos ──────────────────────────────────────────────── */
+.brief-doc .brief-bank {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--brief-rule);
+}
+
+.brief-doc .brief-bank li {
+  position: relative;
+  padding: 0.85rem 0 0.85rem 3.6rem;
+  border-bottom: 1px solid var(--brief-rule-soft);
+}
+
+.brief-doc .brief-bank li .brief-i {
+  position: absolute;
+  left: 0;
+  top: 1.05rem;
+  font-family: var(--font-brief-mono), monospace;
+  font-size: 0.72rem;
+  color: var(--brief-ink-faint);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.brief-doc .brief-bank li .brief-h {
+  display: block;
+  font-size: var(--brief-step-0);
+  line-height: 1.4;
+}
+
+.brief-doc .brief-bank li .brief-h em {
+  font-style: normal;
+  display: block;
+  font-size: var(--brief-step--1);
+  color: var(--brief-ink-faint);
+  margin-top: 0.2rem;
+  font-family: var(--font-brief-mono), monospace;
+}
+
+/* ── checklist ─────────────────────────────────────────────────────── */
+.brief-doc .brief-check {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  max-width: 62ch;
+}
+
+.brief-doc .brief-check li {
+  position: relative;
+  padding-left: 1.9rem;
+  font-size: var(--brief-step--1);
+  line-height: 1.55;
+  color: var(--brief-ink-soft);
+}
+
+.brief-doc .brief-check li::before {
+  content: "☐";
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-family: var(--font-brief-mono), monospace;
+  color: var(--brief-ember);
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+.brief-doc .brief-check li strong {
+  color: var(--brief-ink);
+  font-weight: 600;
+}
+
+/* ── rodapé ────────────────────────────────────────────────────────── */
+.brief-doc .brief-end {
+  border-top: 2px solid var(--brief-ink);
+  padding-top: 1.2rem;
+  font-family: var(--font-brief-mono), ui-monospace, Menlo, monospace;
+  font-size: var(--brief-step--1);
+  color: var(--brief-ink-faint);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.4rem;
+}
+
+/* ── celular ───────────────────────────────────────────────────────── */
+/* O trilho do roteiro deita: em 8,5rem de coluna fixa sobram 4 palavras
+   por linha no corpo, e o roteiro fica ilegível justamente no aparelho
+   em que ele é lido na hora de gravar. */
+@media (max-width: 40rem) {
+  .brief-doc .brief-roteiro {
+    grid-template-columns: 1fr;
+  }
+
+  .brief-doc .brief-rail {
+    border-right: none;
+    border-bottom: 1px solid var(--brief-rule);
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.7rem;
+    padding: 0.8rem 1rem;
+  }
+
+  .brief-doc .brief-rail .brief-num {
+    font-size: 1.7rem;
+  }
+
+  .brief-doc .brief-rail .brief-fmt {
+    margin-left: auto;
+    text-align: right;
+  }
+
+  .brief-doc .brief-bank li {
+    padding-left: 2.9rem;
+  }
+}
+
+/* ── impressão ─────────────────────────────────────────────────────── */
+@media print {
+  /* O respiro da folha vive AQUI, não nas margens do `page.pdf()` —
+     ver o comentário em `lib/content/pdf.ts`. */
+  .brief-doc .brief-page {
+    padding: 14mm 12mm;
+    gap: 2.2rem;
+    max-width: none;
+  }
+
+  /* Nada de card cortado no meio pela quebra de página: o roteiro é
+     lido como unidade, e meia direção de cena no rodapé de uma folha e
+     metade no topo da outra é o defeito clássico do PDF gerado por
+     navegador. */
+  .brief-doc .brief-roteiro,
+  .brief-doc .brief-callout,
+  .brief-doc .brief-col {
+    break-inside: avoid;
+    box-shadow: none;
+  }
+
+  .brief-doc .brief-section > h2,
+  .brief-doc .brief-eyebrow {
+    break-after: avoid;
+  }
+
+  /* A fórmula vira grade fixa e perde as setas.
+
+     Em `flex-wrap`, a última seta cai sozinha no fim de uma linha e
+     fica pendurada na margem apontando para o nada — na tela dá para
+     redimensionar a janela, no papel não. A ordem continua legível: os
+     rótulos são "0–2s", "3–10s", "10–35s", "Final". */
+  .brief-doc .brief-formula {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .brief-doc .brief-formula .brief-plus {
+    display: none;
+  }
+}

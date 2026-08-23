@@ -1,0 +1,329 @@
+{
+  "titulo": "O custo invisível da estamparia",
+  "destaque": "invisível",
+  "resumo": "As três dores que o dono de estamparia relata — entrega, padronização e suporte — transformadas em três roteiros que provam o argumento na bancada, no tom de indústria que a marca já usa.",
+  "carimbos": [
+    {
+      "rotulo": "Cliente",
+      "valor": "Leotex Química"
+    },
+    {
+      "rotulo": "Formato",
+      "valor": "Reels vertical"
+    },
+    {
+      "rotulo": "Ciclo",
+      "valor": "Segunda e sexta"
+    },
+    {
+      "rotulo": "Base",
+      "valor": "Cronograma 1"
+    }
+  ],
+  "blocos": [
+    {
+      "tipo": "secao",
+      "eyebrow": "01 — De onde sai a linha editorial",
+      "titulo": "Três dores decidem a compra de tinta. E nenhuma delas é preço.",
+      "prosa": [
+        "**O perfil ainda não foi auditado.** Diferente de outros clientes, aqui não há histórico de visualização para apontar qual formato já funcionou: o @leotexquimica publica pouco e o cronograma anterior é o primeiro registro organizado. [Coletar views, salvamentos e compartilhamentos dos últimos 30 dias antes do próximo ciclo.]",
+        "Isso muda o critério de sucesso do primeiro mês. Sem base histórica, o número a observar não é alcance — é **quantas conversas começaram no direct e no WhatsApp nas 48h seguintes a cada publicação**. Alcance sem conversa, num público de algumas milhares de estamparias no país inteiro, não significa nada.",
+        "A proporção sugerida é **dois de custo invisível para um de padronização e um de parceria**, a cada quatro publicações. O erro a evitar é queimar o pilar de parceria toda semana: repetido, ele deixa de ser argumento e vira propaganda."
+      ],
+      "lede": "As dores abaixo vieram do próprio cliente: entrega demorada, produto de qualidade e atendimento personalizado. Cada uma vira um pilar, e cada pilar exige uma prova física na tela — não um argumento de venda."
+    },
+    {
+      "tipo": "tabela",
+      "colunas": [
+        {
+          "rotulo": "Pilar",
+          "numerica": false
+        },
+        {
+          "rotulo": "A dor que responde",
+          "numerica": false
+        },
+        {
+          "rotulo": "A prova que o vídeo precisa mostrar",
+          "numerica": false
+        },
+        {
+          "rotulo": "Peso no mês",
+          "numerica": true
+        }
+      ],
+      "linhas": [
+        {
+          "celulas": [
+            "Custo invisível",
+            "Produto de qualidade, retrabalho",
+            "Peça na mão, passadas contadas, duas amostras lado a lado",
+            "2 de 4"
+          ],
+          "destaque": true
+        },
+        {
+          "celulas": [
+            "Padronização",
+            "Resultado diferente entre lotes",
+            "Dois lotes, etiqueta de identificação, bancada de controle",
+            "1 de 4"
+          ],
+          "destaque": true
+        },
+        {
+          "celulas": [
+            "Parceria e prazo",
+            "Entrega demorada, atendimento",
+            "Entrega própria, polo têxtil, equipe técnica atendendo",
+            "1 de 4"
+          ],
+          "destaque": false
+        }
+      ]
+    },
+    {
+      "tipo": "secao",
+      "eyebrow": "02 — O filtro editorial",
+      "titulo": "Falar de produção sem virar catálogo.",
+      "prosa": [],
+      "lede": "O risco aqui é o inverso do de um cliente de consumo. O público É o dono da estamparia, então não há por que traduzir nada — o perigo é o vídeo virar anúncio de produto, que é o formato que esse público mais ignora."
+    },
+    {
+      "tipo": "colunas",
+      "colunas": [
+        {
+          "tom": "nao",
+          "titulo": "Nunca entra",
+          "itens": [
+            "**Gíria, meme e trend de áudio.** A Leotex fala como indústria. O tom é o de quem responde uma dúvida técnica, não o de quem disputa atenção.",
+            "**Urgência artificial:** “últimas unidades”, “corre que acaba”, contagem regressiva. Compra de insumo é decisão de reposição, não de impulso.",
+            "**Concorrente identificável:** nome, embalagem, rótulo ou região. Ataque a prática, nunca a empresa.",
+            "**Afirmação sem prova:** “a melhor tinta do mercado”, “rende o dobro”. Qualquer superlativo precisa de um ensaio por trás — e se houver ensaio, é ele que vai ao ar.",
+            "**Vídeo que só mostra o produto.** Balde girando na bancada com música não responde nenhuma das três dores."
+          ]
+        },
+        {
+          "tom": "sim",
+          "titulo": "Sempre entra",
+          "itens": [
+            "**O “você” de quem produz:** “a sua tiragem”, “quando a peça sai da prensa”, “no seu último lote”.",
+            "**Vocabulário de bancada:** passada, cobertura, viscosidade, cura, toque, malha, tela, migração, retrabalho.",
+            "**Prova física na mão:** duas peças lado a lado, a etiqueta do lote, o cronômetro da prensa, a peça depois da lavagem.",
+            "**O custo dito em processo, não em reais:** passada a mais, máquina parada, peça que volta. É assim que o dono de estamparia calcula.",
+            "**Convite à conversa técnica.** O CTA é sempre falar com a equipe — pedir ficha técnica, amostra ou orientação de aplicação. Nunca compra direta."
+          ]
+        }
+      ]
+    },
+    {
+      "tipo": "secao",
+      "eyebrow": "03 — A fórmula",
+      "titulo": "Quatro tempos, sempre nesta ordem.",
+      "prosa": [],
+      "lede": "A mesma estrutura dos três roteiros abaixo. O que muda é a prova; a ordem não muda, porque é ela que segura quem assiste até o convite."
+    },
+    {
+      "tipo": "formula",
+      "partes": [
+        {
+          "etapa": "0–3s · A dor",
+          "texto": "Uma frase que descreve um prejuízo que ele já teve. Nunca começar pela marca nem pelo produto."
+        },
+        {
+          "etapa": "3–12s · A causa",
+          "texto": "Explicar o mecanismo. É a parte educativa, e é o que sustenta a autoridade."
+        },
+        {
+          "etapa": "12–35s · A prova",
+          "texto": "O objeto na mão: a peça, o lote, a bancada. Sem corte no momento em que a diferença aparece."
+        },
+        {
+          "etapa": "Final · O convite",
+          "texto": "Uma conversa concreta — ficha técnica, amostra, orientação. Nunca “compre agora”."
+        }
+      ]
+    },
+    {
+      "tipo": "secao",
+      "eyebrow": "04 — Os três roteiros",
+      "titulo": "Cronograma das próximas semanas.",
+      "prosa": [],
+      "lede": "Em ordem de funil, não na ordem em que os ganchos foram apresentados: o custo invisível abre porque alcança qualquer estamparia; a padronização qualifica quem já tem o problema; a produção parada fecha, porque é o argumento de quem está insatisfeito com o fornecedor atual. Publicação segunda e sexta, seguindo o ciclo que já existe."
+    },
+    {
+      "numero": "01",
+      "faixa": "topo",
+      "formato": [
+        "Reels · 45–55s",
+        "Nicolas + duas peças"
+      ],
+      "titulo": "O produto mais barato da sua estamparia",
+      "gancho": "“O produto mais barato da sua estamparia costuma ser o mais caro. E esse custo não aparece na nota fiscal.”",
+      "desenvolvimento": [
+        "“Quando a comparação é só o preço do balde, a conta fica incompleta. O que define o custo real de uma tinta é quantas passadas ela exige para cobrir, quanto tempo a peça ocupa a máquina e quantas peças voltam para retrabalho.",
+        "Uma tinta de baixa cobertura pode exigir uma passada a mais em cada peça. _(mostra as duas peças lado a lado)_ Aqui está a mesma arte, na mesma malha: esta precisou de [X] passadas, esta precisou de [Y]. Multiplique essa diferença pela sua tiragem do mês e o desconto do balde desaparece — junto com a produtividade da equipe.",
+        "Por isso, na Leotex, a recomendação nunca começa pelo preço. Ela começa pelo tipo de malha, pela cor do tecido e pelo acabamento que a peça precisa ter. [Descrever como a recomendação técnica acontece na prática: quem atende, por qual canal, se há teste antes.]”"
+      ],
+      "cta": "“Se quiser fazer essa conta com a sua tiragem, fale com a nossa equipe técnica. Nós ajudamos a comparar.”",
+      "legenda": [
+        "O custo de uma tinta não está apenas no preço do balde.",
+        "Passadas a mais, máquina ocupada por mais tempo e retrabalho também entram na conta — e costumam pesar mais do que a diferença que motivou a escolha.",
+        "📲 Fale com a nossa equipe técnica e avalie o custo real da sua produção."
+      ],
+      "direcao": "Abrir com close na peça de cobertura falha, antes de qualquer fala — é a imagem que segura os 3 primeiros segundos. Contar as passadas na câmera, sem corte entre elas. As duas peças precisam ser da mesma malha e da mesma arte, senão a comparação não prova nada. ⚠️ Nenhum rótulo de concorrente visível. Confirmar com o cliente se pode usar peça produzida por estamparia parceira; se não, produzir as duas amostras internamente.",
+      "tipo": "roteiro"
+    },
+    {
+      "numero": "02",
+      "faixa": "meio",
+      "formato": [
+        "Reels · 45–55s",
+        "Dois lotes + bancada"
+      ],
+      "titulo": "Mesmo produto, lote diferente",
+      "gancho": "“Se o mesmo produto entrega um resultado diferente a cada lote, o problema não está na sua máquina.”",
+      "desenvolvimento": [
+        "“Variação entre lotes é um dos problemas mais silenciosos da estamparia, porque ele não aparece de uma vez. A tela é a mesma, o operador é o mesmo, a prensa está na mesma temperatura — e a peça sai diferente.",
+        "Quando todas as variáveis do seu processo estão iguais, a variável que sobrou é a tinta. Diferença de viscosidade, de pigmentação ou de teor de sólidos entre um lote e outro muda a cobertura e o toque da estampa. E o retrabalho que vem disso raramente é contabilizado como custo de matéria-prima.",
+        "Na Leotex, todo lote passa por testes de qualidade e padronização antes de sair. _(mostra a bancada e a identificação do lote)_ [Descrever quais ensaios são feitos e o que fica registrado em cada lote.] É isso que permite que a produção do mês que vem se comporte como a deste mês.”"
+      ],
+      "cta": "“Se você já passou por isso, peça a ficha técnica do produto que utiliza hoje. Nossa equipe pode ajudar a interpretar os parâmetros.”",
+      "legenda": [
+        "Quando o processo não muda e o resultado muda, a variável é a matéria-prima.",
+        "Padronização entre lotes não é detalhe técnico: é o que permite planejar uma produção sem refazer peça.",
+        "📲 Fale com a nossa equipe e conheça o controle de qualidade da Leotex."
+      ],
+      "direcao": "Dois lotes identificados lado a lado, com as etiquetas legíveis. A diferença precisa ser visível na tela — se não for, o roteiro não se sustenta e o tema deve ser gravado com amostra propositalmente fora de padrão, identificada como exemplo. ⚠️ Só afirmar ensaio que existe de fato: se o registro por lote não for formalizado hoje, reescrever o trecho para descrever o que é realmente feito.",
+      "tipo": "roteiro"
+    },
+    {
+      "numero": "03",
+      "faixa": "fundo",
+      "formato": [
+        "Reels · 40–50s",
+        "Máquina parada + entrega"
+      ],
+      "titulo": "A produção que parou esperando material",
+      "gancho": "“A sua produção parou hoje. E não foi por falta de pedido.”",
+      "desenvolvimento": [
+        "“‘O material ainda não chegou.’ ‘O caminhão atrasou.’ ‘Vai ter que esperar mais um pouco.’ Toda estamparia já ouviu essas frases. E o custo delas não é do fornecedor: é seu.",
+        "Máquina parada, equipe esperando, prazo apertando — e, no fim da linha, um cliente que não vai querer saber de quem foi a responsabilidade. Na estamparia, atraso nunca é apenas atraso. Ele reorganiza a semana inteira da produção.",
+        "A Leotex está localizada no coração do polo têxtil e trabalha com entrega própria, em muitos casos no mesmo dia. [Confirmar a área de cobertura da entrega própria e o prazo médio praticado por região.] Cumprir o prazo, para nós, não é um diferencial. É um compromisso.”"
+      ],
+      "cta": "“Se a sua produção não pode parar, fale com a nossa equipe e conheça as condições de entrega para a sua região.”",
+      "legenda": [
+        "No mercado têxtil, cumprir prazo não é um detalhe. É parte do processo.",
+        "Quando o material atrasa, toda a produção sente o impacto — e o prejuízo raramente fica registrado em algum relatório.",
+        "📲 Fale com a nossa equipe e conheça as condições de entrega da Leotex."
+      ],
+      "direcao": "Abrir com a máquina parada e o som ambiente sumindo — o silêncio é o gancho. As três frases do início entram como texto na tela, uma por vez, na voz do Nicolas. Fechar mostrando a entrega própria saindo. ⚠️ Não prometer “mesmo dia” de forma genérica: o roteiro precisa refletir o prazo que a Leotex cumpre em toda a área que o vídeo alcança, ou a promessa vira reclamação.",
+      "tipo": "roteiro"
+    },
+    {
+      "tipo": "secao",
+      "eyebrow": "05 — Banco de ganchos",
+      "titulo": "Próximas semanas, mesma fórmula.",
+      "prosa": [],
+      "lede": "Todos passam pelo filtro da seção 02 e cobrem os pilares que ainda não foram ao ar — linha completa, efeitos especiais e aplicação correta. Suficiente para manter o ciclo de segunda e sexta rodando por dois meses sem repetir tema."
+    },
+    {
+      "tipo": "banco",
+      "itens": [
+        {
+          "numero": "04",
+          "gancho": "“Um bom branco decide o resultado inteiro da estampa.”",
+          "nota": "Branco Super: cobertura e número de passadas"
+        },
+        {
+          "numero": "05",
+          "gancho": "“Tecido escuro não perdoa tinta errada.”",
+          "nota": "pigmentação e cobertura em malha escura"
+        },
+        {
+          "numero": "06",
+          "gancho": "“Foil, glitter, esferas e flocados: cada efeito pede um preparo diferente.”",
+          "nota": "linha de diferenciados"
+        },
+        {
+          "numero": "07",
+          "gancho": "“Quantos fornecedores você precisa acionar para fechar uma única produção?”",
+          "nota": "linha completa em um só lugar"
+        },
+        {
+          "numero": "08",
+          "gancho": "“A tinta não estragou. Ela foi armazenada errada.”",
+          "nota": "temperatura, vedação e vida útil"
+        },
+        {
+          "numero": "09",
+          "gancho": "“Se a estampa racha na primeira lavagem, o problema pode não ser a tinta.”",
+          "nota": "tempo e temperatura de cura"
+        },
+        {
+          "numero": "10",
+          "gancho": "“A malha muda a tinta que você deveria estar usando.”",
+          "nota": "algodão, poliéster e mescla — migração de corante"
+        },
+        {
+          "numero": "11",
+          "gancho": "“Tela, emulsão e abertura de malha decidem a cobertura antes de a tinta entrar.”",
+          "nota": "preparo que antecede o produto"
+        },
+        {
+          "numero": "12",
+          "gancho": "“Testar uma amostra antes de trocar de fornecedor não é perder tempo.”",
+          "nota": "teste antes da troca, padronização de processo"
+        }
+      ]
+    },
+    {
+      "tipo": "secao",
+      "eyebrow": "06 — Antes de gravar",
+      "titulo": "O que precisa vir do cliente.",
+      "prosa": [],
+      "lede": "Cada item preenche um [colchete] dos roteiros. Sem eles o vídeo perde a prova — e, num conteúdo técnico dirigido a quem entende do assunto, prova ausente é autoridade perdida."
+    },
+    {
+      "tipo": "checklist",
+      "itens": [
+        "Número de passadas de uma tinta de alta cobertura contra uma de baixa, na mesma malha e na mesma arte (roteiro 01).",
+        "Como a recomendação técnica acontece na prática: quem atende, por qual canal, se há teste antes da compra (roteiro 01).",
+        "Quais ensaios cada lote passa e o que fica registrado por lote (roteiro 02). **Se o registro não for formalizado hoje, o roteiro 02 precisa ser reescrito para descrever o que é realmente feito.**",
+        "Área de cobertura da entrega própria e prazo médio praticado por região (roteiro 03).",
+        "Ficha técnica do Branco Super: cobertura, passadas recomendadas e parâmetros de cura (banco, gancho 04).",
+        "Autorização para mostrar peça produzida por estamparia parceira — ou decisão de produzir as amostras internamente.",
+        "**Fotos e vídeo profissional do Nicolas.** A pendência já estava registrada no cronograma anterior e trava os três roteiros.",
+        "Imagens reais de aplicação: bancada, prensa, peça pronta em tecido claro e em tecido escuro.",
+        "Definir o canal do CTA — WhatsApp da equipe técnica ou direct do perfil. **Não há site**, então o convite precisa levar a um destino que alguém responda."
+      ]
+    },
+    {
+      "tipo": "callout",
+      "tom": "alerta",
+      "titulo": "O tom não é negociável",
+      "paragrafos": [
+        "A Leotex fala como indústria: formal, educativa, sem gíria e sem urgência artificial. Nenhum concorrente citado por nome, embalagem ou região — **ataque a prática, nunca a empresa**.",
+        "E nenhum número vai ao ar sem confirmação. Cada [colchete] precisa voltar preenchido pelo cliente antes da gravação: num conteúdo dirigido a quem produz todo dia, um dado errado é percebido na hora e custa exatamente a autoridade que o vídeo existe para construir."
+      ]
+    },
+    {
+      "tipo": "callout",
+      "tom": "padrao",
+      "titulo": "Como medir sem base histórica",
+      "paragrafos": [
+        "Enquanto a auditoria do perfil não for feita, **alcance não serve de bússola**. O público total de donos de estamparia é pequeno e disperso pelo país: um vídeo com muita visualização provavelmente alcançou gente errada.",
+        "O indicador do primeiro mês é **quantas conversas começaram no direct e no WhatsApp nas 48h seguintes a cada publicação**, anotadas por roteiro. Em segundo lugar, **salvamentos e compartilhamentos** — conteúdo técnico útil é guardado para consultar depois, e é esse gesto que separa autoridade de entretenimento."
+      ]
+    },
+    {
+      "tipo": "rodape",
+      "itens": [
+        "Elo Marketing",
+        "Leotex Química",
+        "@leotexquimica",
+        "Dores levantadas com o cliente · auditoria do perfil pendente"
+      ]
+    }
+  ]
+}

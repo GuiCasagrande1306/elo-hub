@@ -690,3 +690,44 @@ export interface SocialPostWithRelations extends SocialPost {
   approver?: Pick<Profile, "id" | "full_name"> | null;
   comment_count?: number;
 }
+
+/* ---------------------------------------------------------------------
+   Briefs de conteúdo
+   ------------------------------------------------------------------ */
+
+export type ContentBriefStatus =
+  | "rascunho"
+  | "revisao"
+  | "aprovado"
+  | "arquivado";
+
+/**
+ * Documento de linha editorial de um cliente.
+ *
+ * `blocos` e `carimbos` chegam do Postgres como `jsonb` — `unknown` aqui
+ * é honesto, não preguiça. Quem lê passa por `lerBlocos`/`lerCarimbos`
+ * (`lib/content/blocks.ts`), que validam e descartam o inválido. Tipar
+ * como `Bloco[]` daria ao chamador uma garantia que o banco não dá:
+ * jsonb aceita qualquer coisa que o `check` de array não pegue.
+ */
+export interface ContentBrief {
+  id: string;
+  client_id: string;
+  titulo: string;
+  destaque: string | null;
+  resumo: string;
+  carimbos: unknown;
+  blocos: unknown;
+  status: ContentBriefStatus;
+  /** `null` = link público nunca gerado ou já revogado. */
+  share_token: string | null;
+  shared_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ContentBriefWithRelations extends ContentBrief {
+  client?: Pick<Client, "id" | "name" | "brand_primary" | "logo_url"> | null;
+  author?: Pick<Profile, "id" | "full_name" | "avatar_url"> | null;
+}

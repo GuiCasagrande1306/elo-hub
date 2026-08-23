@@ -7,6 +7,7 @@ import {
   Landmark,
   LayoutGrid,
   Repeat,
+  NotebookPen,
   MessagesSquare,
   Settings,
   Share2,
@@ -29,6 +30,12 @@ export interface NavItem {
   adminOnly?: boolean;
   /** Também fica ativo em subrotas (/clientes/verdi). */
   matchPrefix?: boolean;
+  /**
+   * Fica de fora da barra inferior do mobile, mesmo pertencendo a um
+   * grupo que entra nela. Existe porque a barra é o recurso mais
+   * escasso da interface — ver `FORA_DA_BARRA_MOBILE`.
+   */
+  foraDaBarraMobile?: boolean;
 }
 
 export interface NavGroup {
@@ -66,6 +73,25 @@ export const navGroups: NavGroup[] = [
       { href: "/clientes", label: "Clientes", icon: Users, matchPrefix: true },
       { href: "/esteira", label: "Esteira", icon: Repeat, matchPrefix: true },
       { href: "/tarefas", label: "Tarefas", icon: CheckSquare, matchPrefix: true },
+      /* Conteúdo fecha Operação, e não Análise: o brief é o que se
+         combina com o cliente antes de gravar, não o que se olha
+         depois. Fica ao lado de Mídias sociais no fluxo real —
+         primeiro o documento define a linha, depois o calendário
+         agenda a peça. */
+      {
+        href: "/conteudo",
+        label: "Conteúdo",
+        icon: NotebookPen,
+        matchPrefix: true,
+        /* Fora da barra do mobile pelo motivo descrito em
+           `FORA_DA_BARRA_MOBILE`: ela já carrega sete itens e o oitavo
+           trunca o rótulo de todos. Custa uma tela boa de celular — o
+           roteiro é lido no aparelho, na hora de gravar — mas o custo
+           de truncar recai sobre os sete destinos do dia a dia. Chega-se
+           por ⌘K, pelo menu lateral, ou pelo link que já está no grupo
+           de WhatsApp da gravação. */
+        foraDaBarraMobile: true,
+      },
     ],
   },
   {
@@ -145,7 +171,8 @@ const FORA_DA_BARRA_MOBILE = new Set(["Sistema", "Apps parceiros"]);
 
 export const primaryNav: NavItem[] = navGroups
   .filter((g) => !FORA_DA_BARRA_MOBILE.has(g.label ?? ""))
-  .flatMap((g) => g.items);
+  .flatMap((g) => g.items)
+  .filter((item) => !item.foraDaBarraMobile);
 
 export const secondaryNav: NavItem[] =
   navGroups.find((g) => g.label === "Sistema")?.items ?? [];
