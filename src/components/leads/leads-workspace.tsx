@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { KeyRound, Plus, Workflow } from "lucide-react";
+import { KeyRound, MessageCircle, Plus, Workflow } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,11 @@ import {
 } from "@/components/clients/client-search-picker";
 import { garantirFunil } from "@/app/(app)/crm/actions";
 import { formatCurrency } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import type { LeadDeal, LeadPipeline, LeadStage } from "@/lib/crm/types";
+import type { ConversaDaLista, MensagemDaThread } from "@/lib/crm/conversas";
+import { Inbox } from "./inbox";
+import { WhatsAppDoCliente } from "./whatsapp-do-cliente";
 import { LeadBoard } from "./lead-board";
 import { LeadSheet } from "./lead-sheet";
 import { NewLeadDialog } from "./new-lead-dialog";
@@ -46,6 +50,11 @@ interface Props {
   stages: LeadStage[];
   deals: LeadDeal[];
   equipe: { id: string; full_name: string }[];
+  /** "funil" ou "conversas" — vem da URL, para o link ser compartilhável. */
+  aba: "funil" | "conversas";
+  conversas: ConversaDaLista[];
+  conversaAberta: ConversaDaLista | null;
+  thread: MensagemDaThread[];
 }
 
 export function LeadsWorkspace({
@@ -57,6 +66,10 @@ export function LeadsWorkspace({
   stages,
   deals,
   equipe,
+  aba,
+  conversas,
+  conversaAberta,
+  thread,
 }: Props) {
   const router = useRouter();
   const [aberto, setAberto] = useState<LeadDeal | null>(null);
@@ -207,6 +220,44 @@ export function LeadsWorkspace({
         </div>
       </div>
 
+      {/* O WHATSAPP VEM ANTES DOS NÚMEROS quando ainda não está ligado:
+          um funil sem canal de entrada é uma planilha, e a conexão é o
+          que faz o lead chegar sozinho. Depois de conectado, ele se
+          recolhe a uma linha — ver `WhatsAppDoCliente`. */}
+      {escolhido && (
+        <WhatsAppDoCliente
+          /* `key` no cliente: trocar de conta pelo seletor precisa
+             refazer a consulta de estado, e sem a chave o componente
+             manteria o estado da conta anterior. */
+          key={clientId}
+          clientId={clientId}
+          clientName={escolhido.name}
+          brandPrimary={escolhido.brand_primary}
+        />
+      )}
+
+      {/* DUAS ABAS, e a aba mora na URL. O funil e a caixa de entrada
+          são a mesma conta vista de dois ângulos — o que já aconteceu e
+          o que está acontecendo. Separá-las em rotas daria dois itens de
+          menu para a mesma coisa; juntá-las numa tela só daria uma
+          página que rola para sempre. */}
+      <Abas
+        atual={aba}
+        clientId={clientId}
+        ehCliente={ehCliente}
+        naoLidas={conversas.reduce((soma, c) => soma + c.nao_lidas, 0)}
+      />
+
+      {aba === "conversas" ? (
+        <Inbox
+          clientId={clientId}
+          conversas={conversas}
+          aberta={conversaAberta}
+          thread={thread}
+          ehCliente={ehCliente}
+        />
+      ) : (
+        <>
       {/* QUATRO NÚMEROS, e a ordem é a da pergunta do dono: quanto tem
           na mesa, quanto já entrou, e de cada dez que fecharam, quantas
           foram minhas. */}
@@ -243,7 +294,12 @@ export function LeadsWorkspace({
         onAbrir={setAberto}
         onNovo={setNovoEm}
       />
+        </>
+      )}
 
+      {/* Ficha e diálogo ficam FORA do ramo das abas: o lead aberto
+          continua aberto se alguém trocar de aba, e o React não
+          desmonta o formulário meio preenchido. */}
       <LeadSheet
         /* A ficha lê do quadro recarregado, não da cópia que estava no
            card quando ele foi clicado: sem isto, editar o valor e mover
@@ -267,6 +323,73 @@ export function LeadsWorkspace({
 }
 
 /* ------------------------------------------------------------------ */
+
+/**
+ * Funil | Conversas.
+ *
+ * LINKS, não botões com estado: a aba escolhida vira endereço, e o
+ * endereço é o que se manda no grupo da equipe ("olha essa conversa
+ * aqui"). Botão com `useState` perderia isso e ainda voltaria ao funil
+ * a cada `router.refresh()` do Realtime.
+ */
+function Abas({
+  atual,
+  clientId,
+  ehCliente,
+  naoLidas,
+}: {
+  atual: "funil" | "conversas";
+  clientId: string;
+  ehCliente: boolean;
+  naoLidas: number;
+}) {
+  const href = (aba: "funil" | "conversas") => {
+    const p = new URLSearchParams();
+    if (!ehCliente) p.set("cliente", clientId);
+    p.set("aba", aba);
+    return `/crm?${p.toString()}`;
+  };
+
+  const abas = [
+    { id: "funil" as const, rotulo: "Funil", icone: Workflow, contador: 0 },
+    {
+      id: "conversas" as const,
+      rotulo: "Conversas",
+      icone: MessageCircle,
+      contador: naoLidas,
+    },
+  ];
+
+  return (
+    <div className="flex items-center gap-1 border-b border-hairline">
+      {abas.map((a) => {
+        const ativa = a.id === atual;
+
+        return (
+          <Link
+            key={a.id}
+            href={href(a.id)}
+            aria-current={ativa ? "page" : undefined}
+            className={cn(
+              "-mb-px flex items-center gap-1.5 border-b-2 px-3 py-2 text-xs transition-colors",
+              ativa
+                ? "border-signal font-medium text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <a.icone className="size-3.5" />
+            {a.rotulo}
+            {a.contador > 0 && (
+              <span className="rounded-full bg-signal px-1.5 text-[10px] font-semibold tabular-nums text-signal-foreground">
+                {a.contador}
+              </span>
+            )}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
 
 function Numero({
   rotulo,

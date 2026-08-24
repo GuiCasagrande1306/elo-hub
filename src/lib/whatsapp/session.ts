@@ -191,9 +191,64 @@ export async function startPairing(userId: string): Promise<PairingResult> {
   return parearInstancia(instanceNameFor(userId));
 }
 
+/**
+ * Aponta o webhook da instância para a nossa porta de entrada.
+ *
+ * SÓ PARA INSTÂNCIA DE CLIENTE. A pessoal (`user-…`) existe para
+ * enviar; o que chega nela é conversa particular de alguém da equipe, e
+ * escutá-la seria gravar a caixa de entrada de um funcionário.
+ *
+ * Chamado a CADA pareamento, não só na criação. É idempotente do lado
+ * da Evolution (`webhook/set` sobrescreve) e conserta sozinho o caso em
+ * que a instância nasceu antes desta função existir — que é o caso de
+ * toda instância pareada até 23/08/2026.
+ *
+ * Falha aqui não impede o pareamento: devolve `false` e quem chama
+ * decide. Um número conectado sem webhook ainda envia; o que ele não
+ * faz é receber, e isso a tela precisa poder dizer.
+ */
+export async function configurarWebhook(nome: string): Promise<boolean> {
+  if (!nome.startsWith("cliente-")) return false;
+
+  const segredo = serverEnv.evolutionWebhookSecret;
+  const base = serverEnv.appUrl.replace(/\/$/, "");
+
+  /* Sem segredo, NÃO configura. Um webhook apontado para uma rota que
+     recusa tudo encheria o log da Evolution de 503 e daria a impressão
+     de que a integração está de pé. */
+  if (!segredo || !base.startsWith("https://")) return false;
+
+  const resposta = await evolutionFetch(
+    "POST",
+    `webhook/set/${encodeURIComponent(nome)}`,
+    {
+      webhook: {
+        enabled: true,
+        url: `${base}/api/webhooks/evolution`,
+        /* O segredo viaja em cabeçalho, não na URL: endereço aparece em
+           log de proxy e em histórico; cabeçalho, não. */
+        headers: { authorization: `Bearer ${segredo}` },
+        byEvents: false,
+        /* Mídia já em base64 no corpo do evento. Sem isto, cada foto
+           exigiria uma segunda chamada à Evolution — e ela responde do
+           mesmo contêiner que está processando a fila. */
+        base64: true,
+        events: ["MESSAGES_UPSERT"],
+      },
+    },
+  );
+
+  return resposta.success;
+}
+
 /** Cria (se preciso) e devolve o QR de UMA instância, pelo nome. */
 export async function parearInstancia(nome: string): Promise<PairingResult> {
   const atual = await statusDaInstancia(nome);
+
+  /* O webhook é (re)apontado antes de qualquer coisa, inclusive quando
+     a instância já está conectada: é assim que um número pareado antes
+     desta função existir passa a receber. */
+  if (atual.state !== "absent") await configurarWebhook(nome);
 
   if (atual.state === "open") return { success: true, state: "open" };
 
@@ -208,6 +263,9 @@ export async function parearInstancia(nome: string): Promise<PairingResult> {
     });
 
     if (!criada.success) return { success: false, error: criada.error };
+
+    // Instância recém-criada ainda não tem webhook nenhum.
+    await configurarWebhook(nome);
 
     const qr = extrairQr(criada.data);
     if (qr) return { success: true, ...qr, state: "connecting" };

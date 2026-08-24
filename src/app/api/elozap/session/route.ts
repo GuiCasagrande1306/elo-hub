@@ -29,8 +29,9 @@ import { createSupabaseServerClient, getCurrentUser } from "@/lib/supabase/serve
  * Postgres. Conta fora da carteira devolve zero linhas e a rota
  * responde 404 — nunca 403, que confirmaria a existência do id.
  *
- * Parear e desconectar exigem ADMIN. Ligar o WhatsApp de um cliente é
- * ato administrativo, como vincular conta de anúncios: errar aqui
+ * Parear e desconectar exigem ADMIN DA ELO ou a PRÓPRIA EMPRESA — ver
+ * `podeParear`. Colaborador fica de fora: ligar o WhatsApp de um cliente
+ * é ato administrativo, como vincular conta de anúncios, e errar aqui
  * direciona a conversa de um cliente para o número de outro.
  *
  * MODO DEMO NÃO PAREIA. A carteira de demonstração é fictícia, mas a
@@ -43,7 +44,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type Autorizado =
-  | { ok: true; nome: string; admin: boolean }
+  | { ok: true; nome: string; podeParear: boolean }
   | { ok: false; resposta: NextResponse };
 
 async function autorizar(clientId: string | null): Promise<Autorizado> {
@@ -62,7 +63,16 @@ async function autorizar(clientId: string | null): Promise<Autorizado> {
     };
   }
 
-  const admin = user.role === "admin";
+  /* QUEM PODE LIGAR O NÚMERO: admin da agência, ou a própria empresa.
+     O cliente entrou nesta lista quando o pareamento passou a ser feito
+     por ele — é o celular DELE que lê o QR, e mandar o código por
+     WhatsApp para alguém da Elo escanear seria pior em toda medida.
+
+     Colaborador continua de fora: ligar o número de um cliente é ato
+     administrativo, como vincular conta de anúncios. */
+  const podeParear =
+    user.role === "admin" ||
+    (user.role === "client" && user.client_id === clientId);
 
   if (!isDemoMode) {
     const supabase = await createSupabaseServerClient();
@@ -83,7 +93,7 @@ async function autorizar(clientId: string | null): Promise<Autorizado> {
     }
   }
 
-  return { ok: true, nome: instanceNameForClient(clientId), admin };
+  return { ok: true, nome: instanceNameForClient(clientId), podeParear };
 }
 
 /**
@@ -94,9 +104,12 @@ async function autorizar(clientId: string | null): Promise<Autorizado> {
  * mostra o erro genérico em vez do motivo. Medido — o DELETE em modo
  * demo voltava `""` logo depois do POST. Uma resposta nova por chamada.
  */
-const SOMENTE_ADMIN = () =>
+const SEM_PERMISSAO = () =>
   NextResponse.json(
-    { error: "Só administrador conecta ou desconecta o número de um cliente." },
+    {
+      error:
+        "Conectar ou desconectar o número é coisa de administrador da Elo ou da própria empresa.",
+    },
     { status: 403 },
   );
 
@@ -140,7 +153,7 @@ export async function POST(request: NextRequest) {
 
   const auth = await autorizar(corpo.clientId ?? null);
   if (!auth.ok) return auth.resposta;
-  if (!auth.admin) return SOMENTE_ADMIN();
+  if (!auth.podeParear) return SEM_PERMISSAO();
   if (isDemoMode) return DEMO_NAO_PAREIA();
 
   const resultado = await parearInstancia(auth.nome);
@@ -153,7 +166,7 @@ export async function DELETE(request: NextRequest) {
     new URL(request.url).searchParams.get("cliente"),
   );
   if (!auth.ok) return auth.resposta;
-  if (!auth.admin) return SOMENTE_ADMIN();
+  if (!auth.podeParear) return SEM_PERMISSAO();
   if (isDemoMode) return DEMO_NAO_PAREIA();
 
   const resultado = await desconectarInstancia(auth.nome);

@@ -106,6 +106,20 @@ export const serverEnv = {
     | "v1"
     | "v2",
 
+  /**
+   * Segredo que a Evolution devolve no cabeçalho do webhook.
+   *
+   * O endereço do webhook é PÚBLICO por necessidade — quem chama é um
+   * contêiner do Railway, sem sessão nem cookie. Sem este segredo,
+   * qualquer pessoa que descubra a URL grava mensagem falsa na conversa
+   * de um cliente. Ele é gravado na instância no momento do pareamento
+   * (`webhook/set`) e conferido a cada entrega.
+   *
+   * Vazio = webhook recusa tudo, e diz por quê no log. Falhar fechado é
+   * o único desfecho aceitável para uma porta aberta na internet.
+   */
+  evolutionWebhookSecret: process.env.EVOLUTION_WEBHOOK_SECRET ?? "",
+
   // Renderizador de PDF: "react-pdf" (padrão) ou "puppeteer"
   pdfEngine: (process.env.PDF_ENGINE ?? "react-pdf") as "react-pdf" | "puppeteer",
 

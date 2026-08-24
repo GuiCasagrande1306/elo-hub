@@ -5,6 +5,7 @@ import { Database } from "lucide-react";
 import { PageContainer, PageHeader } from "@/components/layout/page-header";
 import { LeadsWorkspace } from "@/components/leads/leads-workspace";
 import { carregarQuadro, clienteDoQuadro } from "@/lib/crm/queries";
+import { carregarThread, listarConversas } from "@/lib/crm/conversas";
 import { getClients, getTeam } from "@/lib/data";
 import { isDemoMode } from "@/lib/env";
 import { getCurrentUser } from "@/lib/supabase/server";
@@ -33,12 +34,12 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export default async function CrmPage({
   searchParams,
 }: {
-  searchParams: Promise<{ cliente?: string }>;
+  searchParams: Promise<{ cliente?: string; aba?: string; conversa?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const { cliente } = await searchParams;
+  const { cliente, aba: abaPedida, conversa: conversaPedida } = await searchParams;
 
   /* O `?cliente=` PRECISA SER UM UUID antes de chegar ao banco.
      Sem esta peneira, um link truncado no WhatsApp — ou o `c-verdi` dos
@@ -112,6 +113,23 @@ export default async function CrmPage({
     ? await carregarQuadro(clientId)
     : { pipeline: null, stages: [], deals: [], contacts: [] };
 
+  /* A CAIXA DE ENTRADA É CARREGADA SEMPRE, mesmo na aba do funil: o
+     contador de não lidas fica na aba, e uma aba que só sabe quantas
+     mensagens chegaram depois de ser clicada não avisa ninguém de
+     nada. São duas consultas pequenas, com índice. */
+  const conversas = clientId ? await listarConversas(clientId) : [];
+
+  /* A conversa aberta precisa estar NA LISTA. Sem esta checagem, um
+     `?conversa=` com o uuid de outra empresa faria a página tentar
+     carregar a thread — a RLS devolveria vazio, mas a tela mostraria um
+     cabeçalho de conversa que não existe. */
+  const conversaAberta =
+    conversas.find((c) => c.id === conversaPedida) ?? null;
+
+  const thread = conversaAberta ? await carregarThread(conversaAberta.id) : [];
+
+  const aba = abaPedida === "conversas" ? "conversas" : "funil";
+
   return (
     <PageContainer>
       <PageHeader
@@ -137,6 +155,10 @@ export default async function CrmPage({
           stages={quadro.stages}
           deals={quadro.deals}
           equipe={equipe.map((p) => ({ id: p.id, full_name: p.full_name }))}
+          aba={aba}
+          conversas={conversas}
+          conversaAberta={conversaAberta}
+          thread={thread}
         />
       </div>
     </PageContainer>
