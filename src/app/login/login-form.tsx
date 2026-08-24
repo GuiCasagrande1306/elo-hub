@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 
@@ -92,7 +93,17 @@ export function LoginForm() {
       </div>
 
       <div className="flex flex-col gap-2">
-        <Label htmlFor="password">Senha</Label>
+        <div className="flex items-baseline justify-between gap-2">
+          <Label htmlFor="password">Senha</Label>
+          {/* O link fica JUNTO DO CAMPO, não no rodapé: é onde a pessoa
+              está olhando quando percebe que não lembra. */}
+          <Link
+            href="/recuperar-senha"
+            className="text-2xs text-muted-foreground underline underline-offset-4 transition-colors hover:text-foreground"
+          >
+            Esqueci minha senha
+          </Link>
+        </div>
         <Input
           id="password"
           type="password"

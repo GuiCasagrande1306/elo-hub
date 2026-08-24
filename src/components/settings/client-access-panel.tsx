@@ -2,7 +2,15 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Copy, KeyRound, Link2, Trash2, UserPlus } from "lucide-react";
+import {
+  Check,
+  Copy,
+  KeyRound,
+  Link2,
+  LifeBuoy,
+  Trash2,
+  UserPlus,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -21,9 +29,11 @@ import {
   type ClienteEscolhivel,
 } from "@/components/clients/client-search-picker";
 import {
+  atenderPedido,
   convidarCliente,
   reenviarAcesso,
   removerAcesso,
+  type PedidoDeSenha,
 } from "@/app/(app)/configuracoes/acessos/actions";
 import { formatDateFull, initials } from "@/lib/format";
 
@@ -51,10 +61,13 @@ interface Acesso {
 
 export function ClientAccessPanel({
   acessos,
+  pedidos,
   clients,
   clienteInicial,
 }: {
   acessos: Acesso[];
+  /** Fila do "esqueci minha senha", só os abertos. */
+  pedidos: PedidoDeSenha[];
   clients: ClienteEscolhivel[];
   /** Vem de `?cliente=` — o atalho que sai do CRM já escolhe a empresa. */
   clienteInicial: string | null;
@@ -68,6 +81,11 @@ export function ClientAccessPanel({
 
   return (
     <div className="flex flex-col gap-4">
+      {/* A FILA VEM PRIMEIRO quando tem gente nela. É o único bloco
+          desta tela com prazo: do outro lado há alguém que não consegue
+          entrar agora. A lista de acessos pode esperar; isto não. */}
+      {pedidos.length > 0 && <Pedidos pedidos={pedidos} />}
+
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
           {acessos.length === 0
@@ -110,6 +128,97 @@ export function ClientAccessPanel({
         clienteInicial={clienteInicial}
       />
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+
+/**
+ * Quem pediu senha nova e ainda não recebeu.
+ *
+ * UM BOTÃO SÓ, e ele faz as duas coisas: gera o link e risca da fila.
+ * Separar deixaria a agência gerar e esquecer de marcar — a fila
+ * encheria de pedido resolvido e pararia de ser olhada, que é o único
+ * jeito de uma fila falhar.
+ */
+function Pedidos({ pedidos }: { pedidos: PedidoDeSenha[] }) {
+  return (
+    <section className="surface-card overflow-hidden">
+      <header className="flex items-center gap-2 border-b border-hairline px-4 py-2.5">
+        <LifeBuoy className="size-3.5 text-warning" />
+        <h3 className="text-sm font-medium">
+          {pedidos.length === 1
+            ? "1 pessoa pediu uma senha nova"
+            : `${pedidos.length} pessoas pediram senha nova`}
+        </h3>
+      </header>
+
+      <ul className="divide-y divide-hairline">
+        {pedidos.map((p) => (
+          <LinhaDoPedido key={p.id} pedido={p} />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function LinhaDoPedido({ pedido }: { pedido: PedidoDeSenha }) {
+  const router = useRouter();
+  const [ocupado, iniciar] = useTransition();
+  const [link, setLink] = useState<string | null>(null);
+
+  return (
+    <li className="flex flex-col gap-2 px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium">
+            {pedido.nome ?? pedido.email}
+          </p>
+          <p className="truncate text-2xs text-muted-foreground">
+            {pedido.nome ? `${pedido.email} · ` : ""}
+            {pedido.empresa ?? "empresa não identificada"} ·{" "}
+            {formatDateFull(pedido.created_at)}
+          </p>
+        </div>
+
+        <Button
+          size="sm"
+          disabled={ocupado}
+          onClick={() =>
+            iniciar(async () => {
+              const r = await atenderPedido(pedido.id);
+              if (!r.ok) {
+                toast.error(r.error);
+                return;
+              }
+              if (r.dados.link) {
+                setLink(r.dados.link);
+              } else {
+                toast.success(
+                  "Esse e-mail não tem acesso ao painel. Pedido arquivado.",
+                );
+                router.refresh();
+              }
+            })
+          }
+        >
+          <KeyRound className="size-3.5" />
+          {pedido.temAcesso ? "Gerar link" : "Arquivar"}
+        </Button>
+      </div>
+
+      {/* O AVISO DE E-MAIL DESCONHECIDO fica na linha, não num toast:
+          quase sempre é erro de digitação, e a agência precisa LER o
+          endereço para descobrir qual é o certo. */}
+      {!pedido.temAcesso && (
+        <p className="text-2xs text-warning">
+          Nenhum acesso com esse e-mail. Provável erro de digitação — confirme
+          o endereço com a pessoa antes de arquivar.
+        </p>
+      )}
+
+      {link && <CaixaDoLink link={link} />}
+    </li>
   );
 }
 

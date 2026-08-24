@@ -43,7 +43,7 @@ export default async function AcessosPage({
 
   const supabase = await createSupabaseServerClient();
 
-  const [{ data: acessos }, clients] = await Promise.all([
+  const [{ data: acessos }, { data: pedidosBrutos }, clients] = await Promise.all([
     /* Sob RLS: a policy `profiles_admin_all` cobre a leitura, e usar o
        cliente de sessão em vez de `service_role` mantém a regra num
        lugar só. A tela não precisa de poder que o banco não dê. */
@@ -52,6 +52,15 @@ export default async function AcessosPage({
       .select("id, email, full_name, client_id, created_at")
       .eq("role", "client")
       .order("created_at", { ascending: false }),
+    /* A fila do "esqueci minha senha". Só os abertos: a lista existe
+       para ser esvaziada, e um histórico misturado a transformaria numa
+       tela que ninguém termina de ler. */
+    supabase
+      .from("password_requests")
+      .select("id, email, created_at, profile_id, client_id")
+      .is("atendido_em", null)
+      .order("created_at", { ascending: false })
+      .limit(50),
     getClients(),
   ]);
 
@@ -74,6 +83,18 @@ export default async function AcessosPage({
 
       <div className="mt-5">
         <ClientAccessPanel
+          pedidos={(pedidosBrutos ?? []).map((p) => {
+            const dono = (acessos ?? []).find((a) => a.id === p.profile_id);
+            return {
+              id: p.id as string,
+              email: p.email as string,
+              created_at: p.created_at as string,
+              nome: dono?.full_name ?? null,
+              empresa:
+                clients.find((c) => c.id === p.client_id)?.name ?? null,
+              temAcesso: Boolean(p.profile_id),
+            };
+          })}
           acessos={(acessos ?? []) as AcessoDeCliente[]}
           clients={clients.map((c) => ({
             id: c.id,

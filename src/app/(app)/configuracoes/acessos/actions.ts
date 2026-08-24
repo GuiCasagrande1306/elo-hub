@@ -282,3 +282,77 @@ function linkDeAcao(hashedToken: string, tipo: "invite" | "recovery"): string {
 
   return `${base}/auth/confirm?${params.toString()}`;
 }
+
+/* ------------------------------------------------------------------ */
+/* Pedidos de "esqueci minha senha"                                    */
+/* ------------------------------------------------------------------ */
+
+export interface PedidoDeSenha {
+  id: string;
+  email: string;
+  created_at: string;
+  /** Nome de quem pediu, quando o e-mail bate com um acesso. */
+  nome: string | null;
+  empresa: string | null;
+  /** `false` quando o e-mail digitado não corresponde a acesso nenhum. */
+  temAcesso: boolean;
+}
+
+/**
+ * Atende um pedido: gera o link e risca da fila.
+ *
+ * DUAS COISAS NUMA AÇÃO SÓ, e é de propósito. Separá-las deixaria a
+ * agência gerar o link e esquecer de marcar — a fila encheria de
+ * pedidos já resolvidos e pararia de ser olhada, que é o único jeito de
+ * uma fila falhar.
+ *
+ * Pedido de e-mail que não existe também é atendido: sai da fila sem
+ * link. Alguém digitou errado, e o que a agência faz é ligar para a
+ * pessoa — não há acesso para recuperar.
+ */
+export async function atenderPedido(
+  pedidoId: string,
+): Promise<Resultado<{ link: string | null; email: string }>> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Sessão expirada." };
+  if (user.role !== "admin") {
+    return { ok: false, error: "Apenas administradores." };
+  }
+
+  const admin = createSupabaseAdminClient();
+
+  const { data: pedido } = await admin
+    .from("password_requests")
+    .select("id, email, profile_id")
+    .eq("id", pedidoId)
+    .maybeSingle();
+
+  if (!pedido) return { ok: false, error: "Pedido não encontrado." };
+
+  let link: string | null = null;
+
+  if (pedido.profile_id) {
+    const gerado = await gerarLink(admin, "recovery", pedido.email);
+    /* Falha ao gerar NÃO risca da fila: o pedido continua aberto para
+       tentar de novo, que é o que a agência faria de qualquer forma. */
+    if (!gerado.ok) return gerado;
+    link = gerado.dados;
+  }
+
+  await admin
+    .from("password_requests")
+    .update({ atendido_em: new Date().toISOString(), atendido_por: user.id })
+    .eq("id", pedidoId);
+
+  /* ⚠️ SEM `revalidatePath` AQUI, e isso não é esquecimento.
+     Revalidar recarrega a fila do servidor, o pedido some da lista por
+     já estar atendido, e a linha é desmontada — LEVANDO JUNTO o link
+     que acabou de ser gerado. Medido em 24/08/2026: a fila caía de dois
+     para um pedido e a caixa do link nunca chegava a aparecer, que é
+     justamente a única coisa que o botão produz.
+
+     A linha fica na tela mostrando o link até a próxima navegação. Quem
+     arquiva um pedido sem acesso é que chama `router.refresh()`, porque
+     ali não há nada para segurar. */
+  return { ok: true, dados: { link, email: pedido.email } };
+}

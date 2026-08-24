@@ -92,7 +92,17 @@ export async function proxy(request: NextRequest) {
      * (`getBriefPorToken`) e a página é `noindex` — o endereço é para
      * uma pessoa, não para o Google.
      */
-    pathname.startsWith("/c/");
+    pathname.startsWith("/c/") ||
+    /**
+     * "Esqueci minha senha". Quem chega aqui não tem sessão — é o
+     * motivo de a página existir. Mandá-la para `/login` fecharia a
+     * porta na cara de quem já está do lado de fora.
+     *
+     * A action por trás dela é pública e sabe disso: nunca revela se um
+     * e-mail existe, nunca devolve link, e o que ela grava não serve
+     * para entrar. Ver `recuperar-senha/actions.ts`.
+     */
+    pathname.startsWith("/recuperar-senha");
 
   /**
    * Rotas de API nunca são redirecionadas.
