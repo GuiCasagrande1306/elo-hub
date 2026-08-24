@@ -598,6 +598,8 @@ export interface ReportSetupRow {
   whatsappPhone: string | null;
   /** Dia do mês do envio automático, 1–28. Só na cadência mensal. */
   reportDay: number | null;
+  /** Hora de São Paulo em que o relatório é preparado (0–23). */
+  reportHour: number;
   /** 'monthly' (dia do mês) ou 'weekly' (dia da semana). */
   /** 0=domingo a 6=sábado. Só na cadência semanal. */
   reportWeekday: number | null;
@@ -631,6 +633,10 @@ export async function getReportSetup(): Promise<ReportSetupRow[]> {
       /* Linha anterior à migration 40 não tem a coluna: cai em mensal,
          que é o default do banco e o que ela sempre foi. */
       reportWeekday: c.report_weekday ?? null,
+      /* Espelha o `default 8` da migration 67 — linha anterior a ela
+         não tem a coluna, e um `undefined` no seletor deixaria o campo
+         em branco num controle que não aceita vazio. */
+      reportHour: c.report_hour ?? 8,
       reportEnabled: c.report_enabled,
     }));
 }

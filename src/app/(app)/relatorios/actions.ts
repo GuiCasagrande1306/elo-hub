@@ -261,6 +261,10 @@ const agendaSchema = z.object({
      `reportDay` desde a migration 48: a conta pode ter as duas agendas,
      e havia aqui um campo `frequency` que as tratava como exclusivas. */
   reportWeekday: z.number().int().min(0).max(6).nullable(),
+  /* A HORA vale para as duas cadências — o que a conta combina com o
+     cliente é o turno, não um horário por tipo de relatório. Sem valor
+     cai em 8, o mesmo default da migration 67. */
+  reportHour: z.number().int().min(0).max(23).default(8),
   enabled: z.boolean(),
   /* Telefone OU JID de grupo (`...@g.us`). Vazio limpa o destino. */
   whatsapp: z.string().trim().max(120),
@@ -286,6 +290,8 @@ export async function salvarAgendaDeRelatorio(input: {
   reportDay: number | null;
   /** Dia da semana (0-6) do SEMANAL. `null` = sem agenda semanal. */
   reportWeekday: number | null;
+  /** Hora de São Paulo (0-23) em que o relatório fica pronto. */
+  reportHour?: number;
   enabled: boolean;
   whatsapp: string;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -300,7 +306,8 @@ export async function salvarAgendaDeRelatorio(input: {
     };
   }
 
-  const { clientId, reportDay, reportWeekday, enabled, whatsapp } = parsed.data;
+  const { clientId, reportDay, reportWeekday, reportHour, enabled, whatsapp } =
+    parsed.data;
 
   /* LIGADO SEM NENHUMA AGENDA NUNCA DISPARA. O job procura por dia do
      mês e por dia da semana; sem nenhum dos dois o cliente fica para
@@ -329,6 +336,7 @@ export async function salvarAgendaDeRelatorio(input: {
     if (alvo) {
       alvo.report_day = reportDay;
       alvo.report_weekday = reportWeekday;
+      alvo.report_hour = reportHour;
       alvo.report_enabled = enabled;
       alvo.whatsapp_phone = whatsapp || null;
     }
@@ -347,6 +355,7 @@ export async function salvarAgendaDeRelatorio(input: {
     .update({
       report_day: reportDay,
       report_weekday: reportWeekday,
+      report_hour: reportHour,
       report_enabled: enabled,
       whatsapp_phone: whatsapp || null,
     })

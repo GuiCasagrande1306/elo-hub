@@ -39,8 +39,23 @@ interface Rascunho {
   diaDoMes: string;
   /** Dia da semana, 0–6. Vazio = sem relatório semanal. */
   diaDaSemana: string;
+  /** Hora de São Paulo, 0–23. Vale para as duas cadências. */
+  hora: string;
   ativo: boolean;
 }
+
+/**
+ * As horas oferecidas.
+ *
+ * DAS 6 ÀS 20, e não as 24. Relatório preparado às 3h da manhã não tem
+ * quem confira, e a lista curta é o que faz a escolha ser rápida — o
+ * horário útil da agência é a informação que o seletor precisa carregar,
+ * não a precisão de um relógio.
+ */
+const HORAS = Array.from({ length: 15 }, (_, i) => {
+  const h = i + 6;
+  return { valor: String(h), rotulo: `${String(h).padStart(2, "0")}h` };
+});
 
 /** 0=domingo, como `Date.getDay()` e como o `dow` do Postgres. */
 const DIAS_DA_SEMANA = [
@@ -144,6 +159,7 @@ export function ReportSetupTable({ linhas }: { linhas: ReportSetupRow[] }) {
       rascunhos[linha.id] ?? {
         whatsapp: linha.whatsappPhone ?? "",
         diaDoMes: linha.reportDay ? String(linha.reportDay) : "",
+        hora: String(linha.reportHour ?? 8),
         diaDaSemana:
           linha.reportWeekday === null || linha.reportWeekday === undefined
             ? ""
@@ -161,7 +177,7 @@ export function ReportSetupTable({ linhas }: { linhas: ReportSetupRow[] }) {
   }
 
   function salvar(linha: ReportSetupRow) {
-    const { whatsapp, diaDoMes, diaDaSemana, ativo } = valorAtual(linha);
+    const { whatsapp, diaDoMes, diaDaSemana, hora, ativo } = valorAtual(linha);
 
     const mes = diaDoMes.trim() === "" ? null : Number(diaDoMes.trim());
     const semana =
@@ -184,6 +200,7 @@ export function ReportSetupTable({ linhas }: { linhas: ReportSetupRow[] }) {
         clientId: linha.id,
         reportDay: mes,
         reportWeekday: semana,
+        reportHour: Number(hora),
         enabled: ativo,
         whatsapp,
       });
@@ -378,6 +395,27 @@ export function ReportSetupTable({ linhas }: { linhas: ReportSetupRow[] }) {
                           {DIAS_DA_SEMANA.map((d) => (
                             <option key={d.valor} value={d.valor}>
                               {d.rotulo}
+                            </option>
+                          ))}
+                        </select>
+
+                        {/* A HORA VALE PARA AS DUAS CADÊNCIAS. Uma
+                            coluna só porque o que a conta combina com o
+                            cliente é "de manhã" ou "depois do almoço" —
+                            não um horário para o mensal e outro para o
+                            semanal. Se um dia precisar separar, é mais
+                            uma coluna; hoje seriam dois controles para
+                            uma decisão. */}
+                        <select
+                          value={rascunho.hora}
+                          onChange={(e) => editar(linha, { hora: e.target.value })}
+                          className="h-8 w-16 shrink-0 rounded-md border border-hairline bg-transparent px-1.5 text-xs tabular-nums"
+                          title="Hora em que o relatório fica pronto (horário de Brasília)"
+                          aria-label={`Hora do preparo do relatório de ${linha.name}`}
+                        >
+                          {HORAS.map((h) => (
+                            <option key={h.valor} value={h.valor}>
+                              {h.rotulo}
                             </option>
                           ))}
                         </select>

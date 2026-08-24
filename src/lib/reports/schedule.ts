@@ -226,6 +226,13 @@ export async function dispatchScheduledReports(options?: {
   budgetMs?: number;
   /** Força um dia específico. Só para verificação manual. */
   diaForcado?: number;
+  /**
+   * Só as contas marcadas para ESTA hora (0–23, São Paulo).
+   *
+   * Omitir pega a agenda inteira do dia — que é o certo para quem roda
+   * uma vez por dia. Ver `clientesDoDia`.
+   */
+  hora?: number;
 }): Promise<RelatorioDeDisparo> {
   const inicio = Date.now();
   const orcamento = options?.budgetMs ?? 60_000;
@@ -292,7 +299,15 @@ export async function dispatchScheduledReports(options?: {
      cliente esperar o mês seguinte. */
   await destravarPresos();
 
-  const agendados = await clientesDoDia(diaDoMes, diaDaSemana);
+  const hora =
+    options?.hora === undefined ||
+    !Number.isInteger(options.hora) ||
+    options.hora < 0 ||
+    options.hora > 23
+      ? null
+      : options.hora;
+
+  const agendados = await clientesDoDia(diaDoMes, diaDaSemana, hora);
   base.agendados = agendados.length;
 
   /* Custo do pior relatório JÁ MEDIDO nesta rodada.
@@ -410,6 +425,15 @@ async function destravarPresos(): Promise<void> {
 }
 
 /**
+ * A hora de quem foi cadastrado antes de a coluna existir.
+ *
+ * Espelha o `default 8` da migration 67. Repetido aqui porque a linha
+ * pode chegar de `demoClients`, que não passa pelo banco — e um
+ * `undefined` silencioso faria a conta nunca casar com hora nenhuma.
+ */
+const HORA_PADRAO = 8;
+
+/**
  * Quem recebe hoje, e por qual cadência.
  *
  * DEVOLVE ENTRADAS, NÃO CLIENTES. Desde a migration 48 mensal e semanal
@@ -426,10 +450,22 @@ async function destravarPresos(): Promise<void> {
 async function clientesDoDia(
   diaDoMes: number,
   diaDaSemana: number,
+  /**
+   * A hora que está tocando, em São Paulo. `null` ignora a hora e pega
+   * a agenda inteira do dia.
+   *
+   * `null` é o comportamento de quem chama uma vez por dia — o cron da
+   * Vercel, e a verificação manual com `?dia=N`. Com gatilho horário
+   * vem o número, e cada conta é preparada na hora combinada.
+   */
+  hora: number | null,
 ): Promise<Agendado[]> {
+  const naHora = (c: { report_hour?: number | null }) =>
+    hora === null || (c.report_hour ?? HORA_PADRAO) === hora;
+
   if (isDemoMode) {
     const { demoClients } = await import("@/lib/mock/data");
-    const ligados = demoClients.filter((c) => c.report_enabled);
+    const ligados = demoClients.filter((c) => c.report_enabled && naHora(c));
     return [
       ...ligados
         .filter((c) => c.report_day === diaDoMes)
@@ -442,21 +478,30 @@ async function clientesDoDia(
 
   const admin = createSupabaseAdminClient();
 
+  /* O FILTRO DA HORA VAI NO BANCO, não em memória. Com a carteira em 54
+     contas a diferença é pequena; o que não é pequeno é a consulta
+     trazer a agenda inteira do dia a cada hora e o código depender de
+     lembrar de filtrar depois. */
+  const daHora = <T extends { eq: (c: string, v: unknown) => T }>(q: T) =>
+    hora === null ? q : q.eq("report_hour", hora);
+
   const [mensais, semanais] = await Promise.all([
-    admin
-      .from("clients")
-      .select("*")
-      .eq("report_enabled", true)
-      .eq("report_day", diaDoMes)
-      .eq("status", "active")
-      .order("name"),
-    admin
-      .from("clients")
-      .select("*")
-      .eq("report_enabled", true)
-      .eq("report_weekday", diaDaSemana)
-      .eq("status", "active")
-      .order("name"),
+    daHora(
+      admin
+        .from("clients")
+        .select("*")
+        .eq("report_enabled", true)
+        .eq("report_day", diaDoMes)
+        .eq("status", "active"),
+    ).order("name"),
+    daHora(
+      admin
+        .from("clients")
+        .select("*")
+        .eq("report_enabled", true)
+        .eq("report_weekday", diaDaSemana)
+        .eq("status", "active"),
+    ).order("name"),
   ]);
 
   if (mensais.error) throw mensais.error;

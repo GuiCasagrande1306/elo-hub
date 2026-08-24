@@ -4,6 +4,7 @@ import { serverEnv } from "@/lib/env";
 import { syncAllClients } from "@/lib/ads/sync";
 import { enviarAvisoDeSaldo } from "@/lib/ads/balance-notice";
 import { dispatchScheduledReports } from "@/lib/reports/schedule";
+import { avisarRelatoriosProntos } from "@/lib/reports/aviso-interno";
 import { materializarMes, mesCorrente } from "@/lib/finance/recurrence";
 
 /**
@@ -69,8 +70,18 @@ export async function GET(request: NextRequest) {
 
   /* Cada etapa decide sozinha se roda, em vez de encadear `!==`. Com
      três etapas, `etapa !== "envio"` já deixava de significar "é a vez
-     do sync" — passava a incluir qualquer nome novo que aparecesse. */
-  const rodar = (nome: string) => etapa === null || etapa === nome;
+     do sync" — passava a incluir qualquer nome novo que aparecesse.
+
+     ACEITA LISTA: `?etapa=recorrencia,sync,saldo`. Passou a ser
+     necessário quando o preparo dos relatórios ganhou hora marcada — o
+     cron diário da Vercel roda tudo MENOS o envio, e um gatilho horário
+     cuida só dele. Sem a lista, "tudo menos uma coisa" exigiria três
+     agendamentos, e o plano Hobby aceita um. */
+  const pedidas = etapa
+    ? new Set(etapa.split(",").map((e) => e.trim()).filter(Boolean))
+    : null;
+
+  const rodar = (nome: string) => pedidas === null || pedidas.has(nome);
 
   /* ⚠️ O RELÓGIO COMEÇA AQUI, não no início da fase de relatórios.
      A trava de orçamento em `dispatchScheduledReports` media a partir do
@@ -143,14 +154,53 @@ export async function GET(request: NextRequest) {
     const decorrido = Date.now() - inicioDaRequisicao;
     const restante = Math.max(ORCAMENTO_ENVIO_MS - decorrido, 10_000);
 
-    resposta.relatorios = await dispatchScheduledReports({
+    /* A HORA. `?hora=auto` usa o relógio de São Paulo — é como o
+       gatilho horário chama. Um número de 0 a 23 força uma hora, para
+       conferir sem esperar o relógio. AUSENTE pega a agenda inteira do
+       dia, que é o comportamento de quem roda uma vez por dia e
+       precisa continuar valendo: se o gatilho horário cair, o cron
+       diário ainda prepara todo mundo. */
+    const horaPedida = searchParams.get("hora");
+    const horaAgora = Number(
+      new Intl.DateTimeFormat("en-GB", {
+        hour: "2-digit",
+        hour12: false,
+        timeZone: "America/Sao_Paulo",
+      }).format(new Date()),
+    );
+
+    const hora =
+      horaPedida === "auto"
+        ? horaAgora
+        : horaPedida !== null && /^\d{1,2}$/.test(horaPedida)
+          ? Number(horaPedida)
+          : undefined;
+
+    const disparo = await dispatchScheduledReports({
       budgetMs:
         Number.isFinite(orcamento) && orcamento > 0
           ? Math.min(Math.max(orcamento, 10_000), 280_000)
           : restante,
       diaForcado:
         Number.isInteger(dia) && dia >= 1 && dia <= 28 ? dia : undefined,
+      hora,
     });
+
+    resposta.relatorios = disparo;
+    resposta.hora = hora ?? "dia inteiro";
+
+    /* O AVISO É PARTE DO PREPARO, não uma etapa à parte. Um PDF pronto
+       que ninguém sabe que existe espera até alguém lembrar de abrir a
+       tela — e a tela não avisa nada sozinha. Falha aqui não derruba a
+       rodada: o relatório continua na fila. */
+    try {
+      resposta.aviso = await avisarRelatoriosProntos(disparo);
+    } catch (error) {
+      resposta.aviso = {
+        enviado: false,
+        motivo: error instanceof Error ? error.message : "falha no aviso",
+      };
+    }
   }
 
   /* --- 2. Sincronização -------------------------------------------
