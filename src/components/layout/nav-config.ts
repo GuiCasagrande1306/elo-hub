@@ -73,23 +73,6 @@ export const navGroups: NavGroup[] = [
          viraria o link que ninguém abre. */
       { href: "/comercial", label: "Comercial", icon: Handshake, matchPrefix: true },
       { href: "/clientes", label: "Clientes", icon: Users, matchPrefix: true },
-      /* O CRM do cliente vem logo depois de Clientes porque é a mesma
-         conta vista de outro ângulo: lá está o contrato, aqui está o
-         funil de vendas que ele opera. Não confundir com `/comercial`,
-         que é o funil da AGÊNCIA — dois quadros parecidos, negócios
-         diferentes.
-
-         Fora da barra do mobile pelo mesmo motivo de Conteúdo: ela já
-         carrega sete itens e o oitavo trunca o rótulo de todos. O
-         cliente que abre `/crm` no celular chega pelo link direto, não
-         pela barra da agência. */
-      {
-        href: "/crm",
-        label: "CRM do cliente",
-        icon: Funnel,
-        matchPrefix: true,
-        foraDaBarraMobile: true,
-      },
       { href: "/esteira", label: "Esteira", icon: Repeat, matchPrefix: true },
       { href: "/tarefas", label: "Tarefas", icon: CheckSquare, matchPrefix: true },
       /* Conteúdo fecha Operação, e não Análise: o brief é o que se
@@ -129,6 +112,19 @@ export const navGroups: NavGroup[] = [
        são o dia a dia. */
     label: "Apps parceiros",
     items: [
+      /* O CRM do cliente mora aqui, e não em Operação, porque não é uma
+         tela que a agência opera: é um produto que ela ENTREGA. Quem
+         mexe no funil todo dia é o cliente, do lado dele; a Elo entra
+         para configurar e acompanhar. Fica ao lado dos outros apps que
+         a agência liga para o cliente usar.
+
+         Não confundir com `/comercial`, que é o funil da AGÊNCIA. */
+      {
+        href: "/crm",
+        label: "CRM do cliente",
+        icon: Funnel,
+        matchPrefix: true,
+      },
       {
         href: "/midias-sociais",
         label: "Mídias sociais",
@@ -176,7 +172,16 @@ export const navGroups: NavGroup[] = [
         icon: KeyRound,
         adminOnly: true,
       },
-      { href: "/configuracoes", label: "Configurações", icon: Settings, adminOnly: true },
+      /* SEM `adminOnly`, e é intencional. A página já sabe se virar com
+         colaborador: mostra "Meu WhatsApp", que é a única seção que
+         qualquer perfil aciona, e avisa que o resto é restrito. Quem
+         limita o que aparece ali é o RLS.
+
+         Enquanto isto era adminOnly, o colaborador tinha a tela pronta
+         e nenhum caminho até ela — o WhatsApp pessoal dele, que é o que
+         dispara relatório e aviso de saldo em nome dele, dependia de
+         alguém mandar o link. */
+      { href: "/configuracoes", label: "Configurações", icon: Settings },
     ],
   },
 ];
