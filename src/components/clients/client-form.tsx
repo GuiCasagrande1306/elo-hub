@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
@@ -29,7 +29,6 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { WhatsAppDestinationPicker } from "./whatsapp-destination-picker";
 import {
-  AGENCY_PARTNERS,
   CLIENT_SEGMENTS,
   EDITABLE_STATUSES,
   FIELD_TAB,
@@ -79,6 +78,12 @@ export function ClientForm({
   const [aba, setAba] = useState<"perfil" | "operacional">("perfil");
   const [enviando, startTransition] = useTransition();
 
+  /* Cadastro + o que este cliente já tem. Ver a nota no `SelectContent`. */
+  const opcoesDeAgencia = useMemo(() => {
+    const atual = client.agency_partner?.trim();
+    return atual && !agencias.includes(atual) ? [...agencias, atual] : agencias;
+  }, [agencias, client.agency_partner]);
+
   const form = useForm<ClientFormValues>({
     resolver: zodResolver(clientFormSchema),
     mode: "onBlur",
@@ -94,11 +99,25 @@ export function ClientForm({
         client.status === "churned"
           ? "paused"
           : (client.status as ClientFormValues["status"]),
-      agencyPartner: AGENCY_PARTNERS.includes(
-        client.agency_partner as (typeof AGENCY_PARTNERS)[number],
-      )
-        ? (client.agency_partner as ClientFormValues["agencyPartner"])
-        : "Elo Marketing",
+      /* A AGÊNCIA DO CLIENTE, LITERAL. Nada de conferir contra lista.
+         ------------------------------------------------------------
+         Aqui havia `AGENCY_PARTNERS.includes(...) ? ... : "Elo
+         Marketing"` — uma lista FIXA no código, enquanto as agências
+         são cadastradas no banco. Toda parceria nova nascia fora dela.
+
+         O estrago, medido em 24/08/2026 com "The Cave Films": o
+         cadastro salvava certo, e ao reabrir a ficha o formulário
+         trocava a agência por "Elo Marketing" sozinho. Parecia que não
+         tinha salvo — e no salvamento seguinte, de qualquer outro
+         campo, o valor errado ia junto para o banco. O cliente saía da
+         cobrança da parceira e voltava a ser faturado individualmente,
+         em silêncio. O comentário em `validation/client.ts` já previa
+         exatamente esta falha.
+
+         Se o nome não estiver entre as opções, quem conserta é a lista
+         logo abaixo, que o acrescenta — em vez de este campo escolher
+         outra agência por conta própria. */
+      agencyPartner: client.agency_partner ?? "",
       website: client.website ?? "",
       contactName: client.contact_name ?? "",
       contactEmail: client.contact_email ?? "",
@@ -310,7 +329,13 @@ export function ClientForm({
                         <SelectValue>{(v: string) => v}</SelectValue>
                       </SelectTrigger>
                       <SelectContent>
-                        {agencias.map((a) => (
+                        {/* O VALOR ATUAL SEMPRE ESTÁ NA LISTA. Uma
+                            agência apagada do cadastro, ou renomeada,
+                            deixaria o seletor em branco — e um seletor
+                            em branco convida a escolher outra coisa,
+                            que é como um cliente troca de agência sem
+                            ninguém decidir. */}
+                        {opcoesDeAgencia.map((a) => (
                           <SelectItem key={a} value={a}>
                             {a}
                           </SelectItem>

@@ -89,6 +89,7 @@ export async function createClientAction(
       // que talvez ainda nem exista.
       report_day: null,
       report_enabled: false,
+      report_hour: 8,
       optimization_day: values.optimizationDay
         ? Number(values.optimizationDay)
         : null,

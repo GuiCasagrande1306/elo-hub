@@ -179,6 +179,13 @@ export interface Client {
    */
   report_weekday?: number | null;
   report_enabled: boolean;
+  /**
+   * Hora de São Paulo em que o relatório é preparado (0–23).
+   *
+   * Vale para as duas cadências. Só tem efeito com um gatilho horário
+   * chamando `?etapa=envio` — ver a migration 67.
+   */
+  report_hour: number;
   /** Dia útil da rotina: 1=segunda … 5=sexta. NULL = sem rotina. */
   optimization_day: number | null;
   created_at: string;
@@ -210,6 +217,8 @@ export interface OptimizationEntry {
   id: string;
   client_id: string;
   collaborator_id: string | null;
+  /** Dia da otimização em São Paulo (`2026-08-24`) — ver migration 66. */
+  dia: string;
   notes: string;
   report_sent: boolean;
   goal_projection: number | null;

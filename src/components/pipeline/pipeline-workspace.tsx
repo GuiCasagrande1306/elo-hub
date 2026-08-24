@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { CheckCircle2, ChevronRight, Clock } from "lucide-react";
 
-import { OptimizationSheet } from "./optimization-sheet";
+import { OptimizationDialog } from "./optimization-dialog";
 import {
   Select,
   SelectContent,
@@ -218,7 +218,7 @@ export function PipelineWorkspace({
         })}
       </div>
 
-      <OptimizationSheet
+      <OptimizationDialog
         client={aberta}
         history={aberta ? (historyByClient[aberta.id] ?? []) : []}
         usuarioId={currentUserId}

@@ -3,8 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+import { dataNoBrasil } from "@/lib/date-br";
 import { isDemoMode } from "@/lib/env";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient, getCurrentUser } from "@/lib/supabase/server";
+import {
+  atividadesDaConta,
+  type DiaDeAtividade,
+} from "@/lib/ads/meta-activities";
 
 const schema = z.object({
   clientId: z.string().min(1),
@@ -18,6 +24,14 @@ const schema = z.object({
      87.5, e deixar o número entrar direto obrigaria o formulário a
      lidar com a vírgula do teclado brasileiro. */
   goalProjection: z.string().trim(),
+  /* O DIA A QUE A OBSERVAÇÃO PERTENCE. Opcional: quando não vem, o
+     banco carimba hoje no fuso de São Paulo (migration 66). Vem
+     preenchido quando a pessoa escreve, hoje, a observação de ontem —
+     o bloco de cada dia na esteira permite isso. */
+  dia: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida.")
+    .optional(),
 });
 
 export type RegisterResult = { ok: true } | { ok: false; error: string };
@@ -38,6 +52,7 @@ export async function registerOptimization(input: {
   notes: string;
   reportSent: boolean;
   goalProjection: string;
+  dia?: string;
 }): Promise<RegisterResult> {
   const parsed = schema.safeParse(input);
   if (!parsed.success) {
@@ -74,6 +89,7 @@ export async function registerOptimization(input: {
       report_sent: parsed.data.reportSent,
       goal_projection: projecao,
       created_at: new Date().toISOString(),
+      dia: parsed.data.dia ?? dataNoBrasil(),
       collaborator: { id: user.id, full_name: user.full_name },
     });
     revalidatePath("/esteira");
@@ -88,6 +104,9 @@ export async function registerOptimization(input: {
     notes: parsed.data.notes,
     report_sent: parsed.data.reportSent,
     goal_projection: projecao,
+    /* Ausente = o default do banco (hoje, em São Paulo). Mandar
+       `undefined` explicitamente é o mesmo que não mandar. */
+    ...(parsed.data.dia ? { dia: parsed.data.dia } : {}),
   });
 
   if (error) {
@@ -213,4 +232,64 @@ export async function atualizarOtimizacao(input: {
 
   revalidatePath("/esteira");
   return { ok: true };
+}
+
+/* ------------------------------------------------------------------ */
+/* O que a Meta registrou na conta                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * O histórico de alterações da conta de anúncios, por dia.
+ *
+ * SERVICE_ROLE COM CHECAGEM À MÃO, e a ordem importa: primeiro a
+ * consulta pela SESSÃO, que é quem decide se esta pessoa enxerga esta
+ * conta; só depois o `service_role`, e só para alcançar
+ * `integration_secrets`, que tem RLS ligada e zero policies de
+ * propósito — nenhuma sessão chega no token.
+ *
+ * Conta sem Meta vinculada não é erro: é o estado de boa parte da
+ * carteira. Devolve a lista vazia com o motivo, e a tela diz isso em
+ * vez de mostrar uma falha.
+ */
+export async function atividadesDoCliente(
+  clientId: string,
+  desdeDias = 30,
+): Promise<
+  | { ok: true; dias: DiaDeAtividade[] }
+  | { ok: false; error: string; semConta?: boolean }
+> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Sessão expirada." };
+
+  const supabase = await createSupabaseServerClient();
+  const { data: visivel } = await supabase
+    .from("clients")
+    .select("id")
+    .eq("id", clientId)
+    .maybeSingle();
+
+  if (!visivel) return { ok: false, error: "Cliente não encontrado." };
+
+  const admin = createSupabaseAdminClient();
+  const { data: integracao } = await admin
+    .from("client_integrations")
+    .select("external_account_id, integration_secrets(access_token)")
+    .eq("client_id", clientId)
+    .eq("platform", "meta_ads")
+    .maybeSingle();
+
+  const conta = integracao?.external_account_id as string | undefined;
+  const token = (
+    integracao as { integration_secrets?: { access_token?: string } } | null
+  )?.integration_secrets?.access_token;
+
+  if (!conta || !token) {
+    return {
+      ok: false,
+      semConta: true,
+      error: "Esta conta ainda não tem Meta Ads vinculado.",
+    };
+  }
+
+  return atividadesDaConta(conta, token, desdeDias);
 }
