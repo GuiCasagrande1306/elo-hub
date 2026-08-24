@@ -309,46 +309,73 @@ const styles = StyleSheet.create({
   splitMeta: { fontSize: 7.5, color: INK_SOFT, marginTop: 4 },
 
   /* -------------------------- Criativos ------------------------- */
+  /* CARTÃO COMPACTO — metade da altura do anterior.
+     ------------------------------------------------------------------
+     A galeria pedia 92px de miniatura e 12 de respiro por card: seis
+     criativos ocupavam quase duas páginas, e o cliente rolava três
+     telas para ver quatro anúncios. Nada de informação saiu; o que
+     encolheu foi o espaço em volta dela. A miniatura em 46 continua
+     reconhecível — é o quadro do vídeo, não a peça inteira, e quem lê
+     reconhece o anúncio pelo rosto e pela cor. */
   adCard: {
     flexDirection: "row",
-    gap: 12,
-    padding: 12,
-    marginBottom: 10,
-    borderRadius: 8,
+    gap: 8,
+    padding: 8,
+    marginBottom: 6,
+    borderRadius: 6,
     borderWidth: 1,
     borderColor: HAIRLINE,
   },
-  adThumb: { width: 92, height: 92, borderRadius: 6, objectFit: "cover" },
+  adThumb: { width: 46, height: 46, borderRadius: 4, objectFit: "cover" },
   adPlaceholder: {
-    width: 92,
-    height: 92,
-    borderRadius: 6,
+    width: 46,
+    height: 46,
+    borderRadius: 4,
     alignItems: "center",
     justifyContent: "center",
   },
-  adPlatform: {
-    fontSize: 6.5,
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-    color: INK_SOFT,
-  },
-  adHeadline: { fontSize: 10, fontFamily: "Geist", fontWeight: 700, marginTop: 3 },
-  adCopy: { fontSize: 8, color: INK_SOFT, marginTop: 4, lineHeight: 1.45 },
-  adMetrics: {
+  /* Linha do topo: plataforma à esquerda, selo do objetivo à direita. */
+  adTopo: {
     flexDirection: "row",
-    gap: 18,
-    marginTop: 8,
-    paddingTop: 7,
-    borderTopWidth: 1,
-    borderTopColor: HAIRLINE,
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 6,
   },
-  adMetricLabel: {
-    fontSize: 6.5,
+  /* O SELO DO OBJETIVO. Fundo sólido e não só texto colorido: o card é
+     denso, e o cliente precisa achar "Vendas" varrendo a página, sem
+     ler linha por linha. */
+  adObjetivo: {
+    fontSize: 6,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+    color: "#FFFFFF",
+    paddingHorizontal: 4,
+    paddingVertical: 1.5,
+    borderRadius: 3,
+  },
+  adPlatform: {
+    fontSize: 6,
     letterSpacing: 1,
     textTransform: "uppercase",
     color: INK_SOFT,
   },
-  adMetricValue: { fontSize: 9, fontFamily: "Geist", fontWeight: 700, marginTop: 2 },
+  adHeadline: { fontSize: 8.5, fontFamily: "Geist", fontWeight: 700, marginTop: 2 },
+  adCopy: { fontSize: 7, color: INK_SOFT, marginTop: 2, lineHeight: 1.35 },
+  adMetrics: {
+    flexDirection: "row",
+    gap: 14,
+    marginTop: 5,
+    paddingTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: HAIRLINE,
+  },
+  adMetricLabel: {
+    fontSize: 5.5,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    color: INK_SOFT,
+  },
+  adMetricValue: { fontSize: 8, fontFamily: "Geist", fontWeight: 700, marginTop: 1 },
 
   /* --------------------------- Textos --------------------------- */
   paragraph: { fontSize: 9.5, lineHeight: 1.6, color: INK },
@@ -1072,10 +1099,14 @@ function Cartao({
   ad: ReportPayload["creatives"][number];
   payload: ReportPayload;
 }) {
-  /* Limpa e ENTÃO corta. Cortar primeiro gastaria parte dos 190
-     caracteres com emoji que sairia — e o corte pode cair no meio de um
-     par de substitutos, que é justamente o que produz lixo. */
-  const copy = copyDoAnuncio(ad.primaryText, 190);
+  /* Limpa e ENTÃO corta. Cortar primeiro gastaria parte do limite com
+     emoji que sairia — e o corte pode cair no meio de um par de
+     substitutos, que é justamente o que produz lixo.
+
+     110 e não 190: o cartão encolheu, e quatro linhas de copy sob uma
+     miniatura de 46px desequilibram o bloco. O que o cliente precisa
+     reconhecer é a ABERTURA do anúncio — ele já viu a peça. */
+  const copy = copyDoAnuncio(ad.primaryText, 110);
 
   return (
     <View style={styles.adCard} wrap={false}>
@@ -1099,9 +1130,33 @@ function Cartao({
           )}
 
           <View style={{ flex: 1 }}>
-            <Text style={styles.adPlatform}>
-              {ad.platformLabel} · {semEmoji(ad.campaignName ?? "") || "—"}
-            </Text>
+            {/* O OBJETIVO SEMPRE À VISTA. Aqui havia
+                `platformLabel · campaignName`, e o nome da campanha é
+                nulo nos 461 criativos ativos do banco — medido em
+                24/08/2026. Todo cartão dizia "META ADS · —".
+
+                O objetivo responde o que o traço não respondia: por que
+                este anúncio entregou visita e não venda. Quando o nome
+                da campanha existir, ele volta a acompanhar. */}
+            <View style={styles.adTopo}>
+              <Text style={styles.adPlatform}>
+                {ad.platformLabel}
+                {ad.campaignName
+                  ? ` · ${semEmoji(ad.campaignName)}`
+                  : ""}
+              </Text>
+
+              {ad.objetivo && (
+                <Text
+                  style={[
+                    styles.adObjetivo,
+                    { backgroundColor: payload.meta.accent },
+                  ]}
+                >
+                  {ad.objetivo}
+                </Text>
+              )}
+            </View>
             <Text style={styles.adHeadline}>
               {semEmoji(ad.headline ?? ad.adName ?? "") || "—"}
             </Text>

@@ -14,6 +14,7 @@ import { sessionSource, type ReportSource } from "./source";
 import { metricasDeCriativosNoPeriodo } from "./creative-insights";
 import { aplicarMetricas } from "./print-data";
 import {
+  objetivoDoCriativo,
   vitrineDoCriativo,
   type VitrineDoCriativo,
 } from "@/lib/ads/creative-goal";
@@ -61,7 +62,11 @@ import type {
 
 /* Reexportados: o documento PDF e a página A4 importam daqui. */
 export type { PlatformCampaign, PlatformDetail } from "./platform-detail";
-export { vitrineDoCriativo, type VitrineDoCriativo } from "@/lib/ads/creative-goal";
+export {
+  objetivoDoCriativo,
+  vitrineDoCriativo,
+  type VitrineDoCriativo,
+} from "@/lib/ads/creative-goal";
 
 /**
  * Acento quando ninguém definiu cor: um grafite frio, não uma cor de
@@ -186,6 +191,14 @@ export interface ReportCreative {
    * regra depende de `optimization_goal`, que só existe aqui.
    */
   vitrine: VitrineDoCriativo;
+  /**
+   * O objetivo da campanha, em português: "Vendas", "Alcance"…
+   *
+   * `null` quando a combinação de objetivo e meta não é reconhecida —
+   * melhor o selo sumir do que imprimir `OUTCOME_AWARENESS` no
+   * documento que vai para o cliente.
+   */
+  objetivo: string | null;
   /** Visitas ao perfil no período — só preenchido quando apurado. */
   profileVisits: number;
   /** Receita atribuída ao anúncio, dos mesmos eventos que contam. */
@@ -326,6 +339,10 @@ export async function buildReportPayload(options: {
         ctr: ad.impressions > 0 ? ad.clicks / ad.impressions : 0,
         clicks: ad.clicks,
         vitrine: vitrineDoCriativo(ad.optimizationGoal, ad.objective),
+        /* "Vendas", "Visitas ao perfil"… `null` quando não dá para
+           afirmar. O card mostra o selo só quando existe — ver
+           `objetivoDoCriativo`. */
+        objetivo: objetivoDoCriativo(ad.optimizationGoal, ad.objective),
         profileVisits: ad.profileVisits,
         revenueCents: ad.revenueCents,
       };
