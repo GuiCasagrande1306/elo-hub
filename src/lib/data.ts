@@ -41,6 +41,7 @@ import type {
   SocialPostComment,
   SocialPostTarget,
   SocialPostWithRelations,
+  SocialRecurrenceWithClient,
   TaskWithRelations,
 } from "@/types/database";
 
@@ -1659,6 +1660,34 @@ async function getAgencyTrend(
  * Arquivados entram. Quem filtra é a tela, porque a aba de histórico
  * precisa deles e a policy já limitou à carteira visível.
  */
+/**
+ * A grade semanal fixa da carteira.
+ *
+ * `catch` que devolve `null` no chamador, como `getSocialPosts`: a
+ * diferença entre "ninguém montou grade" e "a migration 70 não rodou" é
+ * a diferença entre uma tela vazia normal e um recurso que ninguém
+ * descobre estar quebrado.
+ */
+export async function getSocialRecurrences(): Promise<
+  SocialRecurrenceWithClient[]
+> {
+  /* O modo demonstração não tem grade: o dataset já nasce com a semana
+     cheia, e uma grade fantasma ofereceria editar o que não existe. */
+  if (isDemoMode) return [];
+
+  const supabase = await createSupabaseServerClient();
+
+  const { data, error } = await supabase
+    .from("social_recurrences")
+    .select("*, client:clients(id, name, brand_primary)")
+    .eq("is_active", true)
+    .order("weekday")
+    .order("hora");
+
+  if (error) throw error;
+  return (data ?? []) as SocialRecurrenceWithClient[];
+}
+
 export async function getSocialPosts(options?: {
   clientId?: string;
 }): Promise<SocialPostWithRelations[]> {

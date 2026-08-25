@@ -693,6 +693,8 @@ export interface SocialPost {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  /** Qual linha da programação semanal gerou esta peça. `null` = à mão. */
+  recurrence_id: string | null;
 }
 
 export interface SocialPostComment {
@@ -702,6 +704,32 @@ export interface SocialPostComment {
   body: string;
   created_at: string;
   author?: Pick<Profile, "id" | "full_name" | "avatar_url"> | null;
+}
+
+/**
+ * Uma peça por semana, sempre no mesmo dia.
+ *
+ * A grade fixa da carteira de conteúdo. `social_posts.recurrence_id`
+ * aponta para a linha que gerou a peça — ver a migration 70.
+ */
+export interface SocialRecurrence {
+  id: string;
+  client_id: string;
+  /** 0 = domingo, como `Date.getDay()` e como as colunas da grade. */
+  weekday: number;
+  /** "09:00", hora local de São Paulo. */
+  hora: string;
+  format: SocialFormat;
+  title: string;
+  networks: SocialNetwork[];
+  is_active: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SocialRecurrenceWithClient extends SocialRecurrence {
+  client?: Pick<Client, "id" | "name" | "brand_primary"> | null;
 }
 
 /** Post com relações resolvidas — formato consumido pela UI. */

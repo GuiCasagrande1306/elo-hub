@@ -44,6 +44,7 @@ import type {
   SocialAccount,
   SocialNetwork,
   SocialPostWithRelations,
+  SocialRecurrenceWithClient,
 } from "@/types/database";
 
 /* =====================================================================
@@ -69,11 +70,14 @@ export function SocialWorkspace({
   posts,
   clients,
   accounts,
+  programacao,
   ehAdmin,
 }: {
   posts: SocialPostWithRelations[];
   clients: Client[];
   accounts: SocialAccount[];
+  /** A grade semanal fixa. Vazia quando ninguém montou ainda. */
+  programacao: SocialRecurrenceWithClient[];
   ehAdmin: boolean;
 }) {
   /* Abre na PAUTA, não no calendário do mês. A primeira pergunta de quem
@@ -339,6 +343,8 @@ export function SocialWorkspace({
              certa. */
           recorteParcial={situacao !== TODOS || semDataApenas || busca !== ""}
           clients={clientesNaGrade}
+          todosOsClientes={clients}
+          programacao={programacao}
           onAbrirPost={(post) => setEditando({ postId: post.id })}
           onNovoNoDia={(dia) => abrirNovo(dia)}
         />

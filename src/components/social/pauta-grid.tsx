@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   CalendarClock,
+  CalendarSync,
   ChevronLeft,
   ChevronRight,
   Film,
@@ -46,12 +47,14 @@ import {
   rotuloDaSemana,
   semanaDe,
 } from "@/lib/social/pauta";
+import { ProgramacaoDialog } from "./programacao-dialog";
 import { useLocalPreference } from "@/lib/use-local-preference";
 import { cn } from "@/lib/utils";
 import type {
   Client,
   SocialFormat,
   SocialPostWithRelations,
+  SocialRecurrenceWithClient,
 } from "@/types/database";
 
 /* =====================================================================
@@ -162,6 +165,15 @@ interface Props {
   recorteParcial: boolean;
   /** Já recortados pelo filtro de cliente do workspace. */
   clients: Client[];
+  /**
+   * A carteira inteira, sem o recorte de cliente.
+   *
+   * A grade semanal fala de todos os clientes que têm programação, e um
+   * filtro de cliente na tela não deveria esconder metade dela do
+   * diálogo — que é onde se conserta justamente o cliente que sumiu.
+   */
+  todosOsClientes: Client[];
+  programacao: SocialRecurrenceWithClient[];
   onAbrirPost: (post: SocialPostWithRelations) => void;
   /** Compositor completo, com o dia preenchido. É o caminho do celular. */
   onNovoNoDia: (dia: string) => void;
@@ -172,6 +184,8 @@ export function PautaGrid({
   pautaDaCarteira,
   recorteParcial,
   clients,
+  todosOsClientes,
+  programacao,
   onAbrirPost,
   onNovoNoDia,
 }: Props) {
@@ -185,6 +199,7 @@ export function PautaGrid({
   const [alvo, setAlvo] = useState<string | null>(null);
   /** Célula com o popover de pauta rápida aberto: `"<clientId>|<dia>"`. */
   const [criandoEm, setCriandoEm] = useState<string | null>(null);
+  const [programando, setProgramando] = useState(false);
   const router = useRouter();
 
   const dias = useMemo(() => semanaDe(ancora), [ancora]);
@@ -500,6 +515,22 @@ export function PautaGrid({
           </Button>
         )}
 
+        <Button
+          variant={programacao.length > 0 ? "outline" : "default"}
+          size="sm"
+          className="h-8"
+          onClick={() => setProgramando(true)}
+        >
+          <CalendarSync className="size-4" />
+          <span className="hidden sm:inline">Programação semanal</span>
+          <span className="sm:hidden">Grade</span>
+          {programacao.length > 0 && (
+            <span className="tabular-nums text-2xs text-muted-foreground">
+              {programacao.length}/sem
+            </span>
+          )}
+        </Button>
+
         {/* `hidden lg:flex`: a caixinha só existe para esconder linha
             vazia, e no celular não há linha nenhuma — a lista é por dia.
             Deixá-la visível lá fazia o único efeito perceptível ser o
@@ -514,6 +545,14 @@ export function PautaGrid({
           Só com pauta
         </label>
       </header>
+
+      <ProgramacaoDialog
+        aberto={programando}
+        onAbertoChange={setProgramando}
+        programacao={programacao}
+        clients={todosOsClientes}
+        semanaVisivel={ancora}
+      />
 
       {/* --------------------------- Resumo --------------------------- */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-2xs">

@@ -102,6 +102,10 @@ function post(p: {
 
   return {
     id,
+    /* A demonstração não tem grade semanal: o dataset já é montado com a
+       semana cheia à mão, e um `recurrence_id` apontando para nada faria
+       a tela oferecer "editar a programação" de uma grade inexistente. */
+    recurrence_id: null,
     client_id: cliente.id,
     title: p.title,
     caption: p.caption,

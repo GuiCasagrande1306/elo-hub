@@ -6,6 +6,8 @@ import { enviarAvisoDeSaldo } from "@/lib/ads/balance-notice";
 import { dispatchScheduledReports } from "@/lib/reports/schedule";
 import { avisarRelatoriosProntos } from "@/lib/reports/aviso-interno";
 import { materializarMes, mesCorrente } from "@/lib/finance/recurrence";
+import { materializarProgramacao } from "@/lib/social/materializar";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 /**
  * GET /api/cron/daily
@@ -113,6 +115,29 @@ export async function GET(request: NextRequest) {
       resposta.recorrencia = await materializarMes(mesCorrente());
     } catch (error) {
       resposta.recorrencia = {
+        erro: error instanceof Error ? error.message : "falha desconhecida",
+      };
+    }
+  }
+
+  /* --- 0.5. Grade semanal de conteúdo -----------------------------------
+     Mantém as próximas semanas de pauta preenchidas a partir da
+     programação fixa de cada cliente.
+
+     RODA TODO DIA pelo mesmo motivo da recorrência financeira acima: é
+     idempotente, então a partir do segundo dia não cria nada e devolve
+     `criadas: 0`. O ganho é o horizonte ANDAR — sem uma passagem
+     diária, a grade preenche oito semanas no dia em que alguém clica e
+     depois vai encolhendo até acabar, e a queixa original volta.
+
+     Cliente de SERVIÇO, não de sessão: o cron não tem JWT de ninguém, e
+     a grade é de todos os clientes. `try/catch` próprio pela mesma razão
+     das outras etapas — falha aqui não pode impedir o relatório de sair. */
+  if (rodar("pauta")) {
+    try {
+      resposta.pauta = await materializarProgramacao(createSupabaseAdminClient());
+    } catch (error) {
+      resposta.pauta = {
         erro: error instanceof Error ? error.message : "falha desconhecida",
       };
     }

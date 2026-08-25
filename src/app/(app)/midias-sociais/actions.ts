@@ -177,6 +177,7 @@ export async function salvarPost(
     const novo = `sp-demo-${Date.now()}`;
     demoSocialPosts.push({
       id: novo,
+      recurrence_id: null,
       client_id: v.clientId,
       title: v.title,
       caption: v.caption,

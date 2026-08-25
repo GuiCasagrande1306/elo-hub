@@ -4,7 +4,12 @@ import { Database } from "lucide-react";
 
 import { PageContainer, PageHeader } from "@/components/layout/page-header";
 import { SocialWorkspace } from "@/components/social/social-workspace";
-import { getClients, getSocialAccounts, getSocialPosts } from "@/lib/data";
+import {
+  getClients,
+  getSocialAccounts,
+  getSocialPosts,
+  getSocialRecurrences,
+} from "@/lib/data";
 import { getCurrentUser } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Mídias sociais" };
@@ -31,7 +36,7 @@ export default async function MidiasSociaisPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const [posts, accounts, clients] = await Promise.all([
+  const [posts, accounts, clients, programacao] = await Promise.all([
     /* `catch` que devolve `null`, não `[]`: a diferença entre "não há
        peça nenhuma" e "a tabela não existe" é a diferença entre uma tela
        vazia normal e uma migration que ninguém rodou. Engolir o erro
@@ -39,6 +44,13 @@ export default async function MidiasSociaisPage() {
     getSocialPosts().catch(() => null),
     getSocialAccounts().catch(() => null),
     getClients(),
+    /* `[]` no catch, e não `null`: a grade semanal é a migration 70 e
+       pode não ter rodado num banco antigo. Diferente das duas tabelas
+       acima, a ausência dela NÃO impede a tela de funcionar — o
+       calendário inteiro continua de pé, só não há grade para oferecer.
+       Derrubar a página por causa disso trocaria um recurso a menos por
+       nenhum recurso. */
+    getSocialRecurrences().catch(() => []),
   ]);
 
   if (posts === null || accounts === null) {
@@ -77,6 +89,7 @@ export default async function MidiasSociaisPage() {
           posts={posts}
           clients={clients}
           accounts={accounts}
+          programacao={programacao}
           ehAdmin={user.role === "admin"}
         />
       </div>
