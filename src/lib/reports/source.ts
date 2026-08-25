@@ -9,6 +9,7 @@ import {
   getMetricsWithComparison,
   getReportTemplates,
 } from "@/lib/data";
+import { tiposDeConversaoDoCliente } from "@/lib/ads/conversao-do-cliente";
 import { previousPeriod, sumMetrics } from "@/lib/metrics/kpi";
 import type {
   AdCreative,
@@ -186,6 +187,11 @@ export function systemSource(): ReportSource {
     metrics: async (clientId, start, end) => {
       const prev = previousPeriod(start, end);
 
+      /* A mesma lista que o sync usou para escrever `conversions`. É ela
+         que diz qual família de campanha é a origem do resultado, e sem
+         ela `sumMetrics` volta a dividir pelo gasto da conta inteira. */
+      const tipos = await tiposDeConversaoDoCliente(clientId);
+
       if (isDemoMode) {
         const { demoMetrics } = await import("@/lib/mock/data");
         const janela = (a: string, b: string) =>
@@ -200,8 +206,8 @@ export function systemSource(): ReportSource {
         return {
           current,
           previous,
-          currentTotals: sumMetrics(current),
-          previousTotals: sumMetrics(previous),
+          currentTotals: sumMetrics(current, tipos),
+          previousTotals: sumMetrics(previous, tipos),
           period: { start, end, days: prev.days },
         };
       }
@@ -227,8 +233,8 @@ export function systemSource(): ReportSource {
       return {
         current,
         previous,
-        currentTotals: sumMetrics(current),
-        previousTotals: sumMetrics(previous),
+        currentTotals: sumMetrics(current, tipos),
+        previousTotals: sumMetrics(previous, tipos),
         period: { start, end, days: prev.days },
       };
     },

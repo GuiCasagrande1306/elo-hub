@@ -23,6 +23,17 @@ export interface NormalizedMetricRow {
   clicks: number;
   conversions: number;
   revenueCents: number;
+  /**
+   * Para que a campanha foi criada, como a plataforma responde.
+   *
+   * `null` é estado legítimo e NÃO quer dizer "nenhum objetivo": o
+   * Google Ads não tem campo equivalente, e a Meta às vezes devolve a
+   * campanha sem ele. Quem lê trata nulo como "não sei" — ver
+   * `campanha-de-origem.ts`.
+   */
+  objective: string | null;
+  /** O que o leilão otimiza. Mais específico que `objective`. */
+  optimizationGoal: string | null;
 }
 
 export type SyncFailureCode =

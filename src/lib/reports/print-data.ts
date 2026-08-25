@@ -1,5 +1,6 @@
 import "server-only";
 
+import { tiposDeConversaoDoCliente } from "@/lib/ads/conversao-do-cliente";
 import { isDemoMode } from "@/lib/env";
 import {
   metricasDeCriativosNoPeriodo,
@@ -121,6 +122,7 @@ export async function getPrintReportData(
         periodStart,
         periodEnd,
         await rotulosDoTemplate(client),
+        await tiposDeConversaoDoCliente(clientId),
       ),
       /* A demonstração não chama a Graph API — os números vêm da
          fixture, que não tem janela. Marcar como "não apurado" faz a
@@ -190,6 +192,7 @@ export async function getPrintReportData(
       periodStart,
       periodEnd,
       await rotulosDoTemplate(client),
+      await tiposDeConversaoDoCliente(clientId),
     ),
     creativesDoPeriodo: metricasDoPeriodo !== null,
   };
@@ -267,9 +270,10 @@ function assemble(
   periodStart: string,
   periodEnd: string,
   rotulos: Partial<Record<MetricKey, string>> = {},
+  tiposDeConversao: string[] = [],
 ): Omit<PrintReportData, "creativesDoPeriodo"> {
-  const currentTotals = sumMetrics(current);
-  const previousTotals = sumMetrics(previous);
+  const currentTotals = sumMetrics(current, tiposDeConversao);
+  const previousTotals = sumMetrics(previous, tiposDeConversao);
 
   return {
     client,

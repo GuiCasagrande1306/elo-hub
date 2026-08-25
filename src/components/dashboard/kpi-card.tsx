@@ -120,6 +120,20 @@ export function KpiCard({
         {kpi.formatted}
       </p>
 
+      {/* De onde o número saiu ---------------------------------------
+          Custo por resultado e ROAS são contados só nas campanhas de
+          origem — a campanha que existe para produzir aquele resultado.
+          Sem esta linha o número não fecha com o investimento ao lado:
+          numa conta que gastou R$550 e vendeu 22 vezes, o card mostra
+          R$16,75, e quem divide na calculadora acha R$25,01 e conclui
+          que o painel está errado. */}
+      {kpi.origem !== null && (
+        <p className="mt-1.5 text-2xs text-muted-foreground">
+          de {kpi.origem} {kpi.origem === 1 ? "campanha" : "campanhas"} de
+          origem
+        </p>
+      )}
+
       {/* Tendência ---------------------------------------------------- */}
       <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1">
         {kpi.deltaPercent === null ? (

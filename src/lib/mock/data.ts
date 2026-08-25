@@ -397,19 +397,73 @@ function generateMetrics(): DailyMetric[] {
             ? Math.round(conversions * cfg.ticket * (0.85 + rand() * 0.35))
             : 0;
 
-        rows.push({
-          id: `${clientId}-${platform}-${date}`,
-          client_id: clientId,
-          platform,
-          metric_date: date,
-          campaign_id: "_all",
-          campaign_name: null,
-          spend_cents: spendCents,
-          impressions,
-          clicks,
-          conversions,
-          revenue_cents: revenueCents,
-        });
+        /* DUAS CAMPANHAS NO META, não uma agregada, e isso existe para
+           a demonstração mostrar o isolamento do custo na campanha de
+           origem. Com uma linha só, `campanha-de-origem.ts` não tem o
+           que separar e o modo demo exibiria a conta antiga — o defeito
+           que o módulo acabou de corrigir ficaria invisível justamente
+           na tela em que o produto é avaliado.
+
+           A divisão imita o que a carteira real faz: a campanha de
+           conversão leva a maior parte da verba e TODOS os resultados; a
+           de alcance queima o resto sem converter. Medido na Satö em
+           23/08/2026: R$335 de conversão contra R$215 de alcance,
+           tráfego e WhatsApp somados.
+
+           O Google fica com uma linha só e sem objetivo — ele não tem
+           campo equivalente na API, e é o caminho "não sei" da regra que
+           esta linha exercita. */
+        if (platform === "meta_ads") {
+          const conversaoCents = Math.round(spendCents * 0.62);
+
+          rows.push({
+            id: `${clientId}-${platform}-${date}-conv`,
+            client_id: clientId,
+            platform,
+            metric_date: date,
+            campaign_id: `${clientId}-conv`,
+            campaign_name: "01 | CONVERSÃO",
+            spend_cents: conversaoCents,
+            impressions: Math.round(impressions * 0.45),
+            clicks: Math.round(clicks * 0.7),
+            conversions,
+            revenue_cents: revenueCents,
+            objective: cfg.ticket > 0 ? "OUTCOME_SALES" : "OUTCOME_LEADS",
+            optimization_goal: "OFFSITE_CONVERSIONS",
+          });
+
+          rows.push({
+            id: `${clientId}-${platform}-${date}-alc`,
+            client_id: clientId,
+            platform,
+            metric_date: date,
+            campaign_id: `${clientId}-alc`,
+            campaign_name: "02 | RECONHECIMENTO",
+            spend_cents: spendCents - conversaoCents,
+            impressions: Math.round(impressions * 0.55),
+            clicks: clicks - Math.round(clicks * 0.7),
+            conversions: 0,
+            revenue_cents: 0,
+            objective: "OUTCOME_AWARENESS",
+            optimization_goal: "REACH",
+          });
+        } else {
+          rows.push({
+            id: `${clientId}-${platform}-${date}`,
+            client_id: clientId,
+            platform,
+            metric_date: date,
+            campaign_id: "_all",
+            campaign_name: null,
+            spend_cents: spendCents,
+            impressions,
+            clicks,
+            conversions,
+            revenue_cents: revenueCents,
+            objective: null,
+            optimization_goal: null,
+          });
+        }
       }
     }
   }

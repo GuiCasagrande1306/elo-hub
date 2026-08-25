@@ -243,6 +243,16 @@ export default async function PrintReportPage({
                 <p className="mt-2 text-[26px] font-bold leading-none tracking-[-0.03em]">
                   {kpi.formatted}
                 </p>
+                {/* De onde o número saiu. Custo por resultado e ROAS são
+                    contados só nas campanhas de origem, então eles não
+                    fecham com o investimento do card ao lado — sem esta
+                    linha, quem divide na calculadora acha outro número e
+                    conclui que o relatório está errado. */}
+                {kpi.origem !== null && (
+                  <p className="mt-1 text-[8px] text-[#8b95a1]">
+                    de {kpi.origem} {kpi.origem === 1 ? "campanha" : "campanhas"}
+                  </p>
+                )}
 
                 {kpi.deltaPercent === null ? (
                   <p className="mt-2.5 text-[10px] text-[#8b95a1]">
@@ -360,6 +370,11 @@ export default async function PrintReportPage({
                   <p className="mt-2 text-[20px] font-bold tracking-[-0.02em]">
                     {kpi.formatted}
                   </p>
+                  {kpi.origem !== null && (
+                    <p className="mt-1 text-[7.5px] text-[#8b95a1]">
+                      de {kpi.origem} {kpi.origem === 1 ? "campanha" : "campanhas"}
+                    </p>
+                  )}
                   <p
                     className="mt-1 text-[9px] font-medium"
                     style={{ color: sentimentColor(kpi.sentiment) }}

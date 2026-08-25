@@ -237,6 +237,9 @@ const styles = StyleSheet.create({
   },
   kpiDelta: { fontSize: 8, marginTop: 6 },
   kpiPrev: { fontSize: 7.5, color: INK_SOFT, marginTop: 2 },
+  /* O selo da campanha de origem. Fica ACIMA do delta e abaixo do
+     número, porque é qualificação do número, não da variação. */
+  kpiOrigem: { fontSize: 6.5, color: INK_SOFT, marginTop: 1 },
 
   /* --------------------------- Gráfico -------------------------- */
   chartFrame: {
@@ -664,7 +667,10 @@ function CoverSummary({ payload }: { payload: ReportPayload }) {
               negócio.
             </Text>
           ) : (
-            <DeltaText kpi={destaque} />
+            <>
+              <SeloDeOrigem kpi={destaque} />
+              <DeltaText kpi={destaque} />
+            </>
           )}
         </View>
       )}
@@ -674,6 +680,7 @@ function CoverSummary({ payload }: { payload: ReportPayload }) {
           <View key={kpi.key} style={styles.kpiCard}>
             <Text style={styles.kpiLabel}>{kpi.label}</Text>
             <Text style={styles.kpiValue}>{kpi.formatted}</Text>
+            <SeloDeOrigem kpi={kpi} />
             <DeltaText kpi={kpi} />
           </View>
         ))}
@@ -683,6 +690,28 @@ function CoverSummary({ payload }: { payload: ReportPayload }) {
         os {payload.meta.days} dias imediatamente anteriores.
       </Text>
     </View>
+  );
+}
+
+/**
+ * "de 1 campanha" — o recorte que o número usou.
+ *
+ * SEM ISTO O NÚMERO NÃO FECHA, e é o tipo de discrepância que destrói a
+ * confiança no relatório inteiro: a capa diz R$550,29 investidos e 22
+ * compras, e o card diz R$16,75 por compra. Quem divide na calculadora
+ * acha R$25,01. O selo é a diferença entre "o relatório está errado" e
+ * "o custo é da campanha que vende".
+ *
+ * Só aparece quando houve recorte — numa conta em que toda campanha é de
+ * venda, `origem` é nulo e dizer "de 3 campanhas" sugeriria um corte que
+ * não houve.
+ */
+function SeloDeOrigem({ kpi }: { kpi: ReportPayload["kpis"][number] }) {
+  if (kpi.origem === null) return null;
+  return (
+    <Text style={styles.kpiOrigem}>
+      de {kpi.origem} {kpi.origem === 1 ? "campanha" : "campanhas"}
+    </Text>
   );
 }
 
@@ -894,6 +923,7 @@ function KpiCards({ kpis }: { kpis: ReportPayload["kpis"] }) {
             <View key={kpi.key} style={styles.kpiCard}>
               <Text style={styles.kpiLabel}>{kpi.label}</Text>
               <Text style={styles.kpiValue}>{kpi.formatted}</Text>
+              <SeloDeOrigem kpi={kpi} />
               <DeltaText kpi={kpi} />
             </View>
           ))}

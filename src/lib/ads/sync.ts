@@ -262,6 +262,8 @@ async function upsertMetrics(
     clicks: row.clicks,
     conversions: row.conversions,
     revenue_cents: row.revenueCents,
+    objective: row.objective,
+    optimization_goal: row.optimizationGoal,
     synced_at: new Date().toISOString(),
   }));
 

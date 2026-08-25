@@ -457,6 +457,9 @@ export interface DailyMetric {
   clicks: number;
   conversions: number;
   revenue_cents: number;
+  /** Ver `campanha-de-origem.ts`. `null` = desconhecido, não "nenhum". */
+  objective: string | null;
+  optimization_goal: string | null;
 }
 
 export interface AdCreative {

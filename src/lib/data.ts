@@ -2,6 +2,7 @@ import "server-only";
 
 import { isDemoMode } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { tiposDeConversaoDoCliente } from "@/lib/ads/conversao-do-cliente";
 import { buildTrend, previousPeriod, sumMetrics } from "@/lib/metrics/kpi";
 import { buildGoalProgress, periodElapsed } from "@/lib/metrics/goals";
 import {
@@ -245,16 +246,21 @@ export async function getMetricsWithComparison(
 ) {
   const prev = previousPeriod(start, end);
 
-  const [current, previous] = await Promise.all([
+  /* Os tipos entram junto da busca: é o que faz o PAINEL mostrar o mesmo
+     custo por resultado do PDF. Divergirem seria pior do que os dois
+     estarem errados — o gestor abriria o relatório do cliente e veria um
+     número que a tela dele nunca mostrou. */
+  const [current, previous, tipos] = await Promise.all([
     getMetrics(clientId, start, end),
     getMetrics(clientId, prev.start, prev.end),
+    tiposDeConversaoDoCliente(clientId),
   ]);
 
   return {
     current,
     previous,
-    currentTotals: sumMetrics(current),
-    previousTotals: sumMetrics(previous),
+    currentTotals: sumMetrics(current, tipos),
+    previousTotals: sumMetrics(previous, tipos),
     period: { start, end, days: prev.days },
     previousPeriod: prev,
   };

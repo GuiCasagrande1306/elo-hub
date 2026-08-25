@@ -43,6 +43,13 @@ const DEFAULT_CONVERSION_ACTION = "offsite_conversion.fb_pixel_lead";
 const FIELDS = [
   "campaign_id",
   "campaign_name",
+  /* PARA QUE a campanha foi criada. Entram para o isolamento do custo e
+     do ROAS na campanha de origem — sem eles, o custo por compra sai
+     dividido pelo gasto de alcance e tráfego junto. Ver
+     `campanha-de-origem.ts`. Já eram buscados no nível de anúncio; aqui
+     são os mesmos campos, um nível acima. */
+  "objective",
+  "optimization_goal",
   "spend",
   "impressions",
   "clicks",
@@ -63,6 +70,8 @@ interface MetaInsightRow {
   date_start: string;
   campaign_id?: string;
   campaign_name?: string;
+  objective?: string;
+  optimization_goal?: string;
   spend?: string;
   impressions?: string;
   clicks?: string;
@@ -263,6 +272,15 @@ export function toNormalizedRow(
     metricDate: row.date_start,
     campaignId: row.campaign_id ?? "_all",
     campaignName: row.campaign_name ?? null,
+    objective: row.objective ?? null,
+    /* "Unknown Optimization Goal" é o que a Meta devolve quando ela
+       própria não sabe — texto, não código. Guardar essa string faria a
+       classificação tentar casá-la com um padrão real; nulo diz a
+       verdade, e a regra de origem sabe tratar nulo. */
+    optimizationGoal:
+      row.optimization_goal && !/unknown/i.test(row.optimization_goal)
+        ? row.optimization_goal
+        : null,
     spendCents: decimalToCents(row.spend),
     impressions: toInt(row.impressions),
     clicks: toInt(row.clicks),

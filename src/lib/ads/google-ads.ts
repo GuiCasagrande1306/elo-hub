@@ -356,6 +356,18 @@ export function toNormalizedRow(row: GoogleAdsRow): NormalizedMetricRow {
     metricDate: row.segments?.date ?? "",
     campaignId: row.campaign?.id ?? "_all",
     campaignName: row.campaign?.name ?? null,
+    /* O Google não tem `objective` como a Meta — o mais próximo é
+       `advertising_channel_type` (SEARCH, DISPLAY, PERFORMANCE_MAX), que
+       diz ONDE o anúncio aparece, não PARA QUE a campanha existe. Mapear
+       um no outro seria palpite, e palpite errado aqui tira gasto de
+       verdade da conta do custo por resultado.
+
+       Nulo é a resposta honesta, e `campanha-de-origem.ts` sabe lidar:
+       sem objetivo, a campanha entra se PRODUZIU o resultado. Para o
+       Google isso é quase sempre o que se quer, porque a rede de
+       display que não converte já fica de fora sozinha. */
+    objective: null,
+    optimizationGoal: null,
     // Micros → centavos: dividir por 10.000.
     spendCents: microsToCents(row.metrics?.costMicros),
     impressions: toInt(row.metrics?.impressions),

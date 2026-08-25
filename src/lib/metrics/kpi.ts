@@ -1,3 +1,7 @@
+import {
+  totaisDeOrigem,
+  type TotaisDeOrigem,
+} from "@/lib/ads/campanha-de-origem";
 import type { AdPlatform, DailyMetric, MetricKey } from "@/types/database";
 import {
   formatCompact,
@@ -142,7 +146,34 @@ export interface MetricTotals {
   clicks: number;
   conversions: number;
   revenueCents: number;
+  /**
+   * O mesmo período, contado só nas CAMPANHAS DE ORIGEM do resultado.
+   *
+   * Existe porque custo por resultado e ROAS eram divididos pelo gasto da
+   * conta inteira, e isso faz uma conta lucrativa parecer no prejuízo.
+   * Medido na Satö, 17–23/08/2026: R$550,29 investidos e 22 compras dão
+   * R$25,01 por compra e ROAS 8,13; a campanha que existe para vender
+   * gastou R$335,08 e trouxe 20 compras — R$16,75 e ROAS 12,35. Os
+   * R$215,21 restantes pagam alcance, tráfego e atendimento.
+   *
+   * O VOLUME NÃO PASSA POR AQUI. Quantas compras e quanta receita
+   * continuam sendo da conta inteira: a venda que veio da campanha de
+   * alcance é venda de verdade, e tirá-la do relatório mentiria para
+   * menos. Só as RAZÕES de eficiência mudam de denominador.
+   *
+   * Quando não há o que isolar, é uma cópia dos totais com
+   * `isolado: false` — ver a rede de segurança em `totaisDeOrigem`.
+   */
+  origem: TotaisDeOrigem;
 }
+
+const ORIGEM_VAZIA: TotaisDeOrigem = {
+  spendCents: 0,
+  conversions: 0,
+  revenueCents: 0,
+  campanhas: 0,
+  isolado: false,
+};
 
 export const EMPTY_TOTALS: MetricTotals = {
   spendCents: 0,
@@ -150,10 +181,22 @@ export const EMPTY_TOTALS: MetricTotals = {
   clicks: 0,
   conversions: 0,
   revenueCents: 0,
+  origem: ORIGEM_VAZIA,
 };
 
-export function sumMetrics(rows: DailyMetric[]): MetricTotals {
-  return rows.reduce<MetricTotals>(
+/**
+ * `tiposDeConversao` é OPCIONAL, e a omissão tem significado: sem ela
+ * não há como saber qual família de campanha é a origem, então `origem`
+ * vira uma cópia dos totais e o comportamento é o de antes. É o que
+ * mantém as treze chamadas espalhadas pelo projeto funcionando enquanto
+ * só o relatório e o painel passam a lista — em vez de um parâmetro
+ * obrigatório que obrigaria cada uma delas a inventar um valor.
+ */
+export function sumMetrics(
+  rows: DailyMetric[],
+  tiposDeConversao?: string[],
+): MetricTotals {
+  const base = rows.reduce(
     (acc, row) => ({
       spendCents: acc.spendCents + row.spend_cents,
       impressions: acc.impressions + row.impressions,
@@ -161,8 +204,26 @@ export function sumMetrics(rows: DailyMetric[]): MetricTotals {
       conversions: acc.conversions + Number(row.conversions),
       revenueCents: acc.revenueCents + row.revenue_cents,
     }),
-    { ...EMPTY_TOTALS },
+    {
+      spendCents: 0,
+      impressions: 0,
+      clicks: 0,
+      conversions: 0,
+      revenueCents: 0,
+    },
   );
+
+  const origem = tiposDeConversao
+    ? totaisDeOrigem(rows, tiposDeConversao)
+    : {
+        spendCents: base.spendCents,
+        conversions: base.conversions,
+        revenueCents: base.revenueCents,
+        campanhas: new Set(rows.map((r) => r.campaign_id)).size,
+        isolado: false,
+      };
+
+  return { ...base, origem };
 }
 
 /**
@@ -186,12 +247,18 @@ export function sumMetrics(rows: DailyMetric[]): MetricTotals {
  */
 export function metricaIndefinida(key: MetricKey, t: MetricTotals): boolean {
   switch (key) {
+    /* `cpa` e `cpl` olham a ORIGEM, porque é dela que sai o número. Sem
+       isso, uma conta em que a campanha de origem não converteu diria
+       "R$ 0,00" em vez de "—" — o mesmo defeito que este arquivo já
+       descreve, um nível abaixo. Quando não há isolamento, `origem` é
+       cópia dos totais e as duas leituras coincidem. */
     case "cpa":
     case "cpl":
+      return t.origem.conversions === 0;
     case "aov":
       return t.conversions === 0;
     case "roas":
-      return t.spendCents === 0;
+      return t.origem.spendCents === 0;
     case "ctr":
     case "cpm":
       return t.impressions === 0;
@@ -222,13 +289,15 @@ export function deriveMetric(key: MetricKey, t: MetricTotals): number {
     case "results":
     case "leads":
       return t.conversions;
+    /* AS DUAS RAZÕES DE EFICIÊNCIA SAEM DA ORIGEM, e são as únicas.
+       Ver o comentário de `MetricTotals.origem`. */
     case "cpa":
     case "cpl":
-      return safeDiv(t.spendCents, t.conversions);
+      return safeDiv(t.origem.spendCents, t.origem.conversions);
     case "revenue":
       return t.revenueCents;
     case "roas":
-      return safeDiv(t.revenueCents, t.spendCents);
+      return safeDiv(t.origem.revenueCents, t.origem.spendCents);
     case "ctr":
       return safeDiv(t.clicks, t.impressions);
     case "cpc":
@@ -267,7 +336,21 @@ export interface KpiResult {
    * traço ("sem conversões no período") em vez de deixar um buraco.
    */
   indefinido: boolean;
+  /**
+   * Quantas campanhas entraram nesta conta, quando ela foi isolada nas
+   * campanhas de origem. `null` = conta inteira.
+   *
+   * A INTERFACE PRECISA DIZER ISSO. Um custo por compra de R$16,75 numa
+   * conta que investiu R$550 e vendeu 22 vezes não fecha em lugar
+   * nenhum — quem confere na calculadora acha R$25,01 e conclui que o
+   * relatório está errado. O selo "1 campanha" é o que transforma uma
+   * discrepância inexplicável numa informação.
+   */
+  origem: number | null;
 }
+
+/* As únicas métricas que mudam de denominador. Ver `deriveMetric`. */
+const USAM_ORIGEM = new Set<MetricKey>(["cpa", "cpl", "roas"]);
 
 /** Abaixo disto, tratamos como estabilidade e não como tendência. */
 const FLAT_THRESHOLD = 0.5;
@@ -315,6 +398,10 @@ export function computeKpi(
     previousValue,
     previousFormatted: anteriorIndefinido ? "—" : def.format(previousValue),
     indefinido,
+    origem:
+      USAM_ORIGEM.has(key) && current.origem.isolado
+        ? current.origem.campanhas
+        : null,
   };
 }
 
@@ -327,19 +414,28 @@ export interface TrendPoint {
   cpa: number;
 }
 
-export function buildTrend(rows: DailyMetric[]): TrendPoint[] {
-  const byDate = new Map<string, MetricTotals>();
-
+export function buildTrend(
+  rows: DailyMetric[],
+  tiposDeConversao?: string[],
+): TrendPoint[] {
+  /* Agrupa e chama `sumMetrics` por dia, em vez de somar campo a campo
+     aqui. Antes era a soma manual, e ela não tinha como calcular a
+     origem — o card diria "custo por compra R$16,75" e a linha do
+     gráfico desenharia R$25,01 no mesmo dia, sem nada explicando a
+     diferença. */
+  const porData = new Map<string, DailyMetric[]>();
   for (const row of rows) {
-    const current = byDate.get(row.metric_date) ?? { ...EMPTY_TOTALS };
-    byDate.set(row.metric_date, {
-      spendCents: current.spendCents + row.spend_cents,
-      impressions: current.impressions + row.impressions,
-      clicks: current.clicks + row.clicks,
-      conversions: current.conversions + Number(row.conversions),
-      revenueCents: current.revenueCents + row.revenue_cents,
-    });
+    const lista = porData.get(row.metric_date);
+    if (lista) lista.push(row);
+    else porData.set(row.metric_date, [row]);
   }
+
+  const byDate = new Map<string, MetricTotals>(
+    [...porData].map(([data, linhas]) => [
+      data,
+      sumMetrics(linhas, tiposDeConversao),
+    ]),
+  );
 
   return [...byDate.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
@@ -348,7 +444,10 @@ export function buildTrend(rows: DailyMetric[]): TrendPoint[] {
       spend: t.spendCents / 100,
       results: t.conversions,
       revenue: t.revenueCents / 100,
-      cpa: t.conversions === 0 ? 0 : t.spendCents / t.conversions / 100,
+      cpa:
+        t.origem.conversions === 0
+          ? 0
+          : t.origem.spendCents / t.origem.conversions / 100,
     }));
 }
 

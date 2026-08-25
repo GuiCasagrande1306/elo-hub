@@ -6,7 +6,9 @@ import {
   computeKpi,
   deriveMetric,
   splitByPlatform,
+  EMPTY_TOTALS,
   type KpiResult,
+  type MetricTotals,
   type PlatformSplit,
   type TrendPoint,
 } from "@/lib/metrics/kpi";
@@ -478,21 +480,27 @@ export function buildWhatsAppSummary(payload: ReportPayload): string {
 
 /** Total consolidado, usado no cabeçalho da capa. */
 export function payloadHeadline(payload: ReportPayload) {
-  const totals = payload.platforms.reduce(
+  const totals = payload.platforms.reduce<MetricTotals>(
     (acc, p) => ({
       spendCents: acc.spendCents + p.totals.spendCents,
       impressions: acc.impressions + p.totals.impressions,
       clicks: acc.clicks + p.totals.clicks,
       conversions: acc.conversions + p.totals.conversions,
       revenueCents: acc.revenueCents + p.totals.revenueCents,
+      /* A origem soma junto, plataforma a plataforma. Somar só os totais
+         e deixar a origem zerada faria o ROAS da capa — que sai da
+         origem — imprimir "—" numa conta que tem ROAS. */
+      origem: {
+        spendCents: acc.origem.spendCents + p.totals.origem.spendCents,
+        conversions: acc.origem.conversions + p.totals.origem.conversions,
+        revenueCents: acc.origem.revenueCents + p.totals.origem.revenueCents,
+        campanhas: acc.origem.campanhas + p.totals.origem.campanhas,
+        /* Basta UMA plataforma isolar para o número da capa já não ser
+           a conta inteira, e o selo precisa dizer isso. */
+        isolado: acc.origem.isolado || p.totals.origem.isolado,
+      },
     }),
-    {
-      spendCents: 0,
-      impressions: 0,
-      clicks: 0,
-      conversions: 0,
-      revenueCents: 0,
-    },
+    EMPTY_TOTALS,
   );
 
   return {
