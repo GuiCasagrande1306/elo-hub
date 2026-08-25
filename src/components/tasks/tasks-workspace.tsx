@@ -82,10 +82,19 @@ interface TasksWorkspaceProps {
 
    `clients` continua em uso — não pelo filtro da barra, que saiu, mas
    pelo seletor de cliente dentro de cada linha da lista. */
+/**
+ * O nome com que a tarefa nasce.
+ *
+ * O banco exige título (`min(1)` em `createSchema`), e o popup abre com
+ * ele selecionado — digitar substitui. Um texto neutro e reconhecível é
+ * melhor que "sem título": se alguém abandonar, a linha diz o que é.
+ */
+const TITULO_PROVISORIO = "Nova tarefa";
+
 export function TasksWorkspace({ tasks, clients, team }: TasksWorkspaceProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [, startTransition] = useTransition();
+  const [criando, startTransition] = useTransition();
 
   /* Abre em LISTA, não no quadro. O Kanban responde "em que etapa está
      cada coisa"; a lista responde "o que é para hoje e de quem é" — que
@@ -140,8 +149,10 @@ export function TasksWorkspace({ tasks, clients, team }: TasksWorkspaceProps) {
     }
     return [...mapa].map(([id, nome]) => ({ id, nome }));
   }, [tasks]);
-  const [creating, setCreating] = useState(false);
-  const [newTitle, setNewTitle] = useState("");
+  /* A tarefa recém-criada, para o popup abrir com o título selecionado
+     — e só ela: reabrir uma tarefa antiga não deve selecionar o texto,
+     que é o gesto de quem vai substituí-lo. */
+  const [tituloNovo, setTituloNovo] = useState<string | null>(null);
 
   /* Um colega mexeu numa tarefa → a página revalida sozinha.
 
@@ -247,23 +258,35 @@ export function TasksWorkspace({ tasks, clients, team }: TasksWorkspaceProps) {
     });
   }
 
-  function handleCreate(event: React.FormEvent) {
-    event.preventDefault();
-    const title = newTitle.trim();
-    if (!title) return;
-
-    setNewTitle("");
-    setCreating(false);
-
+  /**
+   * Cria a tarefa e abre o popup dela.
+   *
+   * A barra tinha um campo de UM CAMPO: digitava o título, criava, e a
+   * tarefa ficava lá embaixo esperando alguém achá-la para pôr prazo,
+   * responsável e descrição. O botão prometia "nova tarefa" e entregava
+   * meia.
+   *
+   * Agora é um clique: a tarefa nasce e o popup abre nela, com o título
+   * selecionado. É o mesmo caminho que o "+" de dentro da lista já
+   * fazia — ver `onCreated` em `task-list.tsx`. Duas portas para a
+   * mesma coisa, comportando-se igual.
+   *
+   * NASCE COM TÍTULO PROVISÓRIO porque o banco exige um, e porque o
+   * campo no popup já abre selecionado: digitar substitui. Sem cliente,
+   * pelo mesmo motivo de antes — a barra não tem filtro de conta, e
+   * vincular é um campo do popup.
+   */
+  function novaTarefa() {
     startTransition(async () => {
-      const result = await createTask({
-        title,
-        /* Sem filtro de cliente na barra, a criação rápida nasce sem
-           conta — quem precisa vincular faz na gaveta. */
-        clientId: null,
-      });
-      if (result.ok) toast.success("Tarefa criada.");
-      else toast.error(result.error);
+      const result = await createTask({ title: TITULO_PROVISORIO, clientId: null });
+
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+
+      setTituloNovo(result.taskId);
+      setOpenTask(result.taskId);
     });
   }
 
@@ -441,31 +464,14 @@ export function TasksWorkspace({ tasks, clients, team }: TasksWorkspaceProps) {
             meio de cinco filtros cinzas ela desaparecia. */}
         <Button
           size="sm"
+          disabled={criando}
           className="h-9 w-full bg-signal text-white hover:bg-signal/90 md:ml-auto md:w-auto"
-          onClick={() => setCreating((value) => !value)}
+          onClick={novaTarefa}
         >
           <Plus className="size-4" />
           Nova tarefa
         </Button>
       </div>
-
-      {creating && (
-        <form onSubmit={handleCreate} className="surface-card flex gap-2 p-2">
-          <Input
-            autoFocus
-            value={newTitle}
-            onChange={(event) => setNewTitle(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") setCreating(false);
-            }}
-            placeholder="O que precisa ser feito?"
-            className="h-9 border-0 shadow-none focus-visible:ring-0 dark:bg-transparent"
-          />
-          <Button type="submit" size="sm" className="h-9 shrink-0">
-            Criar
-          </Button>
-        </form>
-      )}
 
       {/* Conteúdo -------------------------------------------------- */}
       {view === "calendar" && (
@@ -554,9 +560,17 @@ export function TasksWorkspace({ tasks, clients, team }: TasksWorkspaceProps) {
            (slider de criticidade) manteria o valor da tarefa anterior. */
         key={openTask?.id ?? "vazia"}
         task={openTask}
+        /* Só na recém-criada: o campo abre focado e com o texto
+           selecionado, para digitar substituir o provisório. Fazer isso
+           ao reabrir uma tarefa antiga seria um convite a apagar o
+           título dela sem querer. */
+        selecionarTitulo={Boolean(openTask && openTask.id === tituloNovo)}
         open={Boolean(openTask)}
         onOpenChange={(open) => {
-          if (!open) setOpenTask(null);
+          if (!open) {
+            setOpenTask(null);
+            setTituloNovo(null);
+          }
         }}
       />
     </div>

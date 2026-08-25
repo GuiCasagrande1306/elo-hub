@@ -58,6 +58,8 @@ interface TaskDialogProps {
   clients: { id: string; name: string }[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Tarefa recém-criada: abre com o título focado e selecionado. */
+  selecionarTitulo?: boolean;
 }
 
 export function TaskDialog({
@@ -66,6 +68,7 @@ export function TaskDialog({
   team,
   open,
   onOpenChange,
+  selecionarTitulo = false,
 }: TaskDialogProps) {
   if (!task) return null;
   return (
@@ -81,6 +84,7 @@ export function TaskDialog({
           task={task}
           clients={clients}
           team={team}
+          selecionarTitulo={selecionarTitulo}
           onClose={() => onOpenChange(false)}
         />
       </DialogContent>
@@ -92,14 +96,22 @@ function TaskDialogBody({
   task,
   clients,
   team,
+  selecionarTitulo,
   onClose,
 }: {
   task: TaskWithRelations;
   clients: { id: string; name: string }[];
   team: Profile[];
+  /** Recém-criada: foca e seleciona o título ao abrir. */
+  selecionarTitulo?: boolean;
   onClose: () => void;
 }) {
   const [title, setTitle] = useState(task.title);
+
+  /* UMA VEZ SÓ. O `ref` do textarea roda a cada render; sem esta trava,
+     qualquer redesenho roubaria o cursor de volta para o título no meio
+     da digitação de outro campo. */
+  const jaSelecionou = useRef(false);
   const [content, setContent] = useState<RichTextDoc>(task.content);
   const [newItem, setNewItem] = useState("");
   /* Espelho local do slider: o arraste precisa de resposta imediata, e
@@ -223,6 +235,21 @@ function TaskDialogBody({
 
           {/* Título editável no lugar, sem "modo edição". */}
           <textarea
+            ref={(el) => {
+              /* SELECIONA O TÍTULO da tarefa recém-criada. Ela nasce
+                 como "Nova tarefa" só porque o banco exige um título —
+                 e a primeira coisa que a pessoa faz é trocá-lo. Com o
+                 texto selecionado, digitar já substitui.
+
+                 No `ref` e não num efeito: o compilador do React recusa
+                 `setState`/foco síncrono dentro de efeito, e aqui não
+                 há estado nenhum a sincronizar — é só o cursor. */
+              if (el && selecionarTitulo && !jaSelecionou.current) {
+                jaSelecionou.current = true;
+                el.focus();
+                el.select();
+              }
+            }}
             value={title}
             rows={1}
             aria-label="Título da tarefa"
