@@ -6,12 +6,14 @@ import { z } from "zod";
 import { isDemoMode } from "@/lib/env";
 import { createSupabaseServerClient, getCurrentUser } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { horaDoPost, montarAgendamento } from "@/lib/social/agenda";
 import {
   BUCKET_ARTE,
   caminhoDaArte,
   ehArteDoPainel,
 } from "@/lib/social/media";
 import type {
+  SocialFormat,
   SocialNetwork,
   SocialPostComment,
   SocialPostStatus,
@@ -331,6 +333,125 @@ function sincronizarDestinosEmMemoria(
 }
 
 /* ------------------------------------------------------------------ */
+/* Pauta rápida — criar direto na grade                                */
+/* ------------------------------------------------------------------ */
+
+const pautaSchema = z.object({
+  clientId: id,
+  /* Só a data. A hora é decidida no SERVIDOR, e é de propósito: a grade
+     de pauta não tem campo de hora, e deixar o navegador montar o
+     instante foi como o fuso entrou errado da primeira vez.
+
+     `z.iso.date` e não um regex de formato. O regex aceitava
+     '2026-02-30' e '2026-13-45' — o primeiro o `Date` rola em silêncio
+     para 2 de março, o segundo vira Invalid Date e estoura na
+     renderização. As duas actions irmãs que já existiam validam de
+     verdade (`datetime({ offset: true })` em `salvarPost` e
+     `reagendarPost`), e um caminho novo mais frouxo que o antigo é como
+     um dado inválido entra. */
+  dia: z.iso.date("Dia inválido."),
+  title: z.string().trim().min(1, "Dê um nome à peça.").max(200),
+  format: z.enum(FORMATOS).default("imagem"),
+  /* Só link externo aqui. Arquivo sobe pelo `ArtUploader`, no
+     compositor, que precisa de FormData e de barra de progresso — coisas
+     que não cabem num popover de uma linha. O `.url()` é mais estrito
+     que o refine de `postSchema` de propósito: ali a lista também aceita
+     caminho do bucket, que este campo nunca produz. */
+  mediaUrl: z
+    .string()
+    .trim()
+    .url("Cole um link começando com http:// ou https://")
+    .max(500)
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
+});
+
+/**
+ * Cria uma pauta com uma linha só — nome, dia e formato.
+ *
+ * Existe porque o compositor é o caminho errado para encher um mês. Ele
+ * pede cliente, redes, legenda e formato antes de aceitar a primeira
+ * peça; quem está planejando trinta pautas de dez clientes abandona na
+ * quarta. Aqui o mínimo é o nome: o resto se completa depois, na peça
+ * que já existe e já tem dia.
+ *
+ * AS REDES SAEM DO CADASTRO, não de um palpite da tela. `salvarPost`
+ * exige ao menos uma, e a resposta certa já está em `social_accounts` —
+ * é literalmente a lista de perfis que a agência opera para o cliente.
+ * Sem nenhum cadastrado, Instagram: é a rede de 100% dos contratos de
+ * conteúdo da casa hoje, e uma peça com a rede errada se conserta em um
+ * clique, enquanto um erro de validação trava a criação.
+ */
+export async function criarPauta(input: {
+  clientId: string;
+  dia: string;
+  title: string;
+  format?: SocialFormat;
+  /** Link do Drive/Dropbox colado na criação. Opcional. */
+  mediaUrl?: string;
+}): Promise<ActionResult<{ postId: string }>> {
+  const parsed = pautaSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+  }
+
+  const v = parsed.data;
+
+  const redes = await redesDoCliente(v.clientId);
+  if (!redes.ok) return redes;
+
+  return salvarPost({
+    clientId: v.clientId,
+    title: v.title,
+    caption: "",
+    format: v.format,
+    scheduledAt: montarAgendamento(v.dia, ""),
+    status: "rascunho",
+    networks: redes.dados,
+    mediaUrls: v.mediaUrl ? [v.mediaUrl] : [],
+  });
+}
+
+async function redesDoCliente(
+  clientId: string,
+): Promise<ActionResult<SocialNetwork[]>> {
+  const padrao: SocialNetwork[] = ["instagram"];
+
+  if (isDemoMode) {
+    const { demoSocialAccounts } = await import("@/lib/mock/social");
+    const redes = demoSocialAccounts
+      .filter((c) => c.client_id === clientId && c.is_active)
+      .map((c) => c.network);
+    return { ok: true, dados: redes.length > 0 ? redes : padrao };
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("social_accounts")
+    .select("network")
+    .eq("client_id", clientId)
+    .eq("is_active", true);
+
+  /* FALHA DE LEITURA NÃO É "CLIENTE SEM PERFIL". Descartar o `error` e
+     cair no padrão faria `salvarPost` criar de verdade uma linha em
+     `social_post_targets` apontando para uma rede que a agência talvez
+     nem opere para aquele cliente — e nada na tela diria que foi
+     palpite. `sincronizarDestinos` já lê o erro e aborta; aqui é o
+     mesmo caso. */
+  if (error) return { ok: false, error: error.message };
+
+  /* Filtra contra a lista canônica: o `check` da tabela ainda aceita as
+     cinco redes removidas na migration 49, então um cadastro antigo
+     pode devolver 'linkedin' — e mandá-lo para `salvarPost` faria o zod
+     recusar a pauta inteira por causa de um dado velho. */
+  const redes = (data ?? [])
+    .map((c) => c.network as SocialNetwork)
+    .filter((n): n is SocialNetwork => (REDES as readonly string[]).includes(n));
+
+  return { ok: true, dados: redes.length > 0 ? redes : padrao };
+}
+
+/* ------------------------------------------------------------------ */
 /* Reagendar                                                           */
 /* ------------------------------------------------------------------ */
 
@@ -374,6 +495,168 @@ export async function reagendarPost(input: {
 
   revalidatePath("/midias-sociais");
   return { ok: true };
+}
+
+const moverSchema = z.object({
+  postId: id,
+  /* Ausente = mantém o dono. Não é o mesmo que `null`, e por isso não é
+     `nullable`: peça sem cliente não existe no esquema. */
+  clientId: id.optional(),
+  /* Mesma validação estrita de `pautaSchema` — e aqui ela é a ÚNICA
+     trava. `criarPauta` ainda passa por `salvarPost`, que revalida;
+     `moverPauta` monta o instante e escreve direto no banco. */
+  dia: z.iso.date("Dia inválido."),
+});
+
+/**
+ * Arrastar na grade de pauta: muda o DIA e, quando a peça cai na linha
+ * de outro cliente, o dono também.
+ *
+ * PRESERVA A HORA, como o arrasto do calendário: mover de terça para
+ * quarta não deveria mexer no horário de publicação.
+ *
+ * A tela recusa a troca de cliente quando a peça já tem arte — o
+ * caminho do arquivo começa pelo id do cliente e é o que a policy do
+ * bucket compara. Aqui não há uma segunda checagem disso de propósito:
+ * a policy de `social_posts` é quem decide se esta pessoa pode escrever
+ * nos dois clientes, e duplicar a regra da arte no servidor exigiria
+ * mover arquivos no Storage dentro de uma action que promete só mudar
+ * uma data.
+ */
+export async function moverPauta(input: {
+  postId: string;
+  clientId?: string;
+  dia: string;
+}): Promise<ActionResult> {
+  const parsed = moverSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+  }
+
+  const { postId, clientId, dia } = parsed.data;
+
+  if (isDemoMode) {
+    const { demoSocialPosts } = await import("@/lib/mock/social");
+    const { demoClients } = await import("@/lib/mock/data");
+    const post = demoSocialPosts.find((p) => p.id === postId);
+    if (post) {
+      post.scheduled_at = montarAgendamento(dia, horaDoPost(post.scheduled_at));
+      if (clientId) {
+        const cliente = demoClients.find((c) => c.id === clientId) ?? null;
+        post.client_id = clientId;
+        post.client = cliente
+          ? {
+              id: cliente.id,
+              name: cliente.name,
+              brand_primary: cliente.brand_primary,
+              logo_url: cliente.logo_url,
+            }
+          : null;
+      }
+    }
+    revalidatePath("/midias-sociais");
+    return { ok: true };
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  /* Lê a hora atual antes de escrever: `montarAgendamento` precisa dela
+     e o cliente não a manda — mandar seria confiar no relógio do
+     navegador para reconstruir um instante que o banco já tem. */
+  const { data: atual, error: eLeitura } = await supabase
+    .from("social_posts")
+    .select("scheduled_at")
+    .eq("id", postId)
+    .maybeSingle();
+
+  if (eLeitura) return { ok: false, error: eLeitura.message };
+  if (!atual) return { ok: false, error: "Peça não encontrada." };
+
+  const { error } = await supabase
+    .from("social_posts")
+    .update({
+      scheduled_at: montarAgendamento(dia, horaDoPost(atual.scheduled_at)),
+      ...(clientId ? { client_id: clientId } : {}),
+    })
+    .eq("id", postId);
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/midias-sociais");
+  return { ok: true };
+}
+
+const anexarSchema = z.object({
+  postId: id,
+  /* Caminho no bucket OU link externo — a mesma dupla que `media_urls`
+     guarda. O `data:` do modo demo entra pelo primeiro ramo. */
+  arte: z.string().trim().min(1).max(500),
+});
+
+/**
+ * Acrescenta uma arte à peça que já existe.
+ *
+ * Existe para o arrasto de arquivo na grade de pauta: `salvarPost` exige
+ * o payload inteiro (cliente, título, formato, redes, legenda), e mandar
+ * tudo de volta só para somar um arquivo é o caminho clássico de
+ * sobrescrever com estado velho o que outra pessoa acabou de editar — a
+ * mesma razão pela qual `reagendarPost` existe separada.
+ *
+ * LÊ E ESCREVE, sem `array_append`. A alternativa atômica exigiria uma
+ * função no banco, e a corrida que ela evitaria é duas pessoas soltando
+ * um arquivo na MESMA peça no mesmo segundo. Se isso um dia acontecer, o
+ * sintoma é uma arte perdida, não um dado corrompido — e o arquivo
+ * continua no bucket.
+ */
+export async function anexarArte(input: {
+  postId: string;
+  arte: string;
+}): Promise<ActionResult<{ total: number }>> {
+  const parsed = anexarSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Arte inválida." };
+
+  const { postId, arte } = parsed.data;
+
+  if (isDemoMode) {
+    const { demoSocialPosts } = await import("@/lib/mock/social");
+    const post = demoSocialPosts.find((p) => p.id === postId);
+    if (!post) return { ok: false, error: "Peça não encontrada." };
+    if (!post.media_urls.includes(arte)) post.media_urls = [...post.media_urls, arte];
+    revalidatePath("/midias-sociais");
+    return { ok: true, dados: { total: post.media_urls.length } };
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  const { data: atual, error: eLeitura } = await supabase
+    .from("social_posts")
+    .select("media_urls")
+    .eq("id", postId)
+    .maybeSingle();
+
+  if (eLeitura) return { ok: false, error: eLeitura.message };
+  if (!atual) return { ok: false, error: "Peça não encontrada." };
+
+  const lista: string[] = atual.media_urls ?? [];
+  if (lista.includes(arte)) return { ok: true, dados: { total: lista.length } };
+
+  /* O teto é o mesmo de `postSchema.mediaUrls`. Sem ele, arrastar em
+     cima da mesma peça vinte vezes gravaria uma lista que o compositor
+     depois se recusa a salvar — e a pessoa descobriria só ao editar. */
+  if (lista.length >= 20) {
+    return { ok: false, error: "Esta peça já tem 20 artes, o máximo." };
+  }
+
+  const nova = [...lista, arte];
+  const { error } = await supabase
+    .from("social_posts")
+    .update({ media_urls: nova })
+    .eq("id", postId);
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/midias-sociais");
+  return { ok: true, dados: { total: nova.length } };
 }
 
 /* ------------------------------------------------------------------ */

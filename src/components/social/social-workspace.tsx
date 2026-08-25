@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import {
   AtSign,
   CalendarDays,
+  LayoutGrid,
   ListOrdered,
   Plus,
   Search,
@@ -25,6 +26,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { AccountsPanel } from "./accounts-panel";
+import { PautaGrid } from "./pauta-grid";
 import { PostComposer } from "./post-composer";
 import { PostQueue } from "./post-queue";
 import { SocialCalendar } from "./social-calendar";
@@ -61,7 +63,7 @@ import type {
 
 const TODOS = "__todos__";
 
-type Visao = "calendario" | "fila" | "contas";
+type Visao = "pauta" | "calendario" | "fila" | "contas";
 
 export function SocialWorkspace({
   posts,
@@ -74,9 +76,14 @@ export function SocialWorkspace({
   accounts: SocialAccount[];
   ehAdmin: boolean;
 }) {
+  /* Abre na PAUTA, não no calendário do mês. A primeira pergunta de quem
+     abre esta tela é "o que eu tenho que produzir", e o calendário do
+     mês responde outra ("o que sai neste dia") — boa depois que a semana
+     está cheia, inútil enquanto ela está vazia. Quem prefere o mês
+     escolhe uma vez e a preferência fica. */
   const [visao, setVisao] = useLocalPreference<Visao>(
     "elo:social:visao",
-    "calendario",
+    "pauta",
   );
 
   const [cliente, setCliente] = useState(TODOS);
@@ -133,18 +140,37 @@ export function SocialWorkspace({
     });
   }, [posts, situacao, semDataApenas, cliente, redeFiltro, busca]);
 
-  /* O resumo soma sobre o recorte de CLIENTE e REDE, mas ignora o filtro
-     de situação — senão clicar em "Atrasados" zeraria todos os outros
-     contadores e a tira deixaria de servir para voltar. */
-  const resumo = useMemo(() => {
-    const base = posts.filter(
-      (p) =>
-        (cliente === TODOS || p.client_id === cliente) &&
-        (redeFiltro === TODOS ||
-          p.targets.some((t) => t.network === redeFiltro)),
-    );
-    return resumirPosts(base);
-  }, [posts, cliente, redeFiltro]);
+  /* A pauta da carteira: recortada por CLIENTE e REDE, e só. Ignorar o
+     filtro de situação aqui é o que faz clicar em "Atrasados" NÃO zerar
+     os outros contadores — sem isso a tira deixaria de servir para
+     voltar.
+
+     Extraída do `useMemo` do resumo porque a grade de pauta precisa
+     exatamente do mesmo conjunto: é ele que responde "quem está sem
+     nada", e contar o buraco em cima do recorte filtrado faria a tela
+     afirmar que 40 clientes estão sem pauta quando o que houve foi um
+     clique num cartão do topo. */
+  const pautaDaCarteira = useMemo(
+    () =>
+      posts.filter(
+        (p) =>
+          (cliente === TODOS || p.client_id === cliente) &&
+          (redeFiltro === TODOS ||
+            p.targets.some((t) => t.network === redeFiltro)),
+      ),
+    [posts, cliente, redeFiltro],
+  );
+
+  const resumo = useMemo(() => resumirPosts(pautaDaCarteira), [pautaDaCarteira]);
+
+  /* A grade de pauta desenha uma LINHA POR CLIENTE, então o filtro de
+     cliente precisa recortar as linhas também — e não só as peças, como
+     faz nas outras visões. Sem isto, escolher um cliente deixaria as 60
+     linhas na tela com 59 delas vazias. */
+  const clientesNaGrade = useMemo(
+    () => (cliente === TODOS ? clients : clients.filter((c) => c.id === cliente)),
+    [clients, cliente],
+  );
 
   const filtrando =
     cliente !== TODOS ||
@@ -213,6 +239,12 @@ export function SocialWorkspace({
       {/* ----------------------- Barra de ações ----------------------- */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="-mx-1 flex w-full items-center gap-0.5 overflow-x-auto rounded-lg bg-surface-2/70 p-0.5 ring-1 ring-hairline sm:w-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <BotaoVisao
+            ativo={visao === "pauta"}
+            onClick={() => setVisao("pauta")}
+            icon={LayoutGrid}
+            label="Pauta"
+          />
           <BotaoVisao
             ativo={visao === "calendario"}
             onClick={() => setVisao("calendario")}
@@ -297,6 +329,21 @@ export function SocialWorkspace({
       </div>
 
       {/* ---------------------------- Corpo --------------------------- */}
+      {visao === "pauta" && (
+        <PautaGrid
+          posts={filtrados}
+          pautaDaCarteira={pautaDaCarteira}
+          /* Só o que a PESSOA ligou. `filtrando` inclui cliente e rede,
+             que a grade já respeita nas próprias linhas — avisar por
+             causa deles diria que a tela está mentindo quando ela está
+             certa. */
+          recorteParcial={situacao !== TODOS || semDataApenas || busca !== ""}
+          clients={clientesNaGrade}
+          onAbrirPost={(post) => setEditando({ postId: post.id })}
+          onNovoNoDia={(dia) => abrirNovo(dia)}
+        />
+      )}
+
       {visao === "calendario" && (
         <SocialCalendar
           posts={filtrados}
