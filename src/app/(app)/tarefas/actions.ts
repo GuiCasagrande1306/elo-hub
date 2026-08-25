@@ -518,10 +518,28 @@ export async function toggleTaskAssignee(input: {
 
   const supabase = await createSupabaseServerClient();
 
+  /* ⚠️ `ignoreDuplicates`, e não o upsert padrão.
+     ------------------------------------------------------------------
+     O padrão do `upsert` do PostgREST é `ON CONFLICT DO UPDATE`, e isso
+     exige privilégio de UPDATE. `task_assignees` tem grant de
+     `select, insert, delete` e NENHUMA policy de update — de propósito:
+     a tabela é uma ligação de duas chaves, não há o que corrigir numa
+     linha existente. O resultado era `permission denied for table
+     task_assignees` ao adicionar alguém, medido em 25/08/2026.
+
+     Dar o grant não resolveria sozinho: sem policy de update, a RLS
+     recusaria em seguida. E criar a policy seria abrir escrita numa
+     tabela que só precisa de "existe" e "não existe".
+
+     `DO NOTHING` diz o que a operação quer: garantir que a pessoa está
+     atribuída. */
   const { data, error } = assign
     ? await supabase
         .from("task_assignees")
-        .upsert({ task_id: taskId, profile_id: profileId })
+        .upsert(
+          { task_id: taskId, profile_id: profileId },
+          { onConflict: "task_id,profile_id", ignoreDuplicates: true },
+        )
         .select("task_id")
     : await supabase
         .from("task_assignees")
@@ -532,10 +550,28 @@ export async function toggleTaskAssignee(input: {
 
   if (error) return { ok: false, error: error.message };
 
-  /* Zero linhas = a policy recusou. Distribuir trabalho para terceiros é
-     ato de admin; sem isto a tela diria "atribuído" e nada teria
-     mudado. */
+  /* ZERO LINHAS TEM DOIS SIGNIFICADOS ao atribuir, e confundi-los é o
+     que faria a tela acusar falta de permissão para quem só clicou duas
+     vezes: `DO NOTHING` também devolve vazio quando a pessoa JÁ estava
+     na tarefa. Uma consulta separa os casos.
+
+     Na remoção não há ambiguidade: vazio é recusa. */
   if (!data || data.length === 0) {
+    if (assign) {
+      const { data: jaEsta } = await supabase
+        .from("task_assignees")
+        .select("task_id")
+        .eq("task_id", taskId)
+        .eq("profile_id", profileId)
+        .maybeSingle();
+
+      // Já estava atribuída: o pedido foi atendido antes de chegar.
+      if (jaEsta) {
+        revalidatePath("/tarefas");
+        return { ok: true };
+      }
+    }
+
     return {
       ok: false,
       error: assign
