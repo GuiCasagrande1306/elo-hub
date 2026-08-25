@@ -20,6 +20,7 @@ import {
   setAdAccountId,
   setAccountFunds,
   setBillingType,
+  setIntegrationActive,
   setConversionAction,
 } from "@/app/(app)/clientes/actions";
 import {
@@ -121,6 +122,7 @@ function LinhaIntegracao({
 
   const [conta, setConta] = useState(pendente ? "" : (status.externalAccountId ?? ""));
   const [prePaga, setPrePaga] = useState(status.billingType === "prepaid");
+  const [ativa, setAtiva] = useState(status.isActive);
   const [conversao, setConversao] = useState(status.conversionActionType ?? PADRAO);
   const [fundos, setFundos] = useState(
     status.fundsCents !== null
@@ -164,6 +166,34 @@ function LinhaIntegracao({
       if (r.ok) toast.success("Conversão atualizada.");
       else {
         setConversao(status.conversionActionType ?? PADRAO);
+        toast.error(r.error);
+      }
+    });
+  }
+
+  /**
+   * Liga e desliga a plataforma para este cliente.
+   *
+   * Otimista, e volta atrás no erro: o interruptor precisa responder no
+   * mesmo quadro do clique — quem está limpando quinze contas de uma
+   * lista não espera ida ao servidor a cada uma.
+   */
+  function alternarAtiva(marcado: boolean) {
+    setAtiva(marcado);
+    startTransition(async () => {
+      const r = await setIntegrationActive({
+        clientId,
+        platform: status.platform,
+        active: marcado,
+      });
+      if (r.ok) {
+        toast.success(
+          marcado
+            ? `${meta.nome}: plataforma em uso.`
+            : `${meta.nome}: fora da sincronização e do aviso de saldo.`,
+        );
+      } else {
+        setAtiva(!marcado);
         toast.error(r.error);
       }
     });
@@ -249,6 +279,16 @@ function LinhaIntegracao({
                 ? "autorizado — falta escolher a conta"
                 : "não conectado"}
           </span>
+
+          {/* O SELO SÓ APARECE QUANDO ESTÁ DESLIGADA. Um estado normal
+              não precisa de rótulo; o que precisa de aviso é a conta
+              vinculada que parou de trazer número — senão alguém
+              procura o defeito na sincronização. */}
+          {status.connected && !ativa && (
+            <span className="rounded-md bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground ring-1 ring-hairline">
+              desligada
+            </span>
+          )}
         </div>
 
         <Button
@@ -303,6 +343,33 @@ function LinhaIntegracao({
             </Button>
           </div>
 
+
+          {/* PLATAFORMA EM USO. Vem primeiro porque governa o resto:
+              desligada, nada abaixo tem efeito.
+
+              Existia como coluna e nunca teve tela — e o preço apareceu
+              no aviso diário de saldo, com quinze contas "R$ 0,00, acaba
+              hoje" que a agência não roda de propósito. Um aviso com
+              quinze linhas de ruído esconde as três que importam. */}
+          <label className="mt-3 flex items-start gap-2 border-t border-hairline pt-3">
+            <input
+              type="checkbox"
+              checked={ativa}
+              onChange={(e) => alternarAtiva(e.target.checked)}
+              disabled={salvando}
+              className="mt-0.5 size-3.5 accent-[var(--primary)]"
+            />
+            <span>
+              <span className="text-xs font-medium">
+                Plataforma em uso por este cliente
+              </span>
+              <span className="mt-0.5 block text-2xs text-muted-foreground">
+                Desmarque quando a conta não roda aqui. Ela sai da
+                sincronização e do aviso de saldo; o histórico já coletado
+                continua nos relatórios.
+              </span>
+            </span>
+          </label>
 
           {/* O alerta de saldo só se aplica a conta pré-paga: em
               pós-paga não há crédito a esgotar, e o `balance` da Meta

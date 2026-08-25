@@ -323,6 +323,57 @@ export async function setBillingType(input: {
 }
 
 /**
+ * Liga e desliga uma plataforma para este cliente.
+ *
+ * A coluna `is_active` sempre existiu e SEMPRE ESTEVE LIGADA — 60 de 60
+ * integrações em 25/08/2026 — porque nunca houve tela para desligá-la.
+ * O efeito aparecia no aviso diário de saldo: contas que a agência
+ * deliberadamente não roda numa plataforma apareciam como "R$ 0,00,
+ * acaba hoje", quinze delas de uma vez, e o aviso que deveria apontar
+ * três urgências virava uma lista que ninguém lê até o fim.
+ *
+ * ⚠️ DESLIGAR PARA MAIS DO QUE O ALERTA. `is_active` é o mesmo filtro
+ * que a sincronização usa (`lib/ads/sync.ts`), o saldo, a estrutura de
+ * campanhas e a checagem de Instagram. Plataforma desligada deixa de
+ * trazer número novo. O histórico já sincronizado FICA — vive em
+ * `daily_metrics`, que não é tocado aqui —, então relatório de período
+ * passado continua correto.
+ *
+ * É o comportamento certo para o caso real ("este cliente não roda
+ * Google"), e é por isso que a tela diz isso em vez de prometer só
+ * silenciar um aviso.
+ */
+export async function setIntegrationActive(input: {
+  clientId: string;
+  platform: "meta_ads" | "google_ads";
+  active: boolean;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (isDemoMode) return { ok: true };
+
+  const supabase = await createSupabaseServerClient();
+
+  const { error } = await supabase
+    .from("client_integrations")
+    .update({ is_active: input.active })
+    .eq("client_id", input.clientId)
+    .eq("platform", input.platform);
+
+  if (error) {
+    return {
+      ok: false,
+      error:
+        error.code === "42501"
+          ? "O banco recusou a alteração. Fale com um administrador."
+          : error.message,
+    };
+  }
+
+  revalidatePath("/clientes");
+  revalidatePath("/alertas-saldo");
+  return { ok: true };
+}
+
+/**
  * Define a meta do período corrente.
  *
  * `upsert` em `(client_id, period_start)`, que é a chave única da

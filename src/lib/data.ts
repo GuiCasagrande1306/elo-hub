@@ -926,6 +926,14 @@ export interface IntegrationStatus {
   /** Saldo informado no painel, em centavos. null = nunca informado. */
   fundsCents: number | null;
   fundsRecordedAt: string | null;
+  /**
+   * Plataforma em uso por este cliente.
+   *
+   * `false` tira a conta da sincronização, do aviso de saldo e das
+   * checagens — sem apagar o histórico já coletado. É como se marca
+   * "este cliente não roda Google".
+   */
+  isActive: boolean;
 }
 
 /**
@@ -962,6 +970,7 @@ export async function getClientIntegrations(
       conversionActionType: null,
       fundsCents: null,
       fundsRecordedAt: null,
+      isActive: true,
     }));
   }
 
@@ -969,7 +978,7 @@ export async function getClientIntegrations(
   const { data } = await supabase
     .from("client_integrations")
     .select(
-      "platform, external_account_id, display_name, last_synced_at, sync_error, billing_type, conversion_action_type, funds_cents, funds_recorded_at",
+      "platform, external_account_id, display_name, last_synced_at, sync_error, billing_type, conversion_action_type, funds_cents, funds_recorded_at, is_active",
     )
     .eq("client_id", clientId);
 
@@ -988,6 +997,10 @@ export async function getClientIntegrations(
         (linha?.conversion_action_type as string) ?? null,
       fundsCents: (linha?.funds_cents as number) ?? null,
       fundsRecordedAt: (linha?.funds_recorded_at as string) ?? null,
+      /* Linha ausente = plataforma nem vinculada; o cartão mostra
+         "Vincular" e o interruptor não aparece. `true` para o padrão
+         de quem existe. */
+      isActive: (linha?.is_active as boolean) ?? true,
     };
   });
 }
