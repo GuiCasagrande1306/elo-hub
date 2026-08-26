@@ -257,8 +257,22 @@ export function metricaIndefinida(key: MetricKey, t: MetricTotals): boolean {
       return t.origem.conversions === 0;
     case "aov":
       return t.conversions === 0;
+    /* ROAS SEM RECEITA É "—", NÃO "0,00x", e a razão é a mesma do
+       parágrafo acima, um passo adiante: a divisão existe, mas o número
+       não afirma nada que já não esteja dito melhor ao lado.
+
+       Medido em 25/08/2026, ao acrescentar o card de ROAS ao template de
+       delivery: quatro contas — D'Mori, Des Cucina, Dom Leonello e Hago
+       Pizza — investem de R$192 a R$1.014 e têm ZERO compra registrada
+       pelo pixel. O relatório delas já diz "Pedidos: 0" e "Custo por
+       pedido: —". Um "ROAS 0,00x" ao lado disso não informa: ele acusa o
+       investimento de não ter voltado nada, quando o que os dados dizem
+       é que nada foi medido.
+
+       Delivery é justamente onde isso acontece — pedido fechado no iFood
+       ou no WhatsApp não passa pelo pixel do site. */
     case "roas":
-      return t.origem.spendCents === 0;
+      return t.origem.spendCents === 0 || t.origem.revenueCents === 0;
     case "ctr":
     case "cpm":
       return t.impressions === 0;
