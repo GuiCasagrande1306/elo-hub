@@ -1,5 +1,7 @@
 import "server-only";
 
+import { cache } from "react";
+
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { isDemoMode, supabaseAnonKey, supabaseUrl } from "@/lib/env";
@@ -41,8 +43,20 @@ export async function createSupabaseServerClient() {
  * Usa `getUser()`, não `getSession()`: `getSession` lê o cookie sem
  * validar a assinatura no servidor de auth, e cookie é falsificável.
  * Para decisão de autorização, sempre `getUser()`.
+ *
+ * MEMOIZADA POR REQUISIÇÃO com `cache()` do React, e sem isso ela era
+ * chamada duas vezes em toda navegação: uma no layout de `(app)` e
+ * outra na própria página — 19 das 24 páginas fazem as duas coisas. Cada
+ * chamada custa um `getUser()` (medido: 88ms de mediana, é ida e volta
+ * ao servidor de auth) MAIS uma consulta a `profiles` (132ms). Eram
+ * ~220ms jogados fora por navegação, buscando exatamente o mesmo
+ * usuário que já estava em memória.
+ *
+ * `cache()` vale por requisição, não entre requisições: não há risco de
+ * um usuário ver o perfil de outro. Duas requisições simultâneas de
+ * pessoas diferentes têm caches separados.
  */
-export async function getCurrentUser() {
+export const getCurrentUser = cache(async function getCurrentUser() {
   if (isDemoMode) {
     const { demoCurrentUser } = await import("@/lib/mock/data");
     return demoCurrentUser;
@@ -63,4 +77,4 @@ export async function getCurrentUser() {
     .single();
 
   return profile ?? null;
-}
+});

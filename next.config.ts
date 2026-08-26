@@ -21,6 +21,29 @@ import type { NextConfig } from "next";
  */
 const nextConfig: NextConfig = {
   /**
+   * Voltar para uma página vista há pouco deixa de pagar tudo de novo.
+   *
+   * `staleTimes.dynamic` é 0 desde o Next 15 — antes era 30. Com zero,
+   * o cache do roteador no cliente não guarda NADA de rota dinâmica, e
+   * todas as 24 telas deste painel são dinâmicas: sair de /tarefas para
+   * /clientes e voltar refaz a requisição inteira ao servidor, mesmo
+   * cinco segundos depois.
+   *
+   * TRINTA SEGUNDOS, e não mais, porque o risco é mostrar número velho.
+   * A mitigação já existe no código: toda mutação deste projeto termina
+   * em `router.refresh()`, que invalida o cache — então o dado só fica
+   * parado enquanto ninguém muda nada, que é exatamente quando ele não
+   * mudou mesmo.
+   *
+   * Medido em produção antes: do clique até a tela trocar, 1,6s a 3,3s
+   * por navegação, ida e volta iguais.
+   */
+  experimental: {
+    staleTimes: {
+      dynamic: 30,
+    },
+  },
+  /**
    * Chromium e Puppeteer NÃO podem ser empacotados.
    *
    * `@sparticuz/chromium` carrega um binário de ~50MB comprimido em
