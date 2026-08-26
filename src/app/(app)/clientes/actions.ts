@@ -250,17 +250,45 @@ export async function setAdAccountId(input: {
 
   const supabase = await createSupabaseServerClient();
 
-  const { error } = await supabase
+  const { error, count } = await supabase
     .from("client_integrations")
-    .update({
-      external_account_id:
-        input.platform === "google_ads" ? valor.replace(/-/g, "") : valor,
-      sync_error: null,
-    })
+    .update(
+      {
+        external_account_id:
+          input.platform === "google_ads" ? valor.replace(/-/g, "") : valor,
+        sync_error: null,
+      },
+      { count: "exact" },
+    )
     .eq("client_id", input.clientId)
     .eq("platform", input.platform);
 
   if (error) return { ok: false, error: error.message };
+
+  /* ZERO LINHAS NÃO É SUCESSO, e sem esta guarda era: um `update` que
+     não casa nada devolve `error: null`, a action respondia `ok: true` e
+     a tela dizia "Conta vinculada" sobre um vínculo que não existe.
+
+     O caso não é hipotético. A linha de `client_integrations` nasce no
+     OAUTH — `saveIntegrationTokens` a cria com o marcador `pending:` e o
+     token —, e este passo só TROCA o marcador pela conta escolhida. Um
+     cliente que nunca autorizou não tem linha para trocar.
+
+     Medido em 25/08/2026: onze clientes sem conta ligada, oito deles sem
+     integração nenhuma, quatro com conta ATIVA na Meta e gasto real
+     invisível para o painel — Terras Altas com R$9.316 e Till Burguer
+     com R$3.161 de histórico. Não dá para provar que todos caíram aqui,
+     mas é o único caminho no sistema que devolve "deu certo" sem ter
+     feito nada. */
+  if (count === 0) {
+    return {
+      ok: false,
+      error:
+        input.platform === "meta_ads"
+          ? 'Este cliente ainda não autorizou o Meta. Clique em "Vincular" para conectar a conta do Facebook antes de informar o ID.'
+          : 'Este cliente ainda não autorizou o Google Ads. Clique em "Vincular" antes de informar o Customer ID.',
+    };
+  }
 
   /* Puxa os números AGORA.
      ---------------------------------------------------------------
