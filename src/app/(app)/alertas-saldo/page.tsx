@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import {
   CheckCircle2,
@@ -13,6 +14,7 @@ import {
 
 import { PageContainer, PageHeader } from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Card,
   CardContent,
@@ -56,14 +58,16 @@ export const metadata: Metadata = { title: "Alertas de saldo" };
 export const dynamic = "force-dynamic";
 
 /**
- * A página fala com DUAS APIs externas antes de renderizar — Graph API
- * e Google Ads, uma chamada por conta pré-paga. O padrão da Vercel é
- * curto demais para isso e o usuário veria timeout em vez de alerta.
+ * A página fala com DUAS APIs externas — Graph API e Google Ads. Desde
+ * que os cartões vivem num `Suspense`, ninguém fica olhando tela branca
+ * por causa delas; a função, porém, continua de pé até a última
+ * responder, e o padrão da Vercel é curto demais para isso.
  *
- * 60s é o teto do plano Hobby. Não é um orçamento a gastar: cada chamada
- * tem timeout próprio de 8s e uma repetição, então o pior caso real fica
- * na casa dos 17s. O valor aqui existe para o teto da plataforma não
- * cortar antes disso.
+ * 60s é o teto do plano Hobby. Não é um orçamento a gastar: cada
+ * requisição tem timeout próprio de 8s, e o lote da Meta que estourar
+ * ainda é refeito conta a conta — 16s no pior caso, mais a repetição do
+ * Google. O valor aqui existe para o teto da plataforma não cortar
+ * antes disso.
  */
 export const maxDuration = 60;
 
@@ -76,17 +80,20 @@ export default async function BalanceAlertsPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  /* CRONÔMETRO NA PÁGINA, e não só no motor: a tela estourou o teto de
-     60s da função enquanto o mesmo cálculo roda em menos de dois
-     segundos fora dela. Sem medir cada etapa, a próxima conclusão sobre
-     onde o tempo vai seria chute.
+  /* NADA DE `await` DEPOIS DAQUI, e é esse o conserto.
+     -------------------------------------------------------------------
+     A tela levava 3,2s para aparecer, e as duas esperas eram em série:
+     `getBalanceAlerts()` primeiro, `carregarDestinoDoAviso()` depois.
+     Medido em 26/08/2026, o tempo estava quase todo num lugar só — 49
+     leituras de saldo na Graph API, ~2,9s. Foi encurtado pela metade
+     (ver `POR_LOTE` em `meta-balance.ts`), mas a cauda da Meta continua
+     existindo e não é nossa para consertar: 6s numa rodada em cada seis.
 
-     `medir` existe porque `Date.now()` DENTRO do componente é recusado
-     pelo compilador do React — render tem de ser puro, e ele está
-     certo. Fora do componente, é só uma função assíncrona. */
-  const alerts = await medir("getBalanceAlerts", getBalanceAlerts);
-  const aviso = await medir("destino", carregarDestinoDoAviso);
-
+     Então a página deixa de esperar. Cabeçalho e a explicação de como o
+     saldo é lido não dependem de dado nenhum e vão embora na hora; o
+     seletor de destino e os cartões chegam cada um no seu tempo, dentro
+     do próprio `Suspense`. Como são IRMÃOS, as duas buscas partem
+     juntas — a segunda não espera mais a primeira terminar. */
   return (
     <PageContainer>
       <PageHeader
@@ -97,78 +104,177 @@ export default async function BalanceAlertsPage() {
       {/* O DESTINO VEM ANTES DE TUDO. Quem abre esta página quer saber
           se precisa abri-la de novo amanhã — e a resposta é "não, se o
           aviso estiver ligado". */}
-      <DestinoDoAviso
-        grupos={aviso.grupos}
-        jidAtual={aviso.jid}
-        nomeAtual={aviso.nome}
-        podeEditar={user.role === "admin"}
-      />
+      <Suspense fallback={<DestinoCarregando />}>
+        <Destino podeEditar={user.role === "admin"} />
+      </Suspense>
 
       {/* O aviso vem ANTES dos cards porque muda como o número deve ser
-          lido — depois deles já é tarde. */}
-      <div className="mt-6 rounded-xl border border-hairline bg-surface-2/60 p-4">
-        <p className="text-sm font-medium">
-          O saldo vem de lugares diferentes em cada plataforma
-        </p>
+          lido — depois deles já é tarde. E não depende de consulta
+          nenhuma: é ele que dá o que ler enquanto os saldos chegam. */}
+      <ComoOSaldoEhLido />
 
-        <p className="mt-1.5 text-xs text-muted-foreground">
-          <strong>Meta:</strong> saldo informado na recarga menos o gasto desde
-          então. O desconto vem da sincronização diária, então o número se
-          mantém sozinho — só a recarga precisa ser anotada, em Contas de
-          mídia na página do cliente.
-        </p>
-        <p className="mt-1 text-2xs text-muted-foreground">
-          A Graph API não expõe a carteira: seu campo <code>balance</code> é o
-          acumulado a pagar, que SOBE conforme veicula. Medido no Nuur, ele
-          devolvia R$ 23,34 enquanto o painel mostrava R$ 341,77 — usá-lo
-          inverteria o alerta.
-        </p>
+      <Suspense fallback={<ContasCarregando />}>
+        <Contas />
+      </Suspense>
+    </PageContainer>
+  );
+}
 
-        <p className="mt-3 text-xs text-muted-foreground">
-          <strong>Google:</strong> igual à Meta — saldo informado na recarga
-          menos o gasto desde então, anotado em Contas de mídia.
-        </p>
-        <p className="mt-1 text-2xs text-muted-foreground">
-          A API do Google <strong>não expõe o saldo</strong> de conta
-          pré-paga: o dado não existe nela, e o próprio Google recomenda
-          desde 2015 registrar a recarga e descontar o gasto. O que a API
-          devolve é a <em>verba de faturamento mensal</em>, que só existe em
-          conta faturada e mede outra coisa — quanto ainda cabe no teto
-          contratado. Onde não há recarga anotada e a conta é faturada, esse
-          número aparece rotulado como &ldquo;verba de fatura&rdquo;, nunca
-          como saldo.
-        </p>
+/* ------------------------------------------------------------------ */
+/* Os dois blocos que esperam                                          */
+/* ------------------------------------------------------------------ */
 
-        <p className="mt-3 text-2xs text-muted-foreground">
-          Só entram aqui as contas marcadas como pré-pagas na página do
-          cliente. O ritmo olha os <strong>7 dias completos até ontem</strong>{" "}
-          — o dia de hoje ainda está sendo veiculado e entraria pela metade,
-          fazendo o saldo parecer durar mais. Dentro dessa janela, a média é
-          dos dias em que a conta <em>gastou</em>, não dos 7 corridos: conta
-          nova, ligada há dois dias, queima no ritmo desses dois.
+async function Destino({ podeEditar }: { podeEditar: boolean }) {
+  const aviso = await medir("destino", carregarDestinoDoAviso);
+
+  return (
+    <DestinoDoAviso
+      grupos={aviso.grupos}
+      jidAtual={aviso.jid}
+      nomeAtual={aviso.nome}
+      podeEditar={podeEditar}
+    />
+  );
+}
+
+async function Contas() {
+  const alerts = await medir("getBalanceAlerts", getBalanceAlerts);
+
+  if (alerts.length === 0) {
+    return (
+      <div className="mt-6 rounded-xl border border-dashed border-hairline py-16 text-center">
+        <CheckCircle2 className="mx-auto size-8 text-positive" />
+        <p className="mt-3 text-sm font-medium">Nenhuma conta em risco</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          As contas pré-pagas têm folga para mais de {DIAS_DE_ALERTA} dias.
+        </p>
+        <p className="mt-2 text-2xs text-muted-foreground">
+          Se você esperava ver alguma conta aqui, confirme que ela está
+          marcada como pré-paga na página do cliente.
         </p>
       </div>
+    );
+  }
 
-      {alerts.length === 0 ? (
-        <div className="mt-6 rounded-xl border border-dashed border-hairline py-16 text-center">
-          <CheckCircle2 className="mx-auto size-8 text-positive" />
-          <p className="mt-3 text-sm font-medium">Nenhuma conta em risco</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            As contas pré-pagas têm folga para mais de {DIAS_DE_ALERTA} dias.
-          </p>
-          <p className="mt-2 text-2xs text-muted-foreground">
-            Se você esperava ver alguma conta aqui, confirme que ela está
-            marcada como pré-paga na página do cliente.
-          </p>
+  return (
+    <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      {agruparPorCliente(alerts).map((conta) => (
+        <AlertCard key={conta.clientId} conta={conta} />
+      ))}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* O que aparece enquanto eles não chegam                              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * O esqueleto do seletor, com a mesma casca do componente real.
+ *
+ * Mesma borda, mesmo `p-4`, mesmo `mt-6`: sem isso a explicação logo
+ * abaixo salta de lugar quando o dado chega, e a página inteira pisca
+ * no momento em que a pessoa começou a ler.
+ */
+function DestinoCarregando() {
+  return (
+    <div
+      aria-busy="true"
+      className="mt-6 flex flex-col gap-3 rounded-xl border border-hairline bg-surface-2/60 p-4 sm:flex-row sm:items-center sm:justify-between"
+    >
+      <div className="flex items-start gap-2.5">
+        <Skeleton className="mt-0.5 size-4 shrink-0" />
+        <div className="flex flex-col gap-1.5">
+          <Skeleton className="h-3.5 w-52" />
+          <Skeleton className="h-3 w-72 max-w-full" />
         </div>
-      ) : (
-        <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {agruparPorCliente(alerts).map((conta) => (
-            <AlertCard key={conta.clientId} conta={conta} />
-          ))}
-        </div>
-      )}
-    </PageContainer>
+      </div>
+      <Skeleton className="h-9 w-full rounded-lg sm:w-56" />
+      <span className="sr-only">Carregando o destino do aviso…</span>
+    </div>
+  );
+}
+
+/**
+ * O esqueleto dos cartões.
+ *
+ * DIZ O QUE ESTÁ ACONTECENDO, e não é enfeite: a espera é de segundos e
+ * vem de fora — o saldo de cada conta é lido ao vivo na Meta e no
+ * Google a cada carregamento, e nem a metade de lote consertou a cauda
+ * deles. Um bloco cinza mudo faz a pessoa clicar de novo; a frase
+ * explica por que vale esperar e que o número não é de ontem.
+ *
+ * Seis cartões porque é o que preenche a grade de três colunas em duas
+ * fileiras — o bastante para a página não encolher quando o dado chega.
+ */
+function ContasCarregando() {
+  return (
+    <div className="mt-6" aria-busy="true">
+      <p className="flex items-center gap-2 text-xs text-muted-foreground">
+        <RefreshCw className="size-3.5 animate-spin" />
+        Lendo o saldo de cada conta direto na Meta e no Google…
+      </p>
+
+      <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {Array.from({ length: 6 }, (_, i) => (
+          <Skeleton key={i} className="h-56 rounded-xl" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * De onde vem o número de cada plataforma.
+ *
+ * Estático de propósito: é o único conteúdo da tela que não espera
+ * consulta nenhuma, e é ele que ocupa a página enquanto os saldos não
+ * chegam.
+ */
+function ComoOSaldoEhLido() {
+  return (
+    <div className="mt-6 rounded-xl border border-hairline bg-surface-2/60 p-4">
+      <p className="text-sm font-medium">
+        O saldo vem de lugares diferentes em cada plataforma
+      </p>
+
+      <p className="mt-1.5 text-xs text-muted-foreground">
+        <strong>Meta:</strong> saldo informado na recarga menos o gasto desde
+        então. O desconto vem da sincronização diária, então o número se
+        mantém sozinho — só a recarga precisa ser anotada, em Contas de
+        mídia na página do cliente.
+      </p>
+      <p className="mt-1 text-2xs text-muted-foreground">
+        A Graph API não expõe a carteira: seu campo <code>balance</code> é o
+        acumulado a pagar, que SOBE conforme veicula. Medido no Nuur, ele
+        devolvia R$ 23,34 enquanto o painel mostrava R$ 341,77 — usá-lo
+        inverteria o alerta.
+      </p>
+
+      <p className="mt-3 text-xs text-muted-foreground">
+        <strong>Google:</strong> igual à Meta — saldo informado na recarga
+        menos o gasto desde então, anotado em Contas de mídia.
+      </p>
+      <p className="mt-1 text-2xs text-muted-foreground">
+        A API do Google <strong>não expõe o saldo</strong> de conta
+        pré-paga: o dado não existe nela, e o próprio Google recomenda
+        desde 2015 registrar a recarga e descontar o gasto. O que a API
+        devolve é a <em>verba de faturamento mensal</em>, que só existe em
+        conta faturada e mede outra coisa — quanto ainda cabe no teto
+        contratado. Onde não há recarga anotada e a conta é faturada, esse
+        número aparece rotulado como &ldquo;verba de fatura&rdquo;, nunca
+        como saldo.
+      </p>
+
+      <p className="mt-3 text-2xs text-muted-foreground">
+        Só entram aqui as contas marcadas como pré-pagas na página do
+        cliente. O ritmo olha os <strong>7 dias completos até ontem</strong>{" "}
+        — o dia de hoje ainda está sendo veiculado e entraria pela metade,
+        fazendo o saldo parecer durar mais. Dentro dessa janela, a média é
+        dos dias em que a conta <em>gastou</em>, não dos 7 corridos: conta
+        nova, ligada há dois dias, queima no ritmo desses dois.
+      </p>
+    </div>
   );
 }
 
