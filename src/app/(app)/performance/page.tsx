@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 
 import { PageContainer, PageHeader } from "@/components/layout/page-header";
 import { Sparkline } from "@/components/dashboard/sparkline";
+import { tiposDeConversaoDaCarteira } from "@/lib/ads/conversao-do-cliente";
 import { getClients, getMetricsWithComparison } from "@/lib/data";
 import {
   isPeriodPreset,
@@ -50,15 +51,24 @@ export default async function PerformancePage({
     : undefined;
 
   const { start, end } = resolvePeriod(preset);
-  const clients = await getClients(undefined, {
-    search: busca,
-    segment: segmento,
-  });
+
+  /* A carteira e o mapa de conversão numa tacada. O mapa é o que evita
+     duas consultas POR CLIENTE dentro do laço abaixo — ver o aviso em
+     `getMetricsWithComparison`. */
+  const [clients, tiposPorCliente] = await Promise.all([
+    getClients(undefined, { search: busca, segment: segmento }),
+    tiposDeConversaoDaCarteira(),
+  ]);
 
   const rows = (
     await Promise.all(
       clients.map(async (client) => {
-        const metrics = await getMetricsWithComparison(client.id, start, end);
+        const metrics = await getMetricsWithComparison(
+          client.id,
+          start,
+          end,
+          tiposPorCliente.get(client.id),
+        );
         return {
           client,
           trend: buildTrend(metrics.current),

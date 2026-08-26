@@ -244,6 +244,19 @@ export async function getMetricsWithComparison(
   clientId: string,
   start: string,
   end: string,
+  /**
+   * A ação de conversão desta conta, quando quem chama JÁ TEM.
+   *
+   * ⚠️ QUEM CHAMA DENTRO DE UM LAÇO PRECISA PASSAR ISTO. Sem o
+   * parâmetro, esta função busca segmento e integração por conta
+   * própria — duas consultas —, e numa tela que percorre a carteira
+   * inteira isso multiplica por 61. Medido em 26/08/2026: 245
+   * consultas e 1.834ms contra 123 e 303ms.
+   *
+   * `tiposDeConversaoDaCarteira()` devolve o mapa inteiro em duas
+   * consultas; use-o antes do laço e passe o valor daqui.
+   */
+  tiposDeConversao?: string[],
 ) {
   const prev = previousPeriod(start, end);
 
@@ -254,7 +267,7 @@ export async function getMetricsWithComparison(
   const [current, previous, tipos] = await Promise.all([
     getMetrics(clientId, start, end),
     getMetrics(clientId, prev.start, prev.end),
-    tiposDeConversaoDoCliente(clientId),
+    tiposDeConversao ?? tiposDeConversaoDoCliente(clientId),
   ]);
 
   return {

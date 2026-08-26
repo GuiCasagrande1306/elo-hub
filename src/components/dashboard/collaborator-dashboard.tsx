@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowUpRight, CalendarClock, ListChecks, Users } from "lucide-react";
 
+import { tiposDeConversaoDaCarteira } from "@/lib/ads/conversao-do-cliente";
 import { PageContainer, PageHeader } from "@/components/layout/page-header";
 import { GoalHealthChart } from "@/components/dashboard/goal-health-chart";
 import { UrgentTasks } from "@/components/dashboard/urgent-tasks";
@@ -39,10 +40,20 @@ export async function CollaboratorDashboard({ user }: { user: Profile }) {
   const minhasContas = clients.filter((c) => painel.myClientIds.includes(c.id));
   const { start, end } = lastNDays(30);
 
+  /* Mesma correção de /performance: o mapa de conversão vem em DUAS
+     consultas, antes do laço. Buscá-lo dentro dele custava duas por
+     conta. */
+  const tiposPorCliente = await tiposDeConversaoDaCarteira();
+
   // Uma consulta por conta, em paralelo — e só das minhas.
   const porConta = await Promise.all(
     minhasContas.map(async (client) => {
-      const metrics = await getMetricsWithComparison(client.id, start, end);
+      const metrics = await getMetricsWithComparison(
+        client.id,
+        start,
+        end,
+        tiposPorCliente.get(client.id),
+      );
       return { client, metrics, trend: buildTrend(metrics.current) };
     }),
   );
