@@ -104,6 +104,10 @@ export default async function ReportsPage() {
        rotula a mensagem enviada ao cliente — antes a tela escolhia um
        rótulo ("últimos 7 dias") que não tinha relação com o número. */
     period: linha.period,
+    /* Zero linha = período nunca sincronizado. É o que trava o botão na
+       janela inicial; sem isso a trava só engatava depois de alguém
+       mexer no seletor de período. */
+    linhas: linha.linhasDeMetrica,
     /* Resolvido AQUI, pela mesma função que o compositor usa para gerar
        o PDF. A estação só exibe: o template é consequência do segmento,
        e o lugar de trocá-lo é o compositor, onde a escolha chega até a

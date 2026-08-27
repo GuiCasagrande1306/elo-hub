@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   AlertTriangle, BarChart3, Check, Copy, FileDown, Image as ImageIcon,
@@ -77,6 +77,17 @@ export interface ClientSummary {
   metric: GoalMetric;
   /** A janela que o servidor somou. É ela que rotula a mensagem. */
   period: { start: string; end: string };
+  /**
+   * Quantas linhas de `daily_metrics` existem na janela inicial.
+   *
+   * ⚠️ ZERO LINHA E ZERO REAL SÃO COISAS DIFERENTES, e sem este campo a
+   * tela não distinguia as duas na janela padrão — `semDado` só era
+   * calculado quando alguém trocava o período. Conta cujo sync quebrou
+   * abria com "Investimento R$ 0,00", sem aviso e com o botão liberado,
+   * e um clique mandava ao cliente um PDF zerado afirmando que ele não
+   * investiu nada no mês.
+   */
+  linhas: number;
   /** Template que o segmento desta conta seleciona. Exibido, não escolhido. */
   templateName: string;
 }
@@ -143,11 +154,24 @@ export function CommandStation({
   } | null>(null);
   const [buscando, setBuscando] = useState(false);
 
+  /* QUAL BUSCA VALE. Cada chamada leva um número; só a última escreve.
+     -----------------------------------------------------------------
+     `resumoDoPeriodo` é server action — centenas de milissegundos — e
+     trocar o Select é instantâneo. Sem isto, a resposta da conta A
+     chegava depois da troca para B e sobrescrevia o estado de B: o
+     cartão mostrava o nome da Leotex com os números da Brazzo, e o
+     texto pronto para copiar era montado com eles. `buscando` já tinha
+     voltado a false, então nada na tela denunciava.
+
+     Vale também para duas trocas rápidas de período na mesma conta, em
+     que as respostas voltam fora de ordem. */
+  const buscaAtual = useRef(0);
+
   /* `true` só quando a busca VOLTOU e não achou linha nenhuma. Começa
      `false` porque a janela inicial é a da meta, que o servidor já
      somou. Ver a nota de `linhas` em `ResumoDoPeriodo`: zero real e
      período nunca sincronizado apareciam iguais na tela. */
-  const [semDado, setSemDado] = useState(false);
+  const [semDado, setSemDado] = useState(clients[0]?.linhas === 0);
 
   const periodoLabel = formatPeriod(periodo.inicio, periodo.fim);
 
@@ -179,9 +203,15 @@ export function CommandStation({
   /** Troca de conta reabre na janela da meta dela e descarta a busca. */
   function trocarCliente(id: string) {
     const alvo = clients.find((c) => c.id === id);
+    /* Invalida qualquer busca em voo: a resposta que chegar depois é da
+       conta anterior e não pode escrever nesta. */
+    buscaAtual.current += 1;
+    setBuscando(false);
     setClientId(id);
     setOverride(null);
-    setSemDado(false);
+    /* Do servidor, não `false`: a janela inicial da conta nova pode ser
+       tão dessincronizada quanto a de qualquer outra. */
+    setSemDado(alvo?.linhas === 0);
     if (alvo) setPeriodo({ inicio: alvo.period.start, fim: alvo.period.end });
   }
 
@@ -190,15 +220,37 @@ export function CommandStation({
     setPeriodo(novo);
     if (!cliente) return;
 
+    /* O NÚMERO VELHO SAI JUNTO COM O RÓTULO VELHO.
+       ---------------------------------------------------------------
+       `setPeriodo` acima já trocou a frase da tela. Se a busca falhar,
+       o cartão ficaria mostrando o total da janela ANTERIOR sob o
+       rótulo da nova — e o texto pronto para copiar diria "Período: 1 a
+       31 de julho · Investimento: R$ 4.201,55" com o gasto de agosto.
+       É exatamente o defeito que derrubou o primeiro seletor desta
+       tela, e ele tinha voltado pela porta do erro.
+
+       Limpar antes de buscar troca um número errado por um traço: o
+       cartão mostra "—" enquanto carrega, e continua "—" se falhar. */
+    setOverride(null);
+    setSemDado(false);
+
+    const meuTurno = (buscaAtual.current += 1);
     setBuscando(true);
+
     resumoDoPeriodo({
       clientId: cliente.id,
       start: novo.inicio,
       end: novo.fim,
     })
       .then((r) => {
+        // Chegou tarde: a tela já é de outra conta ou de outra janela.
+        if (meuTurno !== buscaAtual.current) return;
+
         if (!r.ok) {
           toast.error(r.error);
+          /* `semDado` TRAVA o botão. Sem isto, uma busca que falhou
+             deixava "Gerar e enviar" liberado sobre um cartão vazio. */
+          setSemDado(true);
           return;
         }
         /* A UNIDADE VEM DE `cliente.metric`, não do servidor. É a mesma
@@ -220,8 +272,14 @@ export function CommandStation({
           }),
         });
       })
-      .catch(() => toast.error("Não deu para somar o período."))
-      .finally(() => setBuscando(false));
+      .catch(() => {
+        if (meuTurno !== buscaAtual.current) return;
+        toast.error("Não deu para somar o período.");
+        setSemDado(true);
+      })
+      .finally(() => {
+        if (meuTurno === buscaAtual.current) setBuscando(false);
+      });
   }
 
   /* Custo por resultado calculado aqui e não guardado: dividir na hora

@@ -411,6 +411,16 @@ export interface ClientWithGoal {
   /** Série de gasto no período da meta, para a sparkline do card. */
   trend: number[];
   /**
+   * Quantas linhas de `daily_metrics` a janela tem.
+   *
+   * ZERO LINHA E ZERO REAL SÃO COISAS DIFERENTES: "a conta não gastou"
+   * e "este período nunca foi sincronizado" produzem o mesmo R$ 0,00, e
+   * só o segundo é motivo para não enviar relatório nenhum. A estação
+   * de comando já distinguia os dois DEPOIS de trocar o período; na
+   * janela inicial ela era cega, porque este número não vinha.
+   */
+  linhasDeMetrica: number;
+  /**
    * A JANELA QUE FOI SOMADA — não a que alguém escolheu numa tela.
    *
    * Vem junto porque quem consome estes números precisa poder dizer de
@@ -506,6 +516,7 @@ export async function getClientsWithGoals(
         },
         computedGoalValue: goalExecutedFrom(metric, totals),
         trend: buildTrend(rows).map((p) => p.spend),
+        linhasDeMetrica: rows.length,
         period: { start, end },
         progress: buildGoalProgress({
           goal,
