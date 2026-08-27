@@ -258,6 +258,18 @@ const styles = StyleSheet.create({
     fontSize: 7,
     color: INK_SOFT,
   },
+  chartLegend: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 5,
+    fontSize: 7,
+    color: INK_SOFT,
+  },
+  chartLegendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3.5,
+  },
 
   /* --------------------------- Canais --------------------------- */
   /* --------------------- Página por plataforma -------------------- */
@@ -610,6 +622,7 @@ export function ReportDocument({ payload }: { payload: ReportPayload }) {
                   reservado à capa, onde marca a autoria da agência. */}
               <SectionBody
                 section={section.type}
+                options={section.options}
                 payload={payload}
                 accent={chartColor}
               />
@@ -747,10 +760,13 @@ function DeltaText({ kpi }: { kpi: ReportPayload["kpis"][number] }) {
 
 function SectionBody({
   section,
+  options,
   payload,
   accent,
 }: {
   section: string;
+  /** `sections[].options` do template. Hoje só `trend_chart` usa. */
+  options?: Record<string, unknown>;
   payload: ReportPayload;
   accent: string;
 }) {
@@ -758,7 +774,13 @@ function SectionBody({
     case "kpi_grid":
       return <KpiGrid payload={payload} />;
     case "trend_chart":
-      return <TrendBars payload={payload} accent={accent} />;
+      return (
+        <TrendBars
+          payload={payload}
+          accent={accent}
+          series={seriesDoTemplate(options)}
+        />
+      );
     case "platform_split":
       return <PlatformBars payload={payload} accent={accent} />;
     case "campaign_table":
@@ -952,16 +974,26 @@ function KpiGrid({ payload }: { payload: ReportPayload }) {
 function TrendBars({
   payload,
   accent,
+  series,
 }: {
   payload: ReportPayload;
   accent: string;
+  series: SerieDoGrafico[];
 }) {
   const data = payload.trend;
   if (data.length === 0) {
     return <Text style={styles.emptyNote}>Sem dados no período.</Text>;
   }
 
-  const max = Math.max(...data.map((p) => p.spend), 1);
+  /* UMA ESCALA SÓ para todas as séries. Escalas independentes fariam
+     duas barras de alturas iguais significarem R$ 190 e R$ 2.539 — que
+     é o oposto do que um gráfico de comparação existe para mostrar. Com
+     escala compartilhada a barra de investimento fica baixa mesmo, e
+     isso é o fato. */
+  const max = Math.max(
+    ...series.flatMap((s) => data.map((p) => valorDaSerie(p, s))),
+    1,
+  );
 
   return (
     <View>
@@ -969,28 +1001,122 @@ function TrendBars({
         {data.map((point) => (
           <View
             key={point.date}
-            style={{
-              flex: 1,
-              // Mínimo de 2pt: dia com investimento quase zero ainda
-              // precisa aparecer como barra, senão parece dado faltando.
-              height: Math.max((point.spend / max) * 124, 2),
-              backgroundColor: accent,
-              borderTopLeftRadius: 1.5,
-              borderTopRightRadius: 1.5,
-            }}
-          />
+            style={{ flex: 1, flexDirection: "row", gap: 0.6, alignItems: "flex-end" }}
+          >
+            {series.map((s, i) => (
+              <View
+                key={s}
+                style={{
+                  flex: 1,
+                  // Mínimo de 2pt: dia com valor quase zero ainda precisa
+                  // aparecer como barra, senão parece dado faltando.
+                  height: Math.max((valorDaSerie(point, s) / max) * 124, 2),
+                  backgroundColor: i === 0 ? accent : INK_SOFT,
+                  borderTopLeftRadius: 1.5,
+                  borderTopRightRadius: 1.5,
+                }}
+              />
+            ))}
+          </View>
         ))}
       </View>
 
       <View style={styles.chartAxis}>
         <Text>{formatDate(`${data[0].date}T12:00:00`)}</Text>
-        <Text>
-          pico {formatCurrency(Math.round(max * 100))}
-        </Text>
+        <Text>pico {formatarSerie(max, series[0])}</Text>
         <Text>{formatDate(`${data[data.length - 1].date}T12:00:00`)}</Text>
       </View>
+
+      {/* LEGENDA só quando há mais de uma série: com uma, a cor não
+          distingue nada e a linha vira ruído. */}
+      {series.length > 1 && (
+        <View style={styles.chartLegend}>
+          {series.map((s, i) => (
+            <View key={s} style={styles.chartLegendItem}>
+              <View
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: 1,
+                  backgroundColor: i === 0 ? accent : INK_SOFT,
+                }}
+              />
+              <Text>{ROTULO_DA_SERIE[s]}</Text>
+            </View>
+          ))}
+        </View>
+      )}
     </View>
   );
+}
+
+/* ------------------------------------------------------------------ */
+/* A série do gráfico                                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * O que o gráfico desenha, lido de `sections[].options.series`.
+ *
+ * ⚠️ ISSO ERA IGNORADO, e o título ficava mentindo. `SectionBody`
+ * recebia só `section.type` e `TrendBars` desenhava `spend` sempre — em
+ * TODOS os templates. Os quatro em produção pedem outra coisa:
+ *
+ *     delivery        "Pedidos por dia"        series: results
+ *     leads           "Leads por dia"          series: results
+ *     local_business  "Contatos por dia"       series: results
+ *     ecommerce       "Investimento x receita" series: spend + revenue
+ *
+ * Ou seja, o PDF de qualquer conta de delivery saía com o título
+ * "Pedidos por dia" sobre trinta barras cuja altura era o GASTO do dia,
+ * e o único sinal disso era o "pico R$ 191,72" no eixo. O cliente lia o
+ * pico de investimento de uma terça como pico de pedidos.
+ *
+ * `spend` como padrão para o template que não declarar nada: é o que o
+ * gráfico sempre desenhou, então a ausência de `options` mantém o
+ * comportamento antigo em vez de esvaziar a seção.
+ */
+type SerieDoGrafico = "spend" | "results" | "revenue" | "cpa";
+
+const SERIES_VALIDAS: SerieDoGrafico[] = ["spend", "results", "revenue", "cpa"];
+
+const ROTULO_DA_SERIE: Record<SerieDoGrafico, string> = {
+  spend: "Investimento",
+  results: "Resultados",
+  revenue: "Faturamento",
+  cpa: "Custo por resultado",
+};
+
+function seriesDoTemplate(
+  options: Record<string, unknown> | undefined,
+): SerieDoGrafico[] {
+  const bruto = options?.series;
+  if (!Array.isArray(bruto)) return ["spend"];
+
+  /* DUAS NO MÁXIMO: são barras agrupadas dentro de uma moldura de 124pt
+     de altura e uma página A4 de largura. Com três, um período de trinta
+     dias dá noventa barras e nenhuma delas é legível. */
+  const validas = bruto.filter((s): s is SerieDoGrafico =>
+    SERIES_VALIDAS.includes(s as SerieDoGrafico),
+  );
+
+  return validas.length > 0 ? validas.slice(0, 2) : ["spend"];
+}
+
+/** `TrendPoint` guarda dinheiro em REAIS, não centavos. */
+function valorDaSerie(ponto: ReportPayload["trend"][number], s: SerieDoGrafico) {
+  return s === "spend"
+    ? ponto.spend
+    : s === "revenue"
+      ? ponto.revenue
+      : s === "cpa"
+        ? ponto.cpa
+        : ponto.results;
+}
+
+function formatarSerie(valor: number, s: SerieDoGrafico): string {
+  return s === "results"
+    ? formatNumber(Math.round(valor))
+    : formatCurrency(Math.round(valor * 100));
 }
 
 function PlatformBars({
@@ -1030,7 +1156,10 @@ function PlatformBars({
 
           <Text style={styles.splitMeta}>
             {formatNumber(Math.round(row.totals.conversions))} resultados ·{" "}
-            {formatCurrency(row.cpa)} por resultado
+            {/* "—" e não "R$ 0,00": sem conversão não há custo por
+                conversão, e zero aqui lê como "saiu de graça". Mesma
+                régua da grade de KPIs, que já acertava. */}
+            {row.cpaIndefinido ? "—" : formatCurrency(row.cpa)} por resultado
           </Text>
         </View>
       ))}

@@ -316,7 +316,10 @@ export default async function PrintReportPage({
 
                   <p className="mt-1.5 text-[10px] text-[#64707d] tabular-nums">
                     {formatNumber(Math.round(p.totals.conversions))} resultados ·{" "}
-                    {formatCurrency(p.cpa)} por resultado
+                    {/* "—" e não "R$ 0,00" quando não houve conversão —
+                        mesma régua do PDF e da grade de KPIs. */}
+                    {p.cpaIndefinido ? "—" : formatCurrency(p.cpa)} por
+                    resultado
                   </p>
                 </div>
               ))}

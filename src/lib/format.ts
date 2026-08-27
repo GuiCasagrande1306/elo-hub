@@ -128,20 +128,39 @@ export function formatMultiplier(value: number): string {
   return `${DEC.format(value)}x`;
 }
 
+/**
+ * ⚠️ FUSO EXPLÍCITO, e não o do runtime.
+ *
+ * A Vercel roda em UTC. Sem `timeZone`, um instante gravado às 21h30 de
+ * Brasília formata como o DIA SEGUINTE — e é isso que o rodapé da capa
+ * do relatório imprimia: "Gerado em 28 de ago." num documento enviado
+ * em 27/08, cujo período termina em 26/08. Janela de exposição de três
+ * horas por noite, todas as noites.
+ *
+ * O projeto já trata essa classe como defeito em `formatDueDate` e tem
+ * `dataNoBrasil` para o mesmo fim; esta função tinha ficado de fora.
+ *
+ * A data ANCORADA EM T12:00:00 — como `formatPeriod` faz — não sofria,
+ * porque meio-dia sobrevive a qualquer conversão de três horas. Quem
+ * sofre é o timestamp real, que é justamente o caso do "Gerado em".
+ */
 export function formatDate(iso: string | Date): string {
   const date = typeof iso === "string" ? new Date(iso) : iso;
   return new Intl.DateTimeFormat("pt-BR", {
     day: "2-digit",
     month: "short",
+    timeZone: "America/Sao_Paulo",
   }).format(date);
 }
 
+/** Mesmo motivo de `formatDate`: fuso do Brasil, não o do servidor. */
 export function formatDateFull(iso: string | Date): string {
   const date = typeof iso === "string" ? new Date(iso) : iso;
   return new Intl.DateTimeFormat("pt-BR", {
     day: "2-digit",
     month: "long",
     year: "numeric",
+    timeZone: "America/Sao_Paulo",
   }).format(date);
 }
 

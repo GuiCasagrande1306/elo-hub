@@ -165,6 +165,38 @@ function encurtar(nome: string): string {
     : `${nome.slice(0, LIMITE_DO_NOME - 1).trimEnd()}…`;
 }
 
+/**
+ * Inteiros que somam o mesmo que a soma arredondada — método do maior
+ * resto (Hamilton).
+ *
+ * Exportada para teste: é aritmética com empate e com número negativo
+ * de sobra, e o sintoma de um erro aqui é uma coluna que não fecha no
+ * documento do cliente.
+ */
+export function distribuirArredondamento(valores: number[]): number[] {
+  const alvo = Math.round(valores.reduce((s, v) => s + v, 0));
+  const piso = valores.map((v) => Math.floor(v));
+  let sobra = alvo - piso.reduce((s, v) => s + v, 0);
+
+  /* Ordena pela parte fracionária, da maior para a menor. O índice
+     desempata, para a saída não depender da ordem de iteração do Map. */
+  const ordem = valores
+    .map((v, i) => ({ i, frac: v - Math.floor(v) }))
+    .sort((a, b) => b.frac - a.frac || a.i - b.i);
+
+  const saida = [...piso];
+  /* `sobra` pode ser negativa quando os pisos já passam do alvo — não
+     acontece com valores positivos, mas tirar de quem tem a MENOR parte
+     fracionária é o simétrico correto e evita um laço infinito. */
+  for (let k = 0; sobra !== 0 && k < ordem.length; k++) {
+    const alvoIdx = sobra > 0 ? ordem[k].i : ordem[ordem.length - 1 - k].i;
+    saida[alvoIdx] += sobra > 0 ? 1 : -1;
+    sobra += sobra > 0 ? -1 : 1;
+  }
+
+  return saida;
+}
+
 /** Campanhas de uma plataforma, agregadas no período e ordenadas por gasto. */
 function campanhasDaPlataforma(
   linhas: DailyMetric[],
@@ -184,8 +216,33 @@ function campanhasDaPlataforma(
     else porCampanha.set(chave, [linha]);
   }
 
-  return [...porCampanha.entries()]
-    .map(([name, linhasDaCampanha]) => {
+  /* ARREDONDAMENTO QUE FECHA COM O CARD, e não linha a linha.
+     -----------------------------------------------------------------
+     O Google Ads devolve conversão FRACIONÁRIA. Arredondando cada linha
+     por conta própria, a soma da coluna não bate com o card
+     "Resultados" da mesma página, que arredonda o TOTAL — somar os
+     arredondados não é arredondar a soma.
+
+     Medido no Atacado de Pratas, Google Ads, 18–24/08/2026:
+     16,49 + 12,07 + 1,40 = 29,96. O card imprimia 30 e a coluna
+     imprimia 16 + 12 + 1 = 29. No Dehon Store, 9,50 + 5,95 = 15,45:
+     card 15, coluna 10 + 6 = 16. O cliente que soma a coluna acha um
+     resultado a mais ou a menos que o título da seção.
+
+     O método é o do maior resto: arredonda todo mundo para baixo,
+     e distribui a diferença que falta para o total pelas campanhas com
+     a maior parte fracionária. Determinístico e sem inventar valor —
+     cada linha continua a uma unidade do seu número real.
+
+     ⚠️ A COLUNA SÓ FECHA COM TODAS AS LINHAS VISÍVEIS. O PDF mostra as
+     seis maiores e resume o resto em "Mais N campanhas"; ali a soma do
+     que aparece é menor de propósito, e a nota diz isso. */
+  const entradas = [...porCampanha.entries()];
+  const brutos = entradas.map(([, l]) => sumMetrics(l).conversions);
+  const arredondados = distribuirArredondamento(brutos);
+
+  return entradas
+    .map(([name, linhasDaCampanha], i) => {
       /* SEM `tiposDeConversao` DE PROPÓSITO, e não por esquecimento.
          Aqui as linhas já são de UMA campanha só: gasto dividido pelos
          resultados dela é o custo dela, que é o número certo e o mesmo
@@ -197,7 +254,7 @@ function campanhasDaPlataforma(
       return {
         name: encurtar(name),
         spendCents: t.spendCents,
-        results: t.conversions,
+        results: arredondados[i],
         cpaCents: deriveMetric("cpa", t),
         clicks: t.clicks,
         ctr: deriveMetric("ctr", t),

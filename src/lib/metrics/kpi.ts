@@ -472,6 +472,23 @@ export interface PlatformSplit {
   totals: MetricTotals;
   spendShare: number;
   cpa: number;
+  /**
+   * O CPA acima é o FALLBACK ZERO de `safeDiv`, não um custo?
+   *
+   * ⚠️ SEM ISTO O PDF IMPRIMIA "R$ 0,00 por resultado" numa plataforma
+   * que não converteu — o único valor monetário de razão do documento
+   * inteiro sem a guarda de `metricaIndefinida`. A tabela de campanhas,
+   * os cards de criativo e a grade de KPIs já imprimiam "—"; só esta
+   * linha estampava o fallback como fato, e "R$ 0,00" lê como "saiu de
+   * graça".
+   *
+   * Medido em 27/08/2026, período de 30 dias: nove pares conta/
+   * plataforma caíam nisso — D'Mori R$ 909,00, Cura da Alma R$ 986,13,
+   * Des Cucina R$ 691,47, Dom Leonello R$ 690,78, todas com o canal em
+   * 100% do investimento e zero conversão. No mesmo PDF, o card da capa
+   * dizia "Custo por pedido: —" e a seção de canais dizia R$ 0,00.
+   */
+  cpaIndefinido: boolean;
 }
 
 export const PLATFORM_LABELS: Record<AdPlatform, string> = {
@@ -519,6 +536,7 @@ export function splitByPlatform(
         totals,
         spendShare: grandTotal === 0 ? 0 : totals.spendCents / grandTotal,
         cpa: deriveMetric("cpa", totals),
+        cpaIndefinido: metricaIndefinida("cpa", totals),
       };
     })
     .sort((a, b) => b.totals.spendCents - a.totals.spendCents);
