@@ -23,6 +23,20 @@ import { CommandStation } from "./command-station";
 
 export const metadata: Metadata = { title: "Relatórios" };
 
+/**
+ * As server actions desta rota falam com a Evolution e com o Storage.
+ *
+ * `enviarRelatorio` espera DUAS chamadas de até 25s cada — o estado da
+ * instância e o `sendMedia`, que baixa o PDF do Storage. O teto padrão
+ * da plataforma é menor que isso, e quando a função era cortada a linha
+ * ficava em 'sending' para sempre: sumia da fila, o histórico mostrava
+ * "Enviando" sem botão, e não havia caminho na aplicação para retomar.
+ *
+ * 60s é o teto do plano Hobby. Não é orçamento a gastar — é a folga que
+ * impede o corte no meio de um envio que ia dar certo.
+ */
+export const maxDuration = 60;
+
 const SEGMENT_LABELS: Record<ClientSegment, string> = {
   ecommerce: "E-commerce",
   delivery: "Delivery",

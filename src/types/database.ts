@@ -590,6 +590,13 @@ export interface ReportHistory {
   /** true quando gerado pelo cron; impede disparo duplicado do período. */
   is_automated: boolean;
   created_at: string;
+  /**
+   * Mantido por trigger (`app.touch_updated_at`).
+   *
+   * É o relógio que diz há quanto tempo uma linha está em 'sending' —
+   * e portanto se ela travou no meio do envio ou está saindo agora.
+   */
+  updated_at: string;
 }
 
 /* ------------------------------------------------------------------ */

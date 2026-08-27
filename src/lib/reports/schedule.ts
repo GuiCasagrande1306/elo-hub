@@ -399,12 +399,30 @@ export async function dispatchScheduledReports(options?: {
 }
 
 /**
- * Marca como 'failed' os automáticos presos em 'queued'/'generating'.
+ * Marca como 'failed' os automáticos presos em geração ou em envio.
  *
  * Silencioso de propósito: é higiene de início de rodada, não um evento.
  * O que interessa fica na própria linha — status e `error_message` — e é
  * lá que alguém vai olhar quando perguntarem por um relatório que não
  * chegou.
+ *
+ * ⚠️ 'sending' ENTROU, e o motivo é o índice. Uma linha automática presa
+ * em 'sending' não era destravada por ninguém: `listarPendentes` não a
+ * listava e este laço não a cobria. E como
+ * `report_history_automated_unique` é `where is_automated and status <>
+ * 'failed'`, ela continuava BLOQUEANDO qualquer nova geração daquele
+ * período — o cliente nunca mais receberia o relatório daquela semana.
+ * É o mesmo defeito que a migration 47 foi escrita para consertar, por
+ * um status que ela não cobria.
+ *
+ * A MENSAGEM DIZ A AMBIGUIDADE porque ela é real: cortada entre gravar
+ * 'sending' e a resposta da Evolution, a mensagem pode ter saído. Marcar
+ * como falha é a escolha que DESTRAVA — e o texto avisa quem for olhar.
+ * O envio manual não passa por aqui: ali a linha aparece na fila com
+ * "Chegou / Não chegou", e quem decide é quem abre o grupo.
+ *
+ * `updated_at` e não `created_at` para o envio: a linha pode ter sido
+ * criada de manhã pelo cron e só ter ido para 'sending' à tarde.
  */
 async function destravarPresos(): Promise<void> {
   if (isDemoMode) return;
@@ -422,6 +440,17 @@ async function destravarPresos(): Promise<void> {
     .eq("is_automated", true)
     .in("status", ["queued", "generating"])
     .lt("created_at", limite);
+
+  await admin
+    .from("report_history")
+    .update({
+      status: "failed",
+      error_message:
+        "Interrompido durante o envio — PODE ter sido entregue. Confira o grupo do cliente antes de mandar de novo.",
+    })
+    .eq("is_automated", true)
+    .eq("status", "sending")
+    .lt("updated_at", limite);
 }
 
 /**

@@ -1,12 +1,22 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { ExternalLink, Loader2, Send, TriangleAlert } from "lucide-react";
+import {
+  CircleAlert,
+  ExternalLink,
+  Loader2,
+  Send,
+  TriangleAlert,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { formatPeriod } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { enviarRelatorio, type EnvioPendente } from "./actions";
+import {
+  enviarRelatorio,
+  resolverEnvioPreso,
+  type EnvioPendente,
+} from "./actions";
 
 /* =====================================================================
    Fila de envio
@@ -46,6 +56,7 @@ function LinhaEnvio({ item }: { item: EnvioPendente }) {
     item.report.status === "failed" ? item.report.error_message : null,
   );
   const [enviado, setEnviado] = useState(false);
+  const [resolvido, setResolvido] = useState(false);
 
   function despachar() {
     setErro(null);
@@ -53,6 +64,15 @@ function LinhaEnvio({ item }: { item: EnvioPendente }) {
       const r = await enviarRelatorio(item.report.id);
       if (r.ok) setEnviado(true);
       else setErro(r.error ?? "Falha no envio.");
+    });
+  }
+
+  function resolver(decisao: "chegou" | "nao-chegou") {
+    setErro(null);
+    startTransition(async () => {
+      const r = await resolverEnvioPreso(item.report.id, decisao);
+      if (r.ok) setResolvido(true);
+      else setErro(r.error ?? "Não deu para resolver esta linha.");
     });
   }
 
@@ -92,6 +112,34 @@ function LinhaEnvio({ item }: { item: EnvioPendente }) {
 
       {enviado ? (
         <span className="text-xs font-medium text-positive">Enviado ✓</span>
+      ) : resolvido ? (
+        <span className="text-xs font-medium text-muted-foreground">
+          Resolvido ✓
+        </span>
+      ) : item.presoEmEnvio ? (
+        /* PRESO: duas saídas, e nenhuma delas é "Enviar".
+           A mensagem pode ter saído — só quem abre o grupo sabe. Um
+           botão "Enviar" aqui seria o sistema apostando, e a aposta
+           errada duplica o relatório no grupo do cliente. */
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => resolver("chegou")}
+            disabled={pendente}
+          >
+            Chegou
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => resolver("nao-chegou")}
+            disabled={pendente}
+          >
+            {pendente && <Loader2 className="size-3.5 animate-spin" />}
+            Não chegou
+          </Button>
+        </div>
       ) : (
         <Button
           size="sm"
@@ -110,6 +158,17 @@ function LinhaEnvio({ item }: { item: EnvioPendente }) {
           )}
           Enviar
         </Button>
+      )}
+
+      {item.presoEmEnvio && !resolvido && (
+        <p className="flex w-full items-start gap-1.5 rounded-lg bg-warning-muted/50 px-3 py-2 text-xs text-warning">
+          <CircleAlert className="mt-0.5 size-3.5 shrink-0" />
+          <span>
+            <strong>Travou no meio do envio.</strong> A mensagem pode ter
+            saído — abra o grupo do cliente e confira antes de decidir.
+            &ldquo;Não chegou&rdquo; devolve a linha para a fila.
+          </span>
+        </p>
       )}
 
       {erro && (
