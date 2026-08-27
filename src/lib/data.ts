@@ -445,7 +445,23 @@ export async function getClientsWithGoals(
          Do contrário, um mês sem meta cairia no mês corrente e o card
          mostraria número de agosto sob o rótulo de julho. */
       const start = periodo?.start ?? goal?.period_start ?? monthStartISO();
-      const end = periodo?.end ?? goal?.period_end ?? todayISO();
+      /* NUNCA ALÉM DE HOJE, e isso é rótulo, não aritmética.
+         ---------------------------------------------------------------
+         A meta vigente vai até o último dia do mês, então em 27/08 esta
+         janela terminava em 31/08. A soma não muda — não há linha de
+         dia que não aconteceu —, mas `period` é o que a estação de
+         comando usa para ABRIR o compositor, e o compositor carimba a
+         janela na capa do PDF e na mensagem do WhatsApp.
+
+         Medido em 27/08/2026: as 57 contas ativas abriam em
+         "1 – 31 de agosto de 2026". Quem gerasse sem trocar o período
+         mandaria ao cliente um relatório do mês inteiro com quatro dias
+         que ainda não existiam — o mês fechado, anunciado antes de
+         fechar. Truncar aqui mantém rótulo e número somados da MESMA
+         janela, que é a regra desta tela desde que o seletor voltou. */
+      const fimBruto = periodo?.end ?? goal?.period_end ?? todayISO();
+      const hoje = todayISO();
+      const end = fimBruto > hoje ? hoje : fimBruto;
 
       const rows = await getMetrics(client.id, start, end);
       const totals = sumMetrics(rows);
