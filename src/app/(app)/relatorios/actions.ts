@@ -22,6 +22,20 @@ import type { Client, ReportHistory } from "@/types/database";
 export interface EnvioPendente {
   report: ReportHistory;
   client: Client;
+  /**
+   * Link para CONFERIR o PDF, assinado agora.
+   *
+   * NÃO é `report.public_url`. Aquele foi assinado quando o arquivo
+   * nasceu e vale 7 dias — o mesmo motivo pelo qual `enviarRelatorio`
+   * reassina antes de despachar. A fila usava o campo gravado, então um
+   * relatório preparado e esquecido por mais de uma semana mostrava um
+   * botão "Conferir PDF" que abria erro do Storage. Justamente na tela
+   * cujo propósito declarado é olhar o arquivo ANTES de o cliente ver.
+   *
+   * `null` quando o PDF não existe ou a assinatura falhou — aí o link
+   * some, em vez de aparecer quebrado.
+   */
+  pdfUrl: string | null;
 }
 
 /**
@@ -33,13 +47,30 @@ export interface EnvioPendente {
 export async function listarPendentes(): Promise<EnvioPendente[]> {
   const [reports, clients] = await Promise.all([getReports(), getClients()]);
 
-  return reports
+  const pendentes = reports
     .filter((r) => r.status === "ready" || r.status === "failed")
     .map((report) => {
       const client = clients.find((c) => c.id === report.client_id);
       return client ? { report, client } : null;
     })
-    .filter((x): x is EnvioPendente => x !== null);
+    .filter((x): x is { report: ReportHistory; client: Client } => x !== null);
+
+  /* Uma assinatura por linha, em paralelo. São unidades de relatório
+     por dia, não milhares — e o Storage assina sem ida ao banco. Uma
+     hora basta: o link serve para conferir agora, não para arquivar. */
+  const admin = isDemoMode ? null : createSupabaseAdminClient();
+
+  return Promise.all(
+    pendentes.map(async (item) => {
+      if (!admin || !item.report.storage_path) {
+        return { ...item, pdfUrl: null };
+      }
+      const { data } = await admin.storage
+        .from("report-pdfs")
+        .createSignedUrl(item.report.storage_path, 60 * 60);
+      return { ...item, pdfUrl: data?.signedUrl ?? null };
+    }),
+  );
 }
 
 export interface ResultadoEnvio {

@@ -78,9 +78,9 @@ function LinhaEnvio({ item }: { item: EnvioPendente }) {
         </p>
       </div>
 
-      {item.report.public_url && (
+      {item.pdfUrl && (
         <a
-          href={item.report.public_url}
+          href={item.pdfUrl}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1 text-xs text-signal hover:underline"

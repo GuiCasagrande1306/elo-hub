@@ -82,6 +82,21 @@ export function CommandStation({ clients }: { clients: ClientSummary[] }) {
   const [copiado, setCopiado] = useState(false);
   const [busy, setBusy] = useState<"pdf" | "envio" | null>(null);
 
+  /* O QUE JÁ FOI ENVIADO NESTA SESSÃO, por conta E período.
+     -------------------------------------------------------------------
+     "Gerar e enviar" cria uma linha NOVA em `report_history` a cada
+     clique e despacha de novo: o índice `report_history_automated_unique`
+     só cobre `is_automated = true`, então nada no banco barra o disparo
+     manual repetido. Bastava o toast passar despercebido, ou a dúvida de
+     "será que foi?", para o cliente receber o mesmo PDF duas vezes no
+     grupo — e não há desfazer.
+
+     A fila de envio já tratava disso trocando o botão por "Enviado ✓"
+     (ver `send-queue.tsx`); esta tela ficou de fora. Aqui a chave inclui
+     o período porque reenviar OUTRA janela para a mesma conta é
+     legítimo — o que não é legítimo é repetir a mesma. */
+  const [enviados, setEnviados] = useState<Set<string>>(new Set());
+
   const cliente = clients.find((c) => c.id === clientId) ?? null;
 
   /* Abre na janela da META da conta — é o período que o servidor já
@@ -108,6 +123,10 @@ export function CommandStation({ clients }: { clients: ClientSummary[] }) {
   const [semDado, setSemDado] = useState(false);
 
   const periodoLabel = formatPeriod(periodo.inicio, periodo.fim);
+
+  /* Conta + janela. Trocar qualquer um dos dois libera o botão de novo. */
+  const chaveDoEnvio = `${clientId}|${periodo.inicio}|${periodo.fim}`;
+  const jaEnviado = enviados.has(chaveDoEnvio);
 
   const spendCents = override?.spendCents ?? cliente?.spendCents ?? 0;
   const resultValue = override?.resultValue ?? cliente?.resultValue ?? 0;
@@ -238,7 +257,7 @@ export function CommandStation({ clients }: { clients: ClientSummary[] }) {
 
   /** Gera, arquiva e dispara pelo WhatsApp de quem está logado. */
   async function gerarEEnviar() {
-    if (!cliente) return;
+    if (!cliente || jaEnviado || semDado) return;
     setBusy("envio");
 
     try {
@@ -287,6 +306,7 @@ export function CommandStation({ clients }: { clients: ClientSummary[] }) {
       }
 
       toast.success("Relatório gerado e enviado por WhatsApp.");
+      setEnviados((antes) => new Set(antes).add(chaveDoEnvio));
     } catch (erro) {
       toast.error(
         erro instanceof Error ? erro.message : "Falha de rede na geração.",
@@ -423,11 +443,31 @@ export function CommandStation({ clients }: { clients: ClientSummary[] }) {
             <Button
               size="sm"
               className="bg-signal text-white hover:bg-signal/90"
-              disabled={!cliente || busy !== null}
+              /* `semDado` TRAVA o botão, não só avisa. O aviso amarelo
+                 logo acima já dizia "não envie" — e o botão continuava
+                 clicável ao lado dele. Numa tarde de sete envios
+                 seguidos, um aviso que não impede nada é um aviso que se
+                 lê depois. Trocar o período limpa o estado. */
+              disabled={!cliente || busy !== null || jaEnviado || semDado}
               onClick={gerarEEnviar}
+              title={
+                jaEnviado
+                  ? "Já enviado nesta janela. Troque o período ou a conta para enviar de novo."
+                  : semDado
+                    ? "Sem dado sincronizado neste período — o PDF sairia zerado."
+                    : "Gera o PDF e despacha pelo SEU WhatsApp"
+              }
             >
-              <MessageCircle className="size-4" />
-              {busy === "envio" ? "Enviando…" : "Gerar e enviar"}
+              {jaEnviado ? (
+                <Check className="size-4" />
+              ) : (
+                <MessageCircle className="size-4" />
+              )}
+              {busy === "envio"
+                ? "Enviando…"
+                : jaEnviado
+                  ? "Enviado ✓"
+                  : "Gerar e enviar"}
             </Button>
           </div>
           <p className="mt-2 text-2xs text-muted-foreground">
