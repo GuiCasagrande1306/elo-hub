@@ -52,9 +52,10 @@ export function SendQueue({ itens }: { itens: EnvioPendente[] }) {
 
 function LinhaEnvio({ item }: { item: EnvioPendente }) {
   const [pendente, startTransition] = useTransition();
-  const [erro, setErro] = useState<string | null>(
-    item.report.status === "failed" ? item.report.error_message : null,
-  );
+  /* `null` e não o erro da linha: com a `key` estável, este `useState`
+     roda uma vez só e congelaria a mensagem da primeira renderização.
+     O erro da linha é lido do servidor a cada render, logo abaixo. */
+  const [erro, setErro] = useState<string | null>(null);
   const [enviado, setEnviado] = useState(false);
   const [resolvido, setResolvido] = useState(false);
 
@@ -71,12 +72,36 @@ function LinhaEnvio({ item }: { item: EnvioPendente }) {
     setErro(null);
     startTransition(async () => {
       const r = await resolverEnvioPreso(item.report.id, decisao);
-      if (r.ok) setResolvido(true);
-      else setErro(r.error ?? "Não deu para resolver esta linha.");
+      if (!r.ok) {
+        setErro(r.error ?? "Não deu para resolver esta linha.");
+        return;
+      }
+      /* SÓ "CHEGOU" ENCERRA A LINHA AQUI.
+         -------------------------------------------------------------
+         "Não chegou" grava 'failed' e o `revalidatePath` traz a linha
+         de volta — com a MESMA `key`, então o React não remonta e um
+         `resolvido = true` local venceria para sempre sobre o botão
+         Enviar. A tela dizia "Resolvido ✓", o aviso prometia "devolve a
+         linha para a fila", e o relatório simplesmente não saía.
+
+         Deixando o estado local em falso, o próximo render usa o que o
+         servidor mandou: a linha volta como 'failed' e ganha o botão de
+         enviar de novo, que é o que o clique pedia. */
+      if (decisao === "chegou") setResolvido(true);
     });
   }
 
   const destino = item.client.whatsapp_phone;
+
+  /* O erro que veio do servidor nesta renderização. Some sozinho quando
+     a linha deixa de estar em falha — sem estado local para envelhecer.
+     Não repete a marca do envio interrompido: aquela já vira o aviso
+     âmbar logo acima, e dizer a mesma coisa duas vezes na linha some
+     com o resto. */
+  const erroDaLinha =
+    item.report.status === "failed" && !item.presoEmEnvio
+      ? item.report.error_message
+      : null;
 
   return (
     <li className="flex flex-wrap items-center gap-3 px-4 py-3.5">
@@ -171,14 +196,14 @@ function LinhaEnvio({ item }: { item: EnvioPendente }) {
         </p>
       )}
 
-      {erro && (
+      {(erro ?? erroDaLinha) && (
         <p
           className={cn(
             "flex w-full items-start gap-1.5 rounded-lg bg-negative-muted/40 px-3 py-2 text-xs text-negative",
           )}
         >
           <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
-          {erro}
+          {erro ?? erroDaLinha}
         </p>
       )}
     </li>

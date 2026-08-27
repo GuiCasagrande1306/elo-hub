@@ -2,6 +2,7 @@ import "server-only";
 
 import { intervaloDoMes } from "@/lib/date-br";
 import { isDemoMode } from "@/lib/env";
+import { MARCA_INTERROMPIDO } from "./envio-interrompido";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { generateAndDeliverReport } from "./orchestrator";
 import { systemSource } from "./source";
@@ -445,8 +446,12 @@ async function destravarPresos(): Promise<void> {
     .from("report_history")
     .update({
       status: "failed",
-      error_message:
-        "Interrompido durante o envio — PODE ter sido entregue. Confira o grupo do cliente antes de mandar de novo.",
+      /* O PREFIXO É CONTRATO com `listarPendentes`: é por ele que a fila
+         reconhece a linha como PRESA e continua oferecendo "Chegou /
+         Não chegou" em vez de um "Enviar" comum. Sem a marca, o cron
+         apagava a ambiguidade que a tela tinha construído e a linha
+         voltava no dia seguinte como falha qualquer. */
+      error_message: `${MARCA_INTERROMPIDO} — PODE ter sido entregue. Confira o grupo do cliente antes de mandar de novo.`,
     })
     .eq("is_automated", true)
     .eq("status", "sending")

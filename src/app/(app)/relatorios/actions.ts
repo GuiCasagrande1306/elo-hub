@@ -8,6 +8,7 @@ import { getClients, getReports } from "@/lib/data";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient, getCurrentUser } from "@/lib/supabase/server";
 import { buildGroupCaption } from "@/lib/reports/payload";
+import { MARCA_INTERROMPIDO } from "@/lib/reports/envio-interrompido";
 import { getMensagemDoCliente } from "@/lib/reports/mensagem-settings";
 import {
   MARCADORES,
@@ -34,6 +35,22 @@ import type { Client, ReportHistory } from "@/types/database";
  * com interrupção.
  */
 const MINUTOS_PRESO = 5;
+
+/** Períodos já entregues, lidos sem RLS. Ver a nota em `listarPendentes`. */
+async function periodosEntregues(): Promise<
+  { client_id: string; period_start: string; period_end: string }[]
+> {
+  if (isDemoMode) return [];
+  const { data } = await createSupabaseAdminClient()
+    .from("report_history")
+    .select("client_id, period_start, period_end")
+    .eq("status", "sent");
+  return (data ?? []) as {
+    client_id: string;
+    period_start: string;
+    period_end: string;
+  }[];
+}
 
 export interface EnvioPendente {
   report: ReportHistory;
@@ -90,10 +107,27 @@ export async function listarPendentes(): Promise<EnvioPendente[]> {
 
      A chave é conta + janela, não o id: são linhas diferentes falando
      do mesmo relatório. */
+  /* ⚠️ SERVICE_ROLE PARA ESTA PERGUNTA, e só para ela.
+     -----------------------------------------------------------------
+     `getReports()` lê sob RLS, e `report_history_select` devolve ao
+     colaborador apenas `generated_by = auth.uid() or generated_by is
+     null`. Ou seja: a linha 'sent' que esta trava precisa enxergar é
+     justamente a que fica INVISÍVEL para quem não a enviou.
+
+     O efeito era a trava valer só para admin e para quem despachou.
+     Marina entrega o relatório; João abre a fila, não vê a linha dela,
+     vê a do cron em 'failed' com botão normal, clica, e o grupo recebe
+     duas vezes — exatamente o defeito que este bloco existe para
+     impedir. E despachar é trabalho de colaborador: metade dos envios
+     no histórico saiu do WhatsApp do Bernardo.
+
+     A AUTORIZAÇÃO NÃO MUDA. Quem entra na fila continua sendo decidido
+     por `getReports()` sob RLS; o admin aqui só responde "este período
+     já saiu?", que é um sim/não sobre conta que a pessoa já enxerga. */
   const entregues = new Set(
-    reports
-      .filter((r) => r.status === "sent")
-      .map((r) => `${r.client_id}|${r.period_start}|${r.period_end}`),
+    (await periodosEntregues()).map(
+      (r) => `${r.client_id}|${r.period_start}|${r.period_end}`,
+    ),
   );
 
   const limitePreso = Date.now() - MINUTOS_PRESO * 60_000;
@@ -125,7 +159,15 @@ export async function listarPendentes(): Promise<EnvioPendente[]> {
 
   return Promise.all(
     pendentes.map(async (item) => {
-      const presoEmEnvio = item.report.status === "sending";
+      /* 'failed' COM A MARCA também é preso: foi o cron que o tirou de
+         'sending' para destravar o índice, e a ambiguidade continua a
+         mesma. Sem isto a linha reaparecia no dia seguinte com botão
+         "Enviar" comum, e quem estivesse de plantão mandaria de novo um
+         relatório que talvez já tivesse chegado. */
+      const presoEmEnvio =
+        item.report.status === "sending" ||
+        (item.report.status === "failed" &&
+          (item.report.error_message ?? "").startsWith(MARCA_INTERROMPIDO));
 
       if (!admin || !item.report.storage_path) {
         return { ...item, pdfUrl: null, presoEmEnvio };
@@ -200,7 +242,10 @@ export async function enviarRelatorio(
 
      `report_history_automated_unique` não cobre: o índice é parcial,
      `where is_automated`, e o disparo manual passa por fora. */
-  const { data: irmas } = await supabase
+  /* Sem RLS pelo mesmo motivo do Set em `listarPendentes`: a irmã que
+     interessa costuma ser de outra pessoa, e é justamente a que a
+     policy esconde. */
+  const { data: irmas } = await createSupabaseAdminClient()
     .from("report_history")
     .select("id, delivered_at")
     .eq("client_id", linha.client_id)
@@ -263,17 +308,30 @@ export async function enviarRelatorio(
      está saindo agora (e duplicar seria o defeito) ou está preso, e
      preso passa por `retomarEnvioPreso`, que exige uma decisão de quem
      olhou o grupo. */
-  const { count: reservadas } = await supabase
+  const { error: erroReserva, count: reservadas } = await supabase
     .from("report_history")
     .update({ status: "sending" }, { count: "exact" })
     .eq("id", reportId)
     .in("status", ["ready", "failed"]);
 
-  if (reservadas === 0) {
+  /* ⚠️ `!== 1`, E NÃO `=== 0`. Quando o PATCH falha de verdade — 5xx do
+     PostgREST, timeout, conexão caída — `count` volta `null`, e
+     `null === 0` é falso: a função seguia para o envio sem ter
+     reservado nada. Era fail-open no único caminho em que o banco não
+     respondeu, o oposto do que a reserva promete. Um `error` também
+     precisa parar aqui: sem reserva, não há envio. */
+  if (erroReserva || reservadas !== 1) {
+    /* 23505 = o índice `report_history_um_envio_por_periodo` (migration
+       74). Significa que OUTRA linha do mesmo cliente e do mesmo
+       período já está saindo — a corrida que a reserva por `id` não
+       cobria, porque ids diferentes reservam sem se ver. */
+    const emCorrida = erroReserva?.code === "23505";
     return {
       ok: false,
       error:
-        "Este relatório já está sendo enviado — confira o grupo antes de tentar de novo.",
+        emCorrida || !erroReserva
+          ? "Este período já está sendo enviado agora — confira o grupo antes de tentar de novo."
+          : `Não deu para reservar o envio: ${erroReserva.message}`,
     };
   }
 
@@ -353,6 +411,16 @@ export async function resolverEnvioPreso(
 
   /* Condicionado a 'sending' pelo mesmo motivo da reserva: se outra aba
      já resolveu, esta não desfaz. */
+  /* ⚠️ SÓ SE ESTIVER PRESA DE VERDADE. 'sending' também é o estado de
+     um envio LEGÍTIMO em andamento: sem esta janela, um clique em "Não
+     chegou" numa aba velha arrancava a reserva de quem estava enviando
+     naquele instante, devolvia a linha para 'failed' — que a reserva
+     aceita — e abria caminho para o envio em dobro. A mesma definição
+     de "preso" usada em `listarPendentes`. */
+  const limitePreso = new Date(
+    Date.now() - MINUTOS_PRESO * 60_000,
+  ).toISOString();
+
   const { count } = await supabase
     .from("report_history")
     .update(
@@ -371,12 +439,14 @@ export async function resolverEnvioPreso(
       { count: "exact" },
     )
     .eq("id", reportId)
-    .eq("status", "sending");
+    .eq("status", "sending")
+    .lt("updated_at", limitePreso);
 
-  if (count === 0) {
+  if (count !== 1) {
     return {
       ok: false,
-      error: "Esta linha já foi resolvida por outra pessoa. Recarregue a fila.",
+      error:
+        "Esta linha não está mais presa — ou alguém já resolveu, ou o envio voltou a andar. Recarregue a fila.",
     };
   }
 
