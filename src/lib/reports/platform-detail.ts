@@ -237,7 +237,24 @@ function campanhasDaPlataforma(
      ⚠️ A COLUNA SÓ FECHA COM TODAS AS LINHAS VISÍVEIS. O PDF mostra as
      seis maiores e resume o resto em "Mais N campanhas"; ali a soma do
      que aparece é menor de propósito, e a nota diz isso. */
-  const entradas = [...porCampanha.entries()];
+  /* ORDENADO ANTES DE DISTRIBUIR, e por gasto — que é a ordem em que a
+     tabela sai. O desempate por índice do maior resto usa a posição da
+     lista; se a lista chegasse na ordem de iteração do Map (ou seja, a
+     ordem em que as linhas vieram do banco, que `order("metric_date")`
+     não determina dentro de um mesmo dia), duas execuções com o mesmo
+     dado poderiam dar assentos diferentes.
+
+     Isso importa porque a prévia que a equipe aprova e o PDF que sai no
+     envio são duas consultas distintas: a folha revisada podia dizer
+     "A: 3 · B: 2" e o arquivo entregue "A: 2 · B: 3", sem nada ter
+     mudado. Com a ordenação aqui, a mesma entrada dá sempre a mesma
+     saída — e `name` desempata o empate de gasto. */
+  const entradas = [...porCampanha.entries()].sort((a, b) => {
+    const gastoA = a[1].reduce((s, l) => s + l.spend_cents, 0);
+    const gastoB = b[1].reduce((s, l) => s + l.spend_cents, 0);
+    return gastoB - gastoA || a[0].localeCompare(b[0]);
+  });
+
   const brutos = entradas.map(([, l]) => sumMetrics(l).conversions);
   const arredondados = distribuirArredondamento(brutos);
 
@@ -261,5 +278,8 @@ function campanhasDaPlataforma(
         roas: deriveMetric("roas", t),
       };
     })
-    .sort((a, b) => b.spendCents - a.spendCents);
+    /* A lista já chega ordenada por gasto (ver `entradas`); este sort
+       final desempata pelo nome do mesmo jeito, para a tabela e a
+       distribuição do arredondamento verem exatamente a mesma ordem. */
+    .sort((a, b) => b.spendCents - a.spendCents || a.name.localeCompare(b.name));
 }

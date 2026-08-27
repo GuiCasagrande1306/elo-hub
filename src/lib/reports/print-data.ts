@@ -51,27 +51,53 @@ const HERO_METRICS: MetricKey[] = ["spend", "results", "cpa"];
  * pode ser o Puppeteer, sem sessão. A autorização acontece antes, na
  * página.
  */
-async function rotulosDoTemplate(
-  client: Client,
-): Promise<Partial<Record<MetricKey, string>>> {
+async function doTemplate(client: Client): Promise<{
+  rotulos: Partial<Record<MetricKey, string>>;
+  /* A série do gráfico, do MESMO `sections[].options.series` que o PDF
+     lê. Sem isto a folha desenhava investimento onde o arquivo entregue
+     desenha pedidos — ver a nota em `PrintWeeklyChart`. */
+  serieDoGrafico: "spend" | "results";
+}> {
+  const daSecao = (sections: unknown): "spend" | "results" => {
+    const s = Array.isArray(sections)
+      ? (sections as { type?: string; options?: { series?: unknown } }[]).find(
+          (x) => x.type === "trend_chart",
+        )
+      : null;
+    const serie = Array.isArray(s?.options?.series)
+      ? (s?.options?.series as unknown[])[0]
+      : null;
+    /* Só estas duas: o gráfico semanal tem UMA barra por semana, e
+       `revenue` numa escala de dinheiro junto com `spend` exigiria a
+       segunda série que esta folha não desenha. `spend` é o padrão
+       histórico dela. */
+    return serie === "results" ? "results" : "spend";
+  };
+
   if (isDemoMode) {
     const { demoTemplates } = await import("@/lib/mock/data");
     const t =
       demoTemplates.find((x) => x.segment === client.segment && x.is_default) ??
       demoTemplates.find((x) => x.segment === client.segment);
-    return t?.metric_labels ?? {};
+    return {
+      rotulos: t?.metric_labels ?? {},
+      serieDoGrafico: daSecao(t?.sections),
+    };
   }
 
   const admin = createSupabaseAdminClient();
   const { data } = await admin
     .from("report_templates")
-    .select("metric_labels, is_default")
+    .select("metric_labels, sections, is_default")
     .eq("segment", client.segment)
     .order("is_default", { ascending: false })
     .limit(1)
     .maybeSingle();
 
-  return (data?.metric_labels ?? {}) as Partial<Record<MetricKey, string>>;
+  return {
+    rotulos: (data?.metric_labels ?? {}) as Partial<Record<MetricKey, string>>,
+    serieDoGrafico: daSecao(data?.sections),
+  };
 }
 
 export interface PrintReportData {
@@ -89,6 +115,8 @@ export interface PrintReportData {
   creativesDoPeriodo: boolean;
   /** Agregado por semana — o gráfico do resumo executivo. */
   weekly: { label: string; spend: number; results: number }[];
+  /** Qual barra o gráfico semanal desenha. Igual à do PDF. */
+  serieDoGrafico: "spend" | "results";
   totals: { spendCents: number; results: number };
   period: { start: string; end: string };
 }
@@ -109,6 +137,9 @@ export async function getPrintReportData(
       m.client_id === clientId && m.metric_date >= a && m.metric_date <= b;
 
     const prev = previousPeriod(periodStart, periodEnd);
+    /* UMA leitura: `doTemplate` vai ao banco, e chamá-la duas vezes
+       dobraria a consulta para responder à mesma pergunta. */
+    const template = await doTemplate(client);
 
     return {
       ...assemble(
@@ -121,8 +152,9 @@ export async function getPrintReportData(
           .slice(0, 6),
         periodStart,
         periodEnd,
-        await rotulosDoTemplate(client),
+        template.rotulos,
         await tiposDeConversaoDoCliente(clientId),
+        template.serieDoGrafico,
       ),
       /* A demonstração não chama a Graph API — os números vêm da
          fixture, que não tem janela. Marcar como "não apurado" faz a
@@ -183,6 +215,8 @@ export async function getPrintReportData(
     6,
   );
 
+  const template = await doTemplate(client);
+
   return {
     ...assemble(
       client,
@@ -191,8 +225,9 @@ export async function getPrintReportData(
       criativos,
       periodStart,
       periodEnd,
-      await rotulosDoTemplate(client),
+      template.rotulos,
       await tiposDeConversaoDoCliente(clientId),
+      template.serieDoGrafico,
     ),
     creativesDoPeriodo: metricasDoPeriodo !== null,
   };
@@ -271,6 +306,7 @@ function assemble(
   periodEnd: string,
   rotulos: Partial<Record<MetricKey, string>> = {},
   tiposDeConversao: string[] = [],
+  serieDoGrafico: "spend" | "results" = "spend",
 ): Omit<PrintReportData, "creativesDoPeriodo"> {
   const currentTotals = sumMetrics(current, tiposDeConversao);
   const previousTotals = sumMetrics(previous, tiposDeConversao);
@@ -296,6 +332,7 @@ function assemble(
     ),
     creatives,
     weekly: toWeekly(current),
+    serieDoGrafico,
     totals: {
       spendCents: currentTotals.spendCents,
       results: currentTotals.conversions,

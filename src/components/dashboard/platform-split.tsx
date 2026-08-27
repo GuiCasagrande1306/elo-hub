@@ -71,7 +71,13 @@ export function PlatformSplitList({ data }: { data: PlatformSplitData[] }) {
                 •
               </span>
               <span className="tabular-nums">
-                {formatCurrency(row.cpa)} por resultado
+                {/* "—" e não "R$ 0,00": sem conversão não há custo por
+                    conversão. Mesma régua do PDF e da folha A4, que
+                    imprimem a MESMA frase a partir do mesmo
+                    `PlatformSplit` — o gestor não pode conferir na tela
+                    um número diferente do que o cliente recebe. */}
+                {row.cpaIndefinido ? "—" : formatCurrency(row.cpa)} por
+                resultado
               </span>
             </div>
           </li>

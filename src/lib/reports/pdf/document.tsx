@@ -992,8 +992,32 @@ function TrendBars({
      isso é o fato. */
   const max = Math.max(
     ...series.flatMap((s) => data.map((p) => valorDaSerie(p, s))),
-    1,
+    0,
   );
+
+  /* ⚠️ SEM PISO ARTIFICIAL, e essa era uma regressão nova. O piso `1`
+     existia de quando o gráfico só desenhava dinheiro, onde um período
+     inteiro zerado só acontece sem linha nenhuma. Com `series:
+     ["results"]` — o que três dos quatro templates pedem — zero no
+     período é caso comum e documentado, e o piso fazia o eixo imprimir
+     "pico 1" sob "Pedidos por dia" numa conta com zero pedidos. O card
+     da página anterior dizia "Pedidos: 0"; o gráfico dizia 1.
+
+     Sem nada para desenhar, a seção diz isso. */
+  if (max <= 0) {
+    return (
+      <Text style={styles.emptyNote}>
+        Sem {ROTULO_DA_SERIE[series[0]].toLowerCase()} no período.
+      </Text>
+    );
+  }
+
+  /* O pico é da série que REALMENTE tem o maior valor — com duas séries
+     na mesma escala, rotulá-lo sempre pela primeira diria "pico" de
+     investimento sobre a altura do faturamento. */
+  const serieDoPico =
+    series.find((s) => data.some((p) => valorDaSerie(p, s) === max)) ??
+    series[0];
 
   return (
     <View>
@@ -1023,7 +1047,7 @@ function TrendBars({
 
       <View style={styles.chartAxis}>
         <Text>{formatDate(`${data[0].date}T12:00:00`)}</Text>
-        <Text>pico {formatarSerie(max, series[0])}</Text>
+        <Text>pico {formatarSerie(max, serieDoPico)}</Text>
         <Text>{formatDate(`${data[data.length - 1].date}T12:00:00`)}</Text>
       </View>
 

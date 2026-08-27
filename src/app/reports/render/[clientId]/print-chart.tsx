@@ -24,13 +24,32 @@ export interface WeeklyPoint {
   results: number;
 }
 
+/**
+ * A MESMA SÉRIE QUE O PDF DESENHA.
+ *
+ * ⚠️ Os dois renderizadores desenham o MESMO relatório: o `react-pdf`
+ * (o padrão, que vai para o cliente) e esta folha A4 — fotografada pelo
+ * Puppeteer quando `PDF_ENGINE=puppeteer`, e aberta pela equipe para
+ * revisar antes de enviar.
+ *
+ * Enquanto os dois mostravam gasto, divergiam só na granularidade
+ * (diário contra semanal). Quando o PDF passou a respeitar
+ * `sections[].options.series`, esta folha ficou desenhando investimento
+ * onde o arquivo entregue desenha pedidos — em três dos quatro
+ * templates de produção. A equipe revisaria uma coisa e o cliente
+ * receberia outra, que é o defeito que o módulo compartilhado de
+ * `platform-detail` existe para não repetir.
+ */
 export function PrintWeeklyChart({
   data,
   color,
+  serie = "spend",
 }: {
   data: WeeklyPoint[];
   color: string;
+  serie?: "spend" | "results";
 }) {
+  const dinheiro = serie === "spend";
   if (data.length === 0) {
     return (
       <p className="py-16 text-center text-sm text-neutral-400">
@@ -55,7 +74,9 @@ export function PrintWeeklyChart({
       />
       <YAxis
         tickFormatter={(v: number) =>
-          `R$ ${v.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`
+          dinheiro
+            ? `R$ ${v.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`
+            : v.toLocaleString("pt-BR", { maximumFractionDigits: 0 })
         }
         tickLine={false}
         axisLine={false}
@@ -67,7 +88,7 @@ export function PrintWeeklyChart({
         tick={{ fill: "#64707d", fontSize: 11 }}
       />
       <Bar
-        dataKey="spend"
+        dataKey={serie}
         fill={color}
         radius={[5, 5, 0, 0]}
         isAnimationActive={false}

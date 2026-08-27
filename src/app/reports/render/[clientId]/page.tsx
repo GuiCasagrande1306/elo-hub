@@ -96,6 +96,7 @@ export default async function PrintReportPage({
     platformDetail,
     creatives,
     weekly,
+    serieDoGrafico,
     totals,
     creativesDoPeriodo,
   } = data;
@@ -281,7 +282,11 @@ export default async function PrintReportPage({
               Investimento por semana do período.
             </p>
             <div className="mt-3 flex justify-center">
-              <PrintWeeklyChart data={weekly} color={brand} />
+              <PrintWeeklyChart
+                data={weekly}
+                color={brand}
+                serie={serieDoGrafico}
+              />
             </div>
           </div>
 
