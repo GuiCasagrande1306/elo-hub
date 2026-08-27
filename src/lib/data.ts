@@ -2,7 +2,10 @@ import "server-only";
 
 import { isDemoMode } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { tiposDeConversaoDoCliente } from "@/lib/ads/conversao-do-cliente";
+import {
+  tiposDeConversaoDaCarteira,
+  tiposDeConversaoDoCliente,
+} from "@/lib/ads/conversao-do-cliente";
 import { buildTrend, previousPeriod, sumMetrics } from "@/lib/metrics/kpi";
 import { buildGoalProgress, periodElapsed } from "@/lib/metrics/goals";
 import {
@@ -385,6 +388,20 @@ export interface ClientWithGoal {
   computedResults: number;
   computedRevenueCents: number;
   /**
+   * Os mesmos totais, contados só nas CAMPANHAS DE ORIGEM.
+   *
+   * Existe para custo por resultado e ROAS: são as duas razões que o
+   * relatório divide pelo gasto da campanha que compra o resultado, e
+   * não pelo da conta inteira. Sem isto a estação de comando mostrava
+   * "Retorno 8,11x" no cartão enquanto o PDF que ela gera imprimia
+   * 12,35x — medido na Satö, 18–24/08/2026.
+   *
+   * O VOLUME NÃO USA. `computedResults` e `computedRevenueCents`
+   * continuam sendo da conta inteira: a venda que veio da campanha de
+   * alcance é venda de verdade.
+   */
+  computedOrigem: { spendCents: number; conversions: number; revenueCents: number };
+  /**
    * O indicador desta conta. Resolvido no servidor porque depende da
    * unidade GRAVADA na meta, não só do segmento do cliente.
    */
@@ -432,9 +449,13 @@ export async function getClientsWithGoals(
 ): Promise<ClientWithGoal[]> {
   const periodo = month ? intervaloDoMes(month) : null;
 
-  const [clients, goals] = await Promise.all([
+  /* Os tipos de conversão da CARTEIRA INTEIRA em duas consultas, antes
+     do laço. Dentro dele seriam duas por conta — o mesmo erro que já
+     custou 245 consultas na tela de performance. */
+  const [clients, goals, tiposPorCliente] = await Promise.all([
     getClients(agency, opts),
     periodo ? getGoalsForMonth(periodo.start) : getCurrentGoals(),
+    tiposDeConversaoDaCarteira(),
   ]);
 
   return Promise.all(
@@ -464,7 +485,7 @@ export async function getClientsWithGoals(
       const end = fimBruto > hoje ? hoje : fimBruto;
 
       const rows = await getMetrics(client.id, start, end);
-      const totals = sumMetrics(rows);
+      const totals = sumMetrics(rows, tiposPorCliente.get(client.id));
 
       /* O segmento diz o padrão; a meta gravada diz a verdade. Sem meta
          no período cai no padrão do segmento, que é o que o card sem
@@ -478,6 +499,11 @@ export async function getClientsWithGoals(
         computedSpendCents: totals.spendCents,
         computedResults: totals.conversions,
         computedRevenueCents: totals.revenueCents,
+        computedOrigem: {
+          spendCents: totals.origem.spendCents,
+          conversions: totals.origem.conversions,
+          revenueCents: totals.origem.revenueCents,
+        },
         computedGoalValue: goalExecutedFrom(metric, totals),
         trend: buildTrend(rows).map((p) => p.spend),
         period: { start, end },

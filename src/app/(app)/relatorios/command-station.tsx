@@ -63,6 +63,17 @@ export interface ClientSummary {
   spendCents: number;
   /** Já na unidade de `metric` — resolvido no servidor. */
   resultValue: number;
+  /**
+   * Gasto e resultado contados só nas CAMPANHAS DE ORIGEM.
+   *
+   * Custo e retorno do cartão saem daqui, porque é daqui que o PDF os
+   * tira. Enquanto o cartão dividia pelo gasto da conta inteira, a
+   * pessoa conferia "Retorno 8,11x" e mandava um arquivo dizendo
+   * 12,35x — medido na Satö, 18–24/08/2026.
+   */
+  origemSpendCents: number;
+  /** Já na unidade de `metric`, como `resultValue`. */
+  origemResultValue: number;
   metric: GoalMetric;
   /** A janela que o servidor somou. É ela que rotula a mensagem. */
   period: { start: string; end: string };
@@ -77,7 +88,21 @@ const SECOES = [
   { icon: ImageIcon, titulo: "Criativos em destaque", sub: "O que mais performou" },
 ];
 
-export function CommandStation({ clients }: { clients: ClientSummary[] }) {
+export function CommandStation({
+  clients,
+  modeloDaMensagem,
+}: {
+  clients: ClientSummary[];
+  /**
+   * O texto gravado em `report_message_settings`.
+   *
+   * Vem do servidor porque é ele que a legenda do envio também usa —
+   * a tela e o WhatsApp chamam a MESMA função com o MESMO modelo, que é
+   * o que impede a equipe de conferir um texto e o cliente receber
+   * outro.
+   */
+  modeloDaMensagem: string;
+}) {
   const [clientId, setClientId] = useState(clients[0]?.id ?? "");
   const [copiado, setCopiado] = useState(false);
   const [busy, setBusy] = useState<"pdf" | "envio" | null>(null);
@@ -113,6 +138,8 @@ export function CommandStation({ clients }: { clients: ClientSummary[] }) {
   const [override, setOverride] = useState<{
     spendCents: number;
     resultValue: number;
+    origemSpendCents: number;
+    origemResultValue: number;
   } | null>(null);
   const [buscando, setBuscando] = useState(false);
 
@@ -124,12 +151,30 @@ export function CommandStation({ clients }: { clients: ClientSummary[] }) {
 
   const periodoLabel = formatPeriod(periodo.inicio, periodo.fim);
 
+  /* Quantos dias a janela cobre. Decide só entre "dos últimos 7 dias" e
+     a data por extenso na mensagem — nenhuma conta depende disto.
+     `+1` porque o intervalo inclui as duas pontas. */
+  const diasDoPeriodo =
+    periodo.inicio && periodo.fim
+      ? Math.round(
+          (Date.parse(`${periodo.fim}T00:00:00Z`) -
+            Date.parse(`${periodo.inicio}T00:00:00Z`)) /
+            86_400_000,
+        ) + 1
+      : 0;
+
   /* Conta + janela. Trocar qualquer um dos dois libera o botão de novo. */
   const chaveDoEnvio = `${clientId}|${periodo.inicio}|${periodo.fim}`;
   const jaEnviado = enviados.has(chaveDoEnvio);
 
   const spendCents = override?.spendCents ?? cliente?.spendCents ?? 0;
   const resultValue = override?.resultValue ?? cliente?.resultValue ?? 0;
+
+  /* O denominador de custo e retorno. Volume continua sendo o de cima. */
+  const origemSpendCents =
+    override?.origemSpendCents ?? cliente?.origemSpendCents ?? 0;
+  const origemResultValue =
+    override?.origemResultValue ?? cliente?.origemResultValue ?? 0;
 
   /** Troca de conta reabre na janela da meta dela e descarta a busca. */
   function trocarCliente(id: string) {
@@ -168,6 +213,11 @@ export function CommandStation({ clients }: { clients: ClientSummary[] }) {
             conversions: r.resumo.conversions,
             revenueCents: r.resumo.revenueCents,
           }),
+          origemSpendCents: r.resumo.origem.spendCents,
+          origemResultValue: goalExecutedFrom(cliente.metric, {
+            conversions: r.resumo.origem.conversions,
+            revenueCents: r.resumo.origem.revenueCents,
+          }),
         });
       })
       .catch(() => toast.error("Não deu para somar o período."))
@@ -180,33 +230,30 @@ export function CommandStation({ clients }: { clients: ClientSummary[] }) {
      `costLabel` nulo = a meta já é em dinheiro, e "custo por
      faturamento" não é uma grandeza. Ali a razão que interessa é ROAS. */
   const cpl =
-    cliente && cliente.metric.costLabel && resultValue > 0
-      ? spendCents / resultValue
+    cliente && cliente.metric.costLabel && origemResultValue > 0
+      ? origemSpendCents / origemResultValue
       : null;
 
   const roas =
-    cliente && cliente.metric.isCurrency && spendCents > 0
-      ? resultValue / spendCents
+    cliente && cliente.metric.isCurrency && origemSpendCents > 0
+      ? origemResultValue / origemSpendCents
       : null;
 
   /* O TEXTO NÃO É MONTADO AQUI — ver `lib/reports/mensagem-do-cliente`.
      Esta tela e o envio pelo WhatsApp chamam a mesma função; enquanto
      cada um montava o seu, a equipe conferia um texto e o cliente
-     recebia outro. */
+     recebia outro.
+
+     A mensagem não leva mais número nenhum, só o período: os números
+     ficam no PDF, onde o selo da campanha de origem explica de onde
+     eles saem. Ver o cabeçalho daquele arquivo. */
   const mensagem = useMemo(() => {
     if (!cliente) return "";
-    const { metric } = cliente;
-
-    return mensagemDoCliente({
-      periodoLabel,
-      investimento: formatCurrency(spendCents),
-      resultadoLabel: metric.label,
-      resultado: formatGoalValue(metric, resultValue),
-      custoLabel: metric.costLabel,
-      custo: cpl ? formatCurrency(Math.round(cpl)) : null,
-      retorno: roas ? formatMultiplier(roas) : null,
-    });
-  }, [cliente, periodoLabel, spendCents, resultValue, cpl, roas]);
+    return mensagemDoCliente(
+      { periodoLabel, dias: diasDoPeriodo, cliente: cliente.name },
+      modeloDaMensagem,
+    );
+  }, [cliente, periodoLabel, diasDoPeriodo, modeloDaMensagem]);
 
   async function copiar() {
     await navigator.clipboard.writeText(mensagem);

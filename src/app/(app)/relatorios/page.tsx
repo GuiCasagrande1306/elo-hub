@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { PageContainer, PageHeader } from "@/components/layout/page-header";
 import { TemplateSettingsDialog } from "@/components/reports/template-settings-dialog";
 import { ReportHistoryList } from "@/components/reports/report-history";
+import { MessageSettingsDialog } from "@/components/reports/message-settings-dialog";
 import { ReportSetupTable } from "@/components/reports/report-setup-table";
 import { getCurrentUser } from "@/lib/supabase/server";
 import {
@@ -12,6 +13,8 @@ import {
   getReportSetup,
   getReportTemplates,
 } from "@/lib/data";
+import { goalExecutedFrom } from "@/lib/metrics/goal-metric";
+import { getMensagemDoCliente } from "@/lib/reports/mensagem-settings";
 import { resolverTemplate } from "@/lib/reports/template-resolver";
 import type { ClientSegment } from "@/types/database";
 import { listarPendentes } from "./actions";
@@ -35,8 +38,15 @@ export default async function ReportsPage() {
      colaborador leria a lista curta como perda de dado. */
   const user = await getCurrentUser();
 
-  const [templates, reports, clients, pendentes, comMetricas, agenda] =
-    await Promise.all([
+  const [
+    templates,
+    reports,
+    clients,
+    pendentes,
+    comMetricas,
+    agenda,
+    modeloDaMensagem,
+  ] = await Promise.all([
       getReportTemplates(),
       getReports(),
       getClients(),
@@ -50,6 +60,9 @@ export default async function ReportsPage() {
          porque é o que destrava tudo abaixo: sem destino e dia, o cron
          não prepara e a fila nasce vazia. */
       getReportSetup(),
+      /* O texto da legenda. A estação mostra a prévia com ele, e é o
+         MESMO que o envio usa — uma busca só, um valor só. */
+      getMensagemDoCliente(),
     ]);
 
   const resumos = comMetricas.map((linha) => ({
@@ -65,6 +78,13 @@ export default async function ReportsPage() {
        isso — escrever "Resultados: 4.820" onde são R$ 48,20 de receita
        mandaria o erro direto para o cliente final. */
     resultValue: linha.computedGoalValue,
+    /* O denominador de custo e retorno, na mesma unidade. O cartão da
+       estação divide por ele para não discordar do PDF que ela gera. */
+    origemSpendCents: linha.computedOrigem.spendCents,
+    origemResultValue: goalExecutedFrom(linha.metric, {
+      conversions: linha.computedOrigem.conversions,
+      revenueCents: linha.computedOrigem.revenueCents,
+    }),
     metric: linha.metric,
     /* A janela que o servidor de fato somou. Vai junto porque é ela que
        rotula a mensagem enviada ao cliente — antes a tela escolhia um
@@ -90,6 +110,12 @@ export default async function ReportsPage() {
             {/* Templates viraram CONFIGURAÇÃO atrás de um botão: mexidos
                 talvez uma vez por trimestre, ocupavam metade da tela que
                 deveria mostrar o que precisa ser enviado hoje. */}
+            {/* A mensagem vem antes dos templates: ela é a primeira coisa
+                que o cliente lê, e é mexida com mais frequência que a
+                lista de métricas de um nicho. */}
+            {user?.role === "admin" && (
+              <MessageSettingsDialog atual={modeloDaMensagem} />
+            )}
             {user?.role === "admin" && (
               <TemplateSettingsDialog
                 templates={templates.map((t) => ({
@@ -118,7 +144,7 @@ export default async function ReportsPage() {
       <ReportSetupTable linhas={agenda} />
 
       <div className="mt-8">
-        <CommandStation clients={resumos} />
+        <CommandStation clients={resumos} modeloDaMensagem={modeloDaMensagem} />
       </div>
 
       {/* Fila de envio ---------------------------------------------

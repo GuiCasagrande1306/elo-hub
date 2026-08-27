@@ -4,6 +4,7 @@ import { isDemoMode, serverEnv } from "@/lib/env";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { sessionSource, type ReportSource } from "./source";
 import { buildGroupCaption, buildReportPayload } from "./payload";
+import { getMensagemDoCliente } from "./mensagem-settings";
 import { renderReportPdf } from "./pdf/render";
 import { sendReportFromUser } from "@/lib/whatsapp/session";
 import type { ReportStatus } from "@/types/database";
@@ -287,11 +288,14 @@ export async function generateAndDeliverReport(
        recebia texto e documento separados; vindo do número de uma
        pessoa conhecida, duas mensagens seguidas parecem spam. */
     {
+      /* O texto vem do banco AGORA, e não do snapshot: quem editou a
+         mensagem quer que a próxima saia com ela. Ver a nota do
+         parâmetro em `buildGroupCaption`. */
       const grupo = await sendReportFromUser(
         remetente,
         recipient,
         downloadUrl,
-        buildGroupCaption(payload),
+        buildGroupCaption(payload, await getMensagemDoCliente()),
         client.name,
       );
 

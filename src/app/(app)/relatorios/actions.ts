@@ -8,6 +8,12 @@ import { getClients, getReports } from "@/lib/data";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient, getCurrentUser } from "@/lib/supabase/server";
 import { buildGroupCaption } from "@/lib/reports/payload";
+import { getMensagemDoCliente } from "@/lib/reports/mensagem-settings";
+import {
+  MARCADORES,
+  mensagemDoCliente,
+} from "@/lib/reports/mensagem-do-cliente";
+import { formatPeriod } from "@/lib/format";
 import { sendReportFromUser } from "@/lib/whatsapp/session";
 import type { Client, ReportHistory } from "@/types/database";
 
@@ -70,6 +76,16 @@ export async function listarPendentes(): Promise<EnvioPendente[]> {
         .createSignedUrl(item.report.storage_path, 60 * 60);
       return { ...item, pdfUrl: data?.signedUrl ?? null };
     }),
+  );
+}
+
+/** Dias que a janela cobre, contando as duas pontas. */
+function diasEntre(inicio: string, fim: string): number {
+  return (
+    Math.round(
+      (Date.parse(`${fim}T00:00:00Z`) - Date.parse(`${inicio}T00:00:00Z`)) /
+        86_400_000,
+    ) + 1
   );
 }
 
@@ -149,10 +165,23 @@ export async function enviarRelatorio(
     .update({ status: "sending" })
     .eq("id", reportId);
 
+  /* O texto gravado, buscado agora. O snapshot dá o PERÍODO; a voz vem
+     da configuração vigente. */
+  const modelo = await getMensagemDoCliente();
+
   const legenda =
     linha.snapshot && typeof linha.snapshot === "object"
-      ? buildGroupCaption(linha.snapshot as never)
-      : `Segue o relatório de performance de ${(client as Client).name}.`;
+      ? buildGroupCaption(linha.snapshot as never, modelo)
+      : /* Sem snapshot — relatório antigo. Monta com o mesmo texto, e o
+           período sai das colunas da própria linha do histórico. */
+        mensagemDoCliente(
+          {
+            periodoLabel: formatPeriod(linha.period_start, linha.period_end),
+            dias: diasEntre(linha.period_start, linha.period_end),
+            cliente: (client as Client).name,
+          },
+          modelo,
+        );
 
   const resultado = await sendReportFromUser(
     user.id,
@@ -268,6 +297,91 @@ export async function salvarTemplate(input: {
       return { ok: false, error: "Apenas administradores editam templates." };
     }
     return { ok: false, error: error.message };
+  }
+
+  revalidatePath("/relatorios");
+  return { ok: true };
+}
+
+/* =====================================================================
+   A mensagem que acompanha o relatório
+   ---------------------------------------------------------------------
+   Quem barra colaborador é a policy `report_message_settings_escrita`,
+   que exige `app.is_admin()`. Não repito a checagem aqui: duas fontes
+   de verdade sobre permissão divergem, e a que envelhece é a da
+   aplicação.
+   ===================================================================== */
+
+const mensagemSchema = z.object({
+  /* O teto é 900 e não 1024 pelo mesmo motivo do check no banco: o
+     WhatsApp corta em 1024 e a substituição de `{periodo}` CRESCE o
+     texto. A folga evita legenda truncada no meio da frase. */
+  template: z.string().trim().min(1).max(900),
+});
+
+export async function salvarMensagemDoCliente(input: {
+  template: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = mensagemSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: "A mensagem precisa ter entre 1 e 900 caracteres.",
+    };
+  }
+
+  /* MARCADOR DESCONHECIDO É ERRO DE DIGITAÇÃO, e ele chegaria cru ao
+     cliente. "{periodo }" ou "{cliente}" com acento passam pelo tamanho
+     e pelo check do banco, e o texto sai com a chave literal no meio.
+     Melhor recusar aqui, onde dá para dizer qual é. */
+  const conhecidos = new Set<string>(MARCADORES.map((m) => m.chave));
+  const usados = parsed.data.template.match(/\{[^}]*\}/g) ?? [];
+  const invalido = usados.find((m) => !conhecidos.has(m));
+  if (invalido) {
+    return {
+      ok: false,
+      error: `"${invalido}" não é um marcador conhecido. Use ${[...conhecidos].join(" ou ")}.`,
+    };
+  }
+
+  if (isDemoMode) return { ok: true };
+
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Sessão expirada. Entre novamente." };
+
+  /* ⚠️ `count`, E ELE É A CHECAGEM DE PERMISSÃO. Um `update` que não
+     casa NENHUMA linha volta com `error: null` — sucesso silencioso. E
+     é exatamente o que a RLS produz aqui: a policy de escrita exige
+     `app.is_admin()`, então para um colaborador a linha simplesmente
+     não existe, o Postgres não recusa nada e a ação devolvia `ok`.
+
+     Medido em 27/08/2026 contra o servidor local: colaborador recebia
+     "Mensagem salva.", o banco continuava com o texto anterior, e não
+     havia nada na tela dizendo o contrário. O mesmo defeito já tinha
+     aparecido em `setAdAccountId` — é o formato do PostgREST, não um
+     descuido isolado, e todo update sob RLS precisa desta contagem. */
+  const supabase = await createSupabaseServerClient();
+  const { error, count } = await supabase
+    .from("report_message_settings")
+    .update(
+      {
+        template: parsed.data.template,
+        updated_at: new Date().toISOString(),
+        updated_by: user.id,
+      },
+      { count: "exact" },
+    )
+    .eq("id", true);
+
+  if (error) {
+    if (error.code === "42501") {
+      return { ok: false, error: "Apenas administradores editam a mensagem." };
+    }
+    return { ok: false, error: error.message };
+  }
+
+  if (count === 0) {
+    return { ok: false, error: "Apenas administradores editam a mensagem." };
   }
 
   revalidatePath("/relatorios");
@@ -423,6 +537,14 @@ export type ResumoDoPeriodo = {
   conversions: number;
   revenueCents: number;
   /**
+   * Os mesmos totais contados só nas campanhas de origem.
+   *
+   * É de onde saem CUSTO e RETORNO no cartão da tela — as duas razões
+   * que o PDF também divide pela campanha que compra o resultado. O
+   * volume (investimento, pedidos) continua vindo da conta inteira.
+   */
+  origem: { spendCents: number; conversions: number; revenueCents: number };
+  /**
    * Quantas linhas de `daily_metrics` existem na janela.
    *
    * ZERO LINHA E ZERO REAL SÃO COISAS DIFERENTES, e a tela precisa
@@ -476,6 +598,9 @@ export async function resumoDoPeriodo(
 
   const { getClients, getMetrics } = await import("@/lib/data");
   const { sumMetrics } = await import("@/lib/metrics/kpi");
+  const { tiposDeConversaoDoCliente } = await import(
+    "@/lib/ads/conversao-do-cliente"
+  );
 
   /* A leitura de clientes existe só para provar que a conta é visível
      para quem pediu: `getClients` roda sob RLS, e sem ela um id
@@ -484,7 +609,12 @@ export async function resumoDoPeriodo(
   if (!visivel) return { ok: false, error: "Conta não encontrada." };
 
   const metricas = await getMetrics(clientId, start, end);
-  const totais = sumMetrics(metricas);
+  /* Com os tipos: é o que faz o cartão da tela mostrar o mesmo custo e o
+     mesmo retorno que o PDF gerado logo abaixo dele. */
+  const totais = sumMetrics(
+    metricas,
+    await tiposDeConversaoDoCliente(clientId),
+  );
 
   return {
     ok: true,
@@ -492,6 +622,11 @@ export async function resumoDoPeriodo(
       spendCents: totais.spendCents,
       conversions: totais.conversions,
       revenueCents: totais.revenueCents,
+      origem: {
+        spendCents: totais.origem.spendCents,
+        conversions: totais.origem.conversions,
+        revenueCents: totais.origem.revenueCents,
+      },
       linhas: metricas.length,
     },
   };
