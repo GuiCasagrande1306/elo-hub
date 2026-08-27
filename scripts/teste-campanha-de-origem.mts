@@ -34,6 +34,7 @@ const ok = (nome: string, real: unknown, esperado: unknown) => {
 
 const COMPRA = "offsite_conversion.fb_pixel_purchase";
 const CONVERSA = "onsite_conversion.messaging_conversation_started_7d";
+const CADASTRO = "offsite_conversion.fb_pixel_lead";
 
 /* --- as famílias que cada conversão procura ------------------------- */
 ok("compra procura Vendas", [...familiasDeOrigem([COMPRA])], ["Vendas"]);
@@ -179,6 +180,48 @@ ok(
   totaisDeOrigem(nuncaConverteu, [COMPRA]).spendCents,
   60000,
 );
+
+/* ------------------------------------------------------------------ */
+/* O piso de representatividade                                        */
+/* ------------------------------------------------------------------ */
+
+/* O caso da Way Coonecta, 01–26/08/2026: a campanha classificada como
+   origem tem 2 dos 78 leads. Isolar ali daria "custo por lead R$ 8,43"
+   ao lado de "Leads: 78", tirado de 2,6% do resultado. */
+const origemIrrelevante = [
+  c("engajamento", 150411, 68, 0, "OUTCOME_ENGAGEMENT", "CONVERSATIONS"),
+  c("impulsionado", 23852, 8, 0, null, null),
+  c("trafego", 15179, 0, 0, "LINK_CLICKS", "LANDING_PAGE_VIEWS"),
+  c("leads", 1686, 2, 0, "OUTCOME_LEADS", null),
+];
+const semPiso = totaisDeOrigem(origemIrrelevante, [CADASTRO]);
+ok("origem com 2 de 78 resultados NÃO isola", semPiso.isolado, false);
+ok("e o denominador volta a ser a conta inteira", semPiso.spendCents, 191128);
+
+/* Exatamente metade ainda isola: o corte é "menos da metade". */
+const metade = [
+  c("venda", 10000, 5, 50000, "OUTCOME_SALES", "OFFSITE_CONVERSIONS"),
+  c("alcance", 40000, 5, 0, "OUTCOME_AWARENESS", "REACH"),
+];
+ok("metade dos resultados ainda isola", totaisDeOrigem(metade, [COMPRA]).isolado, true);
+
+/* Um a menos que a metade já não isola. */
+const abaixoDaMetade = [
+  c("venda", 10000, 4, 50000, "OUTCOME_SALES", "OFFSITE_CONVERSIONS"),
+  c("alcance", 40000, 5, 0, "OUTCOME_AWARENESS", "REACH"),
+];
+ok("abaixo da metade não isola", totaisDeOrigem(abaixoDaMetade, [COMPRA]).isolado, false);
+
+/* O caso da Satö, que é o motivo de a regra existir: 20 de 22. */
+const satoComPiso = [
+  c("conversao", 33509, 20, 413821, "OUTCOME_SALES", "OFFSITE_CONVERSIONS"),
+  c("trafego", 10315, 0, 0, "LINK_CLICKS", "NONE"),
+  c("engajamento", 7226, 0, 0, "OUTCOME_ENGAGEMENT", "REPLIES"),
+  c("reconhecimento", 4140, 2, 33660, "OUTCOME_AWARENESS", null),
+];
+const comSato = totaisDeOrigem(satoComPiso, [COMPRA]);
+ok("Satö continua isolando", comSato.isolado, true);
+ok("e com o gasto da campanha de venda", comSato.spendCents, 33509);
 
 console.log(falhas === 0 ? "\nTUDO PASSOU" : `\n${falhas} FALHA(S)`);
 process.exit(falhas ? 1 : 0);

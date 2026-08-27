@@ -182,6 +182,41 @@ export function totaisDeOrigem<
     return { ...tudo, isolado: false };
   }
 
+  /* PISO DE REPRESENTATIVIDADE, e ele é a segunda metade da rede.
+     -----------------------------------------------------------------
+     A checagem acima só desliga o isolamento quando a origem está
+     VAZIA. Bastava uma conversão e um centavo para o subconjunto virar
+     o denominador oficial do relatório do cliente — e quando a
+     classificação erra a campanha que de fato gera o resultado, o
+     número da capa sai de uma fração desprezível da conta enquanto o
+     card ao lado mostra o volume inteiro.
+
+     Medido na Way Coonecta, 01–26/08/2026:
+
+         01 | ENGAJAMENTO WHATSAPP    R$ 1.504,11   68 leads   (fora)
+         post impulsionado            R$   238,52    8 leads   (fora)
+         04 | TRÁFEGO SITE            R$   151,79    0 leads   (fora)
+         Leads Proteção Veicular      R$    16,86    2 leads   ORIGEM
+
+     Dois leads de setenta e oito, e o PDF imprimiria "Custo por lead
+     R$ 8,43" ao lado de "Leads: 78". O custo real é R$ 24,50. O selo
+     "de 1 campanha" conta campanhas, não a fatia de resultado que ficou
+     de fora — nada no documento revelava o recorte.
+
+     A MAIORIA DOS RESULTADOS é o critério, e não uma fatia de gasto: a
+     campanha de origem existe para explicar de onde vem o RESULTADO. Se
+     ela responde por menos da metade dele, ela não é a origem daquela
+     conta — a classificação não descreve esse caso, e o denominador
+     honesto volta a ser a conta inteira.
+
+     Medido na janela semanal de 18–24/08, 15 contas isolam: catorze têm
+     a origem respondendo por 91% a 100% dos resultados, e só a Feijoada
+     Lá De Casa fica abaixo (33%) — ali a diferença era de R$ 3. O piso
+     não mexe em nenhuma conta em que a regra estava funcionando. */
+  if (origem.conversions * 2 < tudo.conversions) {
+    return { ...tudo, isolado: false };
+  }
+
   /* Só é "isolado" se sobrou algo de fora. Uma conta em que TODA
      campanha é de venda — e existem: Atacado de Pratas, 100% — está
      certa dos dois jeitos, e anunciar isolamento ali sugere um recorte
