@@ -171,7 +171,9 @@ export function CommandStation({
      `false` porque a janela inicial é a da meta, que o servidor já
      somou. Ver a nota de `linhas` em `ResumoDoPeriodo`: zero real e
      período nunca sincronizado apareciam iguais na tela. */
-  const [semDado, setSemDado] = useState(clients[0]?.linhas === 0);
+  /* `null` = ainda não se sabe / vale o que o servidor disse para esta
+     janela. Só vira booleano quando UMA BUSCA respondeu. */
+  const [semDadoDaBusca, setSemDadoDaBusca] = useState<boolean | null>(null);
 
   const periodoLabel = formatPeriod(periodo.inicio, periodo.fim);
 
@@ -191,14 +193,60 @@ export function CommandStation({
   const chaveDoEnvio = `${clientId}|${periodo.inicio}|${periodo.fim}`;
   const jaEnviado = enviados.has(chaveDoEnvio);
 
-  const spendCents = override?.spendCents ?? cliente?.spendCents ?? 0;
-  const resultValue = override?.resultValue ?? cliente?.resultValue ?? 0;
+  /* ⚠️ `janelaDaMeta` DECIDE SE O NÚMERO INICIAL AINDA VALE.
+     -----------------------------------------------------------------
+     `override` nulo significava duas coisas diferentes — "ainda é a
+     janela da meta, valem os números do servidor" e "acabei de trocar o
+     período e ainda não sei" —, e o `??` tratava as duas igual. O
+     resultado: ao aplicar uma janela nova, o cartão voltava a mostrar o
+     total do MÊS INTEIRO sob o rótulo da semana, e ficava assim durante
+     toda a busca. Se ela falhasse, ficava para sempre.
+
+     É o mesmo defeito que derrubou o primeiro seletor desta tela, e o
+     conserto anterior prometia "—" sem entregar. */
+  const janelaDaMeta =
+    cliente != null &&
+    periodo.inicio === cliente.period.start &&
+    periodo.fim === cliente.period.end;
+
+  const doServidor = janelaDaMeta ? cliente : null;
+
+  const spendCents = override?.spendCents ?? doServidor?.spendCents ?? null;
+  const resultValue = override?.resultValue ?? doServidor?.resultValue ?? null;
 
   /* O denominador de custo e retorno. Volume continua sendo o de cima. */
   const origemSpendCents =
-    override?.origemSpendCents ?? cliente?.origemSpendCents ?? 0;
+    override?.origemSpendCents ?? doServidor?.origemSpendCents ?? null;
   const origemResultValue =
-    override?.origemResultValue ?? cliente?.origemResultValue ?? 0;
+    override?.origemResultValue ?? doServidor?.origemResultValue ?? null;
+
+  /** Nenhum número conferido para esta janela — o cartão mostra "—". */
+  const semNumero = spendCents === null || resultValue === null;
+
+  /* ⚠️ DERIVADO, NÃO GUARDADO EM ESTADO INICIAL.
+     -----------------------------------------------------------------
+     Era `useState(clients[0]?.linhas === 0)`, que roda UMA VEZ na
+     montagem. A prop `clients` é substituída sem remontagem toda vez
+     que alguém chama `revalidatePath("/relatorios")` — e três ações da
+     MESMA página fazem isso. Então a trava ficava congelada no valor de
+     06h enquanto o cartão ao lado já mostrava os números que o sync
+     trouxe às 06h20, ou o contrário.
+
+     Na janela da meta vale o que o servidor contou; fora dela, o que a
+     busca respondeu. Enquanto a busca não respondeu, `null` — e é o
+     `buscando` abaixo que segura o botão. */
+  const semDado = janelaDaMeta
+    ? (cliente?.linhas ?? 0) === 0
+    : (semDadoDaBusca ?? false);
+
+  /* `buscando` ENTRA NA TRAVA. Sem ele, trocar o período liberava o
+     botão durante toda a ida ao servidor: `semDado` tinha acabado de
+     ser limpo e o guard interno de `gerarEEnviar` lia o mesmo valor
+     otimista. Uma janela nunca sincronizada ficava clicável por meio
+     segundo — o bastante para o clique que o conserto existe para
+     impedir. `semNumero` fecha o resto: sem número conferido não há o
+     que enviar. */
+  const naoPodeEnviar = !cliente || buscando || semDado || semNumero;
 
   /** Troca de conta reabre na janela da meta dela e descarta a busca. */
   function trocarCliente(id: string) {
@@ -209,9 +257,9 @@ export function CommandStation({
     setBuscando(false);
     setClientId(id);
     setOverride(null);
-    /* Do servidor, não `false`: a janela inicial da conta nova pode ser
-       tão dessincronizada quanto a de qualquer outra. */
-    setSemDado(alvo?.linhas === 0);
+    /* A conta nova abre na janela da meta dela, e ali quem responde é
+       `cliente.linhas` — derivado, não guardado. */
+    setSemDadoDaBusca(null);
     if (alvo) setPeriodo({ inicio: alvo.period.start, fim: alvo.period.end });
   }
 
@@ -232,7 +280,7 @@ export function CommandStation({
        Limpar antes de buscar troca um número errado por um traço: o
        cartão mostra "—" enquanto carrega, e continua "—" se falhar. */
     setOverride(null);
-    setSemDado(false);
+    setSemDadoDaBusca(null);
 
     const meuTurno = (buscaAtual.current += 1);
     setBuscando(true);
@@ -248,9 +296,9 @@ export function CommandStation({
 
         if (!r.ok) {
           toast.error(r.error);
-          /* `semDado` TRAVA o botão. Sem isto, uma busca que falhou
-             deixava "Gerar e enviar" liberado sobre um cartão vazio. */
-          setSemDado(true);
+          /* Trava o botão: uma busca que falhou deixava "Gerar e
+             enviar" liberado sobre um cartão vazio. */
+          setSemDadoDaBusca(true);
           return;
         }
         /* A UNIDADE VEM DE `cliente.metric`, não do servidor. É a mesma
@@ -258,7 +306,7 @@ export function CommandStation({
            não têm como discordar dela. Deixar o servidor escolher já
            produziu R$ 0,64 onde eram R$ 12.170,81 — ele resolveu
            contagem e a tela formatou como dinheiro. */
-        setSemDado(r.resumo.linhas === 0);
+        setSemDadoDaBusca(r.resumo.linhas === 0);
         setOverride({
           spendCents: r.resumo.spendCents,
           resultValue: goalExecutedFrom(cliente.metric, {
@@ -275,7 +323,7 @@ export function CommandStation({
       .catch(() => {
         if (meuTurno !== buscaAtual.current) return;
         toast.error("Não deu para somar o período.");
-        setSemDado(true);
+        setSemDadoDaBusca(true);
       })
       .finally(() => {
         if (meuTurno === buscaAtual.current) setBuscando(false);
@@ -288,12 +336,20 @@ export function CommandStation({
      `costLabel` nulo = a meta já é em dinheiro, e "custo por
      faturamento" não é uma grandeza. Ali a razão que interessa é ROAS. */
   const cpl =
-    cliente && cliente.metric.costLabel && origemResultValue > 0
+    cliente &&
+    cliente.metric.costLabel &&
+    origemResultValue !== null &&
+    origemSpendCents !== null &&
+    origemResultValue > 0
       ? origemSpendCents / origemResultValue
       : null;
 
   const roas =
-    cliente && cliente.metric.isCurrency && origemSpendCents > 0
+    cliente &&
+    cliente.metric.isCurrency &&
+    origemSpendCents !== null &&
+    origemResultValue !== null &&
+    origemSpendCents > 0
       ? origemResultValue / origemSpendCents
       : null;
 
@@ -362,7 +418,7 @@ export function CommandStation({
 
   /** Gera, arquiva e dispara pelo WhatsApp de quem está logado. */
   async function gerarEEnviar() {
-    if (!cliente || jaEnviado || semDado) return;
+    if (naoPodeEnviar || jaEnviado) return;
     setBusy("envio");
 
     try {
@@ -553,7 +609,7 @@ export function CommandStation({
                  clicável ao lado dele. Numa tarde de sete envios
                  seguidos, um aviso que não impede nada é um aviso que se
                  lê depois. Trocar o período limpa o estado. */
-              disabled={!cliente || busy !== null || jaEnviado || semDado}
+              disabled={busy !== null || jaEnviado || naoPodeEnviar}
               onClick={gerarEEnviar}
               title={
                 jaEnviado
@@ -607,10 +663,17 @@ export function CommandStation({
                  do mês — dois números do mesmo card falando de períodos
                  diferentes. É o mesmo defeito que derrubou o seletor
                  antigo, só que uma camada acima. */
-              ["Investimento", cliente ? formatCurrency(spendCents) : "—"],
+              /* "—" quando não há número CONFERIDO para esta janela —
+                 não só quando não há cliente. Ver `janelaDaMeta`. */
+              [
+                "Investimento",
+                spendCents === null ? "—" : formatCurrency(spendCents),
+              ],
               [
                 cliente?.metric.label ?? "Resultados",
-                cliente ? formatGoalValue(cliente.metric, resultValue) : "—",
+                cliente && resultValue !== null
+                  ? formatGoalValue(cliente.metric, resultValue)
+                  : "—",
               ],
               /* Terceira coluna: custo unitário onde ele existe, ROAS
                  onde a meta é dinheiro. */
