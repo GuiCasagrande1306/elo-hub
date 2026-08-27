@@ -277,6 +277,11 @@ export async function getMetricsWithComparison(
     previousTotals: sumMetrics(previous, tipos),
     period: { start, end, days: prev.days },
     previousPeriod: prev,
+    /* DEVOLVIDOS, e não só usados aqui dentro: o relatório precisa da
+       MESMA lista para isolar a origem também no quadro por plataforma.
+       Sem isto ele teria de buscá-la de novo — duas consultas a mais e,
+       pior, a chance de as duas listas divergirem no meio do documento. */
+    tiposDeConversao: tipos,
   };
 }
 

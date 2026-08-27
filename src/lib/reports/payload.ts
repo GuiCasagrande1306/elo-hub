@@ -316,12 +316,17 @@ export async function buildReportPayload(options: {
     creativesDoPeriodo: metricasDoPeriodo !== null,
     kpis,
     highlight,
-    trend: buildTrend(metrics.current),
-    platforms: splitByPlatform(metrics.current),
+    /* Os tipos de conversão passam nos TRÊS: o gráfico diário, a divisão
+       por canal e o quadro por plataforma. Antes só a grade de KPIs os
+       recebia, e o PDF da Satö saía com ROAS 12,35x na página 2 e 8,11x
+       na 3 — o mesmo número, duas respostas, no arquivo do cliente. */
+    trend: buildTrend(metrics.current, metrics.tiposDeConversao),
+    platforms: splitByPlatform(metrics.current, metrics.tiposDeConversao),
     platformDetail: buildPlatformDetail(
       metrics.current,
       metrics.previous,
       rotulos,
+      metrics.tiposDeConversao,
     ),
     creatives: creatives.map((ad) => {
       const image = ad.storage_path ?? ad.thumbnail_url;

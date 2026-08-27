@@ -53,6 +53,17 @@ export interface MetricsWindow {
   currentTotals: ReturnType<typeof sumMetrics>;
   previousTotals: ReturnType<typeof sumMetrics>;
   period: { start: string; end: string; days: number };
+  /**
+   * As ações de conversão desta conta — a mesma lista que decidiu os
+   * totais acima.
+   *
+   * VIAJA JUNTO porque o documento a usa DUAS vezes: na grade de KPIs e
+   * no quadro por plataforma. Buscá-la outra vez lá adiante custaria
+   * duas consultas e abriria a porta para o mesmo PDF isolar a origem
+   * numa seção e não na outra, que foi exatamente o defeito medido na
+   * Satö em 27/08/2026.
+   */
+  tiposDeConversao: string[];
 }
 
 export interface ReportSource {
@@ -125,6 +136,7 @@ export function sessionSource(): ReportSource {
         currentTotals: m.currentTotals,
         previousTotals: m.previousTotals,
         period: m.period,
+        tiposDeConversao: m.tiposDeConversao,
       };
     },
     creatives: (clientId, limit) => getCreatives(clientId, limit),
@@ -209,6 +221,7 @@ export function systemSource(): ReportSource {
           currentTotals: sumMetrics(current, tipos),
           previousTotals: sumMetrics(previous, tipos),
           period: { start, end, days: prev.days },
+          tiposDeConversao: tipos,
         };
       }
 
@@ -236,6 +249,7 @@ export function systemSource(): ReportSource {
         currentTotals: sumMetrics(current, tipos),
         previousTotals: sumMetrics(previous, tipos),
         period: { start, end, days: prev.days },
+        tiposDeConversao: tipos,
       };
     },
 

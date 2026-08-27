@@ -103,19 +103,30 @@ function metricasComNumero(
  * `rotulos` vem do template — se a conta chama conversão de "Pedidos",
  * o quadro do Meta diz "Pedidos". A página A4 não tem template e passa
  * um objeto vazio.
+ *
+ * ⚠️ `tiposDeConversao` NÃO É OPCIONAL NA PRÁTICA, mesmo tendo padrão.
+ * É ele que faz custo por resultado e ROAS saírem da campanha de
+ * origem, como na grade de KPIs da página anterior. Sem ele este quadro
+ * divide pelo gasto inteiro da plataforma e o cliente lê dois números
+ * diferentes para a mesma coisa no mesmo arquivo — ver a nota em
+ * `splitByPlatform`. O padrão existe só para o chamador que legitimamente
+ * não sabe (a página A4 antes de resolver a conta).
  */
 export function buildPlatformDetail(
   atuais: DailyMetric[],
   anteriores: DailyMetric[],
   rotulos: Partial<Record<MetricKey, string>> = {},
+  tiposDeConversao?: string[],
 ): PlatformDetail[] {
   const porPlataformaAnterior = new Map(
-    splitByPlatform(anteriores).map((p) => [p.platform, p.totals] as const),
+    splitByPlatform(anteriores, tiposDeConversao).map(
+      (p) => [p.platform, p.totals] as const,
+    ),
   );
 
   const vazio = sumMetrics([]);
 
-  return splitByPlatform(atuais).map((p) => {
+  return splitByPlatform(atuais, tiposDeConversao).map((p) => {
     const anterior = porPlataformaAnterior.get(p.platform) ?? vazio;
 
     return {
@@ -175,6 +186,13 @@ function campanhasDaPlataforma(
 
   return [...porCampanha.entries()]
     .map(([name, linhasDaCampanha]) => {
+      /* SEM `tiposDeConversao` DE PROPÓSITO, e não por esquecimento.
+         Aqui as linhas já são de UMA campanha só: gasto dividido pelos
+         resultados dela é o custo dela, que é o número certo e o mesmo
+         que a isolação produz. Passar a lista faria a campanha que não é
+         de origem — tráfego, reconhecimento — imprimir "—" no lugar do
+         próprio custo, escondendo justamente o que a tabela existe para
+         mostrar: quanto cada frente custou. */
       const t = sumMetrics(linhasDaCampanha);
       return {
         name: encurtar(name),

@@ -284,8 +284,16 @@ function assemble(
       const rotulo = rotulos[key];
       return rotulo ? { ...kpi, label: rotulo } : kpi;
     }),
-    platforms: splitByPlatform(current),
-    platformDetail: buildPlatformDetail(current, previous, rotulos),
+    /* Os mesmos tipos que somaram os KPIs acima. A folha A4 é a que a
+       equipe revisa antes de enviar: se ela isolasse a origem num lugar
+       e não no outro, a revisão aprovaria um PDF diferente do revisado. */
+    platforms: splitByPlatform(current, tiposDeConversao),
+    platformDetail: buildPlatformDetail(
+      current,
+      previous,
+      rotulos,
+      tiposDeConversao,
+    ),
     creatives,
     weekly: toWeekly(current),
     totals: {

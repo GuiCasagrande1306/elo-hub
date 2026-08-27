@@ -482,7 +482,25 @@ export const PLATFORM_LABELS: Record<AdPlatform, string> = {
   organic: "Orgânico",
 };
 
-export function splitByPlatform(rows: DailyMetric[]): PlatformSplit[] {
+/**
+ * `tiposDeConversao` OPCIONAL pelo mesmo motivo de `sumMetrics`, e
+ * PRECISA ser passado por quem desenha relatório.
+ *
+ * Sem ele, cada plataforma divide o gasto INTEIRO dela pelos resultados
+ * — que é exatamente o número que a campanha de origem existe para
+ * corrigir. O estrago não é um número errado isolado: é o MESMO PDF
+ * mostrando dois. Medido na Satö, 18–24/08/2026, antes desta linha: a
+ * grade de KPIs imprimia ROAS 12,35x e R$ 16,75 por pedido, e a seção
+ * "Meta Ads" três parágrafos abaixo imprimia 8,11x e R$ 25,09 — no
+ * documento que vai para o cliente, sem nada explicando a diferença.
+ *
+ * A decisão é POR PLATAFORMA de propósito: a seção do Meta isola entre
+ * as campanhas do Meta, e é isso que ela se propõe a mostrar.
+ */
+export function splitByPlatform(
+  rows: DailyMetric[],
+  tiposDeConversao?: string[],
+): PlatformSplit[] {
   const byPlatform = new Map<AdPlatform, DailyMetric[]>();
   for (const row of rows) {
     const list = byPlatform.get(row.platform) ?? [];
@@ -494,7 +512,7 @@ export function splitByPlatform(rows: DailyMetric[]): PlatformSplit[] {
 
   return [...byPlatform.entries()]
     .map(([platform, list]) => {
-      const totals = sumMetrics(list);
+      const totals = sumMetrics(list, tiposDeConversao);
       return {
         platform,
         label: PLATFORM_LABELS[platform],
