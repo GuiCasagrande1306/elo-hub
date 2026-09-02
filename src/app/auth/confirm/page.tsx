@@ -63,7 +63,7 @@ export default async function ConfirmarAcessoPage({
             <form action={confirmarAcesso} className="mt-8">
               <input type="hidden" name="token_hash" value={token_hash} />
               <input type="hidden" name="type" value={type} />
-              <input type="hidden" name="next" value={next ?? "/crm"} />
+              <input type="hidden" name="next" value={next ?? "/"} />
               <Button type="submit" className="h-10 w-full">
                 Confirmar e continuar
               </Button>

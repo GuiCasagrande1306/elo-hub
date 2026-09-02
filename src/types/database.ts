@@ -9,12 +9,13 @@
  */
 
 /**
- * `client` é o papel de FORA da agência.
+ * `client` é o papel de FORA da agência, e hoje é HERANÇA.
  *
- * Quem tem esse papel enxerga uma coisa só — o próprio funil, em
- * `/crm` — e nada da carteira. A contenção não é a interface: é a RLS,
- * provada com dois usuários reais em 22/08/2026 (migrations 54 a 59).
- * A interface só evita oferecer porta que o banco vai fechar na cara.
+ * A tela que criava esses usuários saiu junto com o CRM do cliente em
+ * 28/08/2026, e não há nenhum na base. O valor continua no tipo porque
+ * o enum do Postgres continua tendo — as migrations 54 a 59 não foram
+ * revertidas, e a RLS que contém esse papel segue de pé. Tirá-lo daqui
+ * faria o TypeScript negar uma linha que o banco ainda aceita.
  */
 export type UserRole = "admin" | "collaborator" | "client";
 export type AccessLevel = "viewer" | "editor" | "manager";

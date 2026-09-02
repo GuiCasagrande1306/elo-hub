@@ -4,12 +4,9 @@ import {
   Handshake,
   CheckSquare,
   FileText,
-  Funnel,
-  KeyRound,
   Landmark,
   LayoutGrid,
   Repeat,
-  MessagesSquare,
   NotebookPen,
   Settings,
   Share2,
@@ -112,29 +109,10 @@ export const navGroups: NavGroup[] = [
        são o dia a dia. */
     label: "Apps parceiros",
     items: [
-      /* O CRM do cliente mora aqui, e não em Operação, porque não é uma
-         tela que a agência opera: é um produto que ela ENTREGA. Quem
-         mexe no funil todo dia é o cliente, do lado dele; a Elo entra
-         para configurar e acompanhar. Fica ao lado dos outros apps que
-         a agência liga para o cliente usar.
-
-         Não confundir com `/comercial`, que é o funil da AGÊNCIA. */
-      {
-        href: "/crm",
-        label: "CRM do cliente",
-        icon: Funnel,
-        matchPrefix: true,
-      },
       {
         href: "/midias-sociais",
         label: "Mídias sociais",
         icon: Share2,
-        matchPrefix: true,
-      },
-      {
-        href: "/elozap",
-        label: "EloZap",
-        icon: MessagesSquare,
         matchPrefix: true,
       },
       { href: "/elochat", label: "EloChat", icon: Workflow },
@@ -166,12 +144,6 @@ export const navGroups: NavGroup[] = [
          duas mexem em `profiles`, mas uma responde "quem da Elo faz o
          quê" e a outra "quem de fora vê a base de quem". Juntas, um
          clique errado troca uma coisa pela outra. */
-      {
-        href: "/configuracoes/acessos",
-        label: "Acesso dos clientes",
-        icon: KeyRound,
-        adminOnly: true,
-      },
       /* SEM `adminOnly`, e é intencional. A página já sabe se virar com
          colaborador: mostra "Meu WhatsApp", que é a única seção que
          qualquer perfil aciona, e avisa que o resto é restrito. Quem
@@ -223,24 +195,12 @@ export const secondaryNav: NavItem[] =
  * Continua sendo cosmético: quem barra o acesso é a policy no Postgres.
  * Isto evita oferecer uma porta que o banco vai fechar na cara.
  */
-const VISIVEL_PARA_CLIENTE = new Set(["/crm"]);
-
 export function podeVerNav(item: NavItem, role: string): boolean {
-  if (role === "client") return VISIVEL_PARA_CLIENTE.has(item.href);
   return !item.adminOnly || role === "admin";
 }
 
-/**
- * A barra inferior do celular, já filtrada por papel.
- *
- * Para o cliente ela não é `primaryNav` recortada: `/crm` fica fora da
- * barra por espaço no lado da agência, e para quem só tem essa tela
- * deixá-la de fora entregaria uma barra vazia.
- */
-export function navDoMobile(role: string): NavItem[] {
-  if (role === "client") {
-    return navGroups.flatMap((g) => g.items).filter((i) => podeVerNav(i, role));
-  }
+/** A barra inferior do celular. */
+export function navDoMobile(): NavItem[] {
   return primaryNav;
 }
 

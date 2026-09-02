@@ -788,8 +788,9 @@ function diagnostico(alert: BalanceAlert): string {
  *
  * `whatsapp_groups` tem 512 linhas de várias sincronizações; a lista é
  * ordenada por nome e cortada — um seletor de 512 itens não é um
- * seletor, é uma busca. Quem não achar o grupo aqui sincroniza de novo
- * no EloZap, que é onde essa lista nasce.
+ * seletor, é uma busca. Quem não achar o grupo aqui atualiza a lista
+ * pelo próprio seletor de destino, que chama `/api/whatsapp/groups` com
+ * `?atualizar=1` — é de lá que ela nasce.
  */
 async function carregarDestinoDoAviso(): Promise<{
   grupos: GrupoDisponivel[];

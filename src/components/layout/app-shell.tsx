@@ -88,7 +88,7 @@ export function AppShell({ user, clients, demoMode, children }: AppShellProps) {
         </main>
       </div>
 
-      <MobileNavigation role={user.role} />
+      <MobileNavigation />
     </div>
   );
 }

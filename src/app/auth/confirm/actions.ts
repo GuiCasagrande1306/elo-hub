@@ -39,9 +39,9 @@ export async function confirmarAcesso(formData: FormData) {
      só caminho interno passa. Sem isto, `?next=https://…` faria um link
      do nosso domínio despejar a pessoa em site de terceiro — com a
      sessão recém-criada e nenhuma desconfiança. */
-  const pedido = String(formData.get("next") ?? "/crm");
+  const pedido = String(formData.get("next") ?? "/");
   const next =
-    pedido.startsWith("/") && !pedido.startsWith("//") ? pedido : "/crm";
+    pedido.startsWith("/") && !pedido.startsWith("//") ? pedido : "/";
 
   if (!tokenHash || !TIPOS.includes(type)) {
     redirect("/login?convite=invalido");

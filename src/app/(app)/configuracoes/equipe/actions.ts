@@ -126,7 +126,7 @@ export async function convidarMembro(
       return {
         ok: false,
         error:
-          "Esse e-mail é de acesso de cliente. Remova em Acesso dos clientes antes de trazer para a equipe.",
+          "Esse e-mail pertence a um acesso de cliente antigo. Apague o usuário no Supabase antes de trazê-lo para a equipe.",
       };
     }
 
@@ -209,13 +209,16 @@ export async function removerMembro(profileId: string): Promise<RoleResult> {
 
   if (!alvo) return { ok: false, error: "Pessoa não encontrada." };
 
-  /* Acesso de cliente tem tela própria, com aviso próprio. Apagar por
-     aqui funcionaria, e é exatamente por isso que precisa ser barrado:
-     a lista de equipe não mostra de qual empresa a pessoa é. */
+  /* ACESSO DE CLIENTE REMANESCENTE. A tela que criava esses usuários
+     saiu junto com o CRM do cliente, e hoje não há nenhum — mas a
+     guarda fica: se sobrar um numa base antiga, apagá-lo por aqui
+     seria às cegas, porque a lista de equipe não mostra de qual empresa
+     a pessoa é. */
   if (alvo.role === "client") {
     return {
       ok: false,
-      error: "Esse é um acesso de cliente. Remova em Acesso dos clientes.",
+      error:
+        "Esse é um acesso de cliente de uma versão anterior do painel. Apague o usuário no Supabase.",
     };
   }
 

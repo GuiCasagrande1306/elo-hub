@@ -54,10 +54,9 @@ export function DefinirSenhaForm() {
       return;
     }
 
-    /* Para a raiz, não para `/crm`: quem decide o destino por papel é
-       a página inicial, e ela já manda o cliente para o funil. Fixar
-       `/crm` aqui mandaria alguém da equipe que usou o mesmo caminho
-       para a tela errada. */
+    /* Para a raiz: quem decide o destino é a página inicial. Fixar uma
+       rota aqui mandaria para a tela errada quem entrou por um caminho
+       diferente. */
     router.replace("/");
     router.refresh();
   }

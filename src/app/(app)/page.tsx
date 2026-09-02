@@ -31,7 +31,6 @@ export default async function OverviewPage() {
      financeiro, e o RLS devolve vazio em tudo. O resultado não é um
      bloqueio, é uma tela quebrada — que parece defeito do sistema e
      não limite de acesso. */
-  if (user.role === "client") redirect("/crm");
 
   return user.role === "admin" ? (
     <AdminDashboard user={user} />

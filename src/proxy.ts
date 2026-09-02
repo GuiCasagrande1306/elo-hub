@@ -18,18 +18,11 @@ import { isDemoMode, supabaseAnonKey, supabaseUrl } from "@/lib/env";
 export async function proxy(request: NextRequest) {
   if (isDemoMode) return NextResponse.next();
 
-  /* O CAMINHO VIAJA NUM CABEÇALHO porque o layout precisa dele.
-     Server Component não sabe em que rota está — e o layout de `(app)`
-     é quem barra o usuário de CLIENTE fora do `/crm`. A alternativa era
-     repetir a checagem em cada página da agência, que é o tipo de lista
-     onde a página nova esquecida vira o buraco. */
-  const comCaminho = () => {
-    const cabecalhos = new Headers(request.headers);
-    cabecalhos.set("x-caminho", request.nextUrl.pathname);
-    return NextResponse.next({ request: { headers: cabecalhos } });
-  };
+  /* A resposta é reconstruída a cada renovação de cookie, logo abaixo —
+     por isso vive numa função em vez de ser criada uma vez. */
+  const respostaBase = () => NextResponse.next({ request });
 
-  let response = comCaminho();
+  let response = respostaBase();
 
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
     cookies: {
@@ -43,7 +36,7 @@ export async function proxy(request: NextRequest) {
         /* Depois de `request.cookies.set`, e não antes: os cabeçalhos
            são copiados na hora, então uma cópia feita antes levaria os
            cookies velhos e a sessão renovada se perderia. */
-        response = comCaminho();
+        response = respostaBase();
         for (const { name, value, options } of cookiesToSet) {
           response.cookies.set(name, value, options);
         }

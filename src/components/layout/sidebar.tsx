@@ -165,7 +165,7 @@ export function Sidebar({ user, clients, onNavigate }: SidebarProps) {
             `/clientes/<slug>` — uma tela da agência, com contrato e
             mensalidade. Atalho para porta fechada é pior que atalho
             nenhum. */}
-        {user.role !== "client" && clients.length > 0 && (
+        {clients.length > 0 && (
           <div className="mt-7">
             <div className="flex items-center justify-between px-2.5 pb-2">
               <span className="eyebrow">Contas</span>
@@ -269,9 +269,7 @@ export function Sidebar({ user, clients, onNavigate }: SidebarProps) {
                         dizer a alguém do cliente que ele é da equipe, não. */}
                     {user.role === "admin"
                       ? "Administrador"
-                      : user.role === "client"
-                        ? "Acesso do cliente"
-                        : user.job_title || "Colaborador"}
+                      : user.job_title || "Colaborador"}
                   </p>
                 </div>
                 <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />

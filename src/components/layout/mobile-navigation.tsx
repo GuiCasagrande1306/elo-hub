@@ -34,16 +34,13 @@ import { cn } from "@/lib/utils";
    navegação parecerem o mesmo produto.
    ===================================================================== */
 
-export function MobileNavigation({ role }: { role: string }) {
+export function MobileNavigation() {
   const pathname = usePathname();
 
   // A barra inferior carrega apenas os destinos principais. Contas,
   // configurações e perfil continuam na gaveta do topo — cinco itens é
   // o limite antes de os rótulos começarem a truncar.
-  //
-  // Para um usuário de cliente a lista é outra: só o funil dele. Ver
-  // `navDoMobile`.
-  const items = navDoMobile(role);
+  const items = navDoMobile();
 
   return (
     <nav
