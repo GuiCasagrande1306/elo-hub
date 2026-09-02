@@ -23,7 +23,12 @@ import {
   DateRangePicker,
   type Intervalo,
 } from "@/components/ui/date-range-picker";
-import { mensagemDoCliente } from "@/lib/reports/mensagem-do-cliente";
+import {
+  linhasDaLegenda,
+  mensagemDoCliente,
+} from "@/lib/reports/mensagem-do-cliente";
+import { kpisDoTemplate, type MetricTotals } from "@/lib/metrics/kpi";
+import type { MetricKey } from "@/types/database";
 import { resumoDoPeriodo } from "./actions";
 
 /* =====================================================================
@@ -90,6 +95,19 @@ export interface ClientSummary {
   linhas: number;
   /** Template que o segmento desta conta seleciona. Exibido, não escolhido. */
   templateName: string;
+  /**
+   * As métricas do template, na ordem em que o PDF as imprime.
+   *
+   * A prévia da mensagem monta as linhas a partir daqui, com
+   * `kpisDoTemplate` — a MESMA função que monta os cartões do
+   * documento. Sem isso a tela derivava três números por conta própria
+   * e a legenda discordava do anexo; ver `linhasDaLegenda`.
+   */
+  metricas: MetricKey[];
+  /** Como esta conta chama cada métrica: "Pedidos", "Custo por lead". */
+  rotulos: Partial<Record<MetricKey, string>>;
+  /** Totais inteiros da janela da meta, com `origem` para o selo. */
+  totais: MetricTotals;
 }
 
 const SECOES = [
@@ -151,6 +169,10 @@ export function CommandStation({
     resultValue: number;
     origemSpendCents: number;
     origemResultValue: number;
+    /* Inteiros, para a mensagem. Os achatados acima servem aos cartões;
+       o texto que vai ao cliente sai destes, pela mesma função que o
+       PDF usa. */
+    totais: MetricTotals;
   } | null>(null);
   const [buscando, setBuscando] = useState(false);
 
@@ -219,6 +241,12 @@ export function CommandStation({
     override?.origemSpendCents ?? doServidor?.origemSpendCents ?? null;
   const origemResultValue =
     override?.origemResultValue ?? doServidor?.origemResultValue ?? null;
+
+  /* Os totais inteiros da janela vigente — a fonte dos números da
+     mensagem. Segue exatamente a regra do `janelaDaMeta` acima: durante
+     uma busca que ainda não voltou é `null`, e a mensagem sai sem o
+     bloco em vez de sair com os números da janela anterior. */
+  const totais = override?.totais ?? doServidor?.totais ?? null;
 
   /** Nenhum número conferido para esta janela — o cartão mostra "—". */
   const semNumero = spendCents === null || resultValue === null;
@@ -318,6 +346,7 @@ export function CommandStation({
             conversions: r.resumo.origem.conversions,
             revenueCents: r.resumo.origem.revenueCents,
           }),
+          totais: r.resumo.totais,
         });
       })
       .catch(() => {
@@ -363,11 +392,36 @@ export function CommandStation({
      eles saem. Ver o cabeçalho daquele arquivo. */
   const mensagem = useMemo(() => {
     if (!cliente) return "";
+
+    /* OS NÚMEROS DA PRÉVIA SÃO OS DO PDF, e é `kpisDoTemplate` que
+       garante: a mesma função, as mesmas métricas, os mesmos rótulos e
+       os mesmos totais que o gerador do payload usa. A tela não divide
+       nada aqui.
+
+       `null` enquanto a busca de outro período não voltou — melhor a
+       mensagem sem o bloco por um instante do que com os números da
+       janela anterior sob o rótulo da nova.
+
+       Sem período anterior de propósito: a legenda não imprime
+       variação, e carregá-lo até aqui seria uma segunda consulta para
+       um dado que ninguém lê. */
+    const numeros =
+      totais === null
+        ? []
+        : linhasDaLegenda(
+            kpisDoTemplate(cliente.metricas, cliente.rotulos, totais),
+          );
+
     return mensagemDoCliente(
-      { periodoLabel, dias: diasDoPeriodo, cliente: cliente.name },
+      {
+        periodoLabel,
+        dias: diasDoPeriodo,
+        cliente: cliente.name,
+        numeros,
+      },
       modeloDaMensagem,
     );
-  }, [cliente, periodoLabel, diasDoPeriodo, modeloDaMensagem]);
+  }, [cliente, periodoLabel, diasDoPeriodo, modeloDaMensagem, totais]);
 
   async function copiar() {
     await navigator.clipboard.writeText(mensagem);

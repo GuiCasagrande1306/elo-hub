@@ -20,6 +20,7 @@ import {
   MARCADORES,
   MENSAGEM_PADRAO,
   mensagemDoCliente,
+  type LinhaDeNumero,
 } from "@/lib/reports/mensagem-do-cliente";
 import { cn } from "@/lib/utils";
 
@@ -31,12 +32,17 @@ import { cn } from "@/lib/utils";
    implementação para a tela. Enquanto existiram duas, a equipe conferia
    um texto e o cliente recebia outro; ver o cabeçalho daquele arquivo.
 
-   NÃO HÁ MARCADOR DE NÚMERO, e a ausência é o recurso. Investimento,
-   custo e retorno saíram da mensagem em 27/08/2026 porque divergiam do
-   PDF anexado — oito contas mandavam ROAS diferente no texto e no
-   arquivo. Um número que aparece em dois lugares é um número que vai
-   divergir, e a legenda não tem onde explicar o recorte que o PDF
-   explica com o selo "de N campanhas".
+   HÁ UM MARCADOR DE NÚMERO, E É UM SÓ. `{numeros}` traz o bloco
+   inteiro, montado a partir dos KPIs do relatório — não existe
+   `{roas}`, `{investimento}` nem `{custo}` avulso, e isso é desenho, não
+   omissão. Marcador que CALCULA é o que fez a legenda discordar do
+   anexo em 27/08/2026, em oito de 54 contas. Ver o cabeçalho de
+   `mensagem-do-cliente.ts`.
+
+   A PRÉVIA MOSTRA UM EXEMPLO FIXO, e o exemplo tem selo. Na tela de
+   configuração não há conta selecionada — os números abaixo são de
+   demonstração. Os de verdade, da conta e do período escolhidos,
+   aparecem na estação de comando, em "Texto para o cliente".
 
    O LIMITE É 900 E NÃO 1024. O WhatsApp corta em 1024, e `{periodo}`
    CRESCE na substituição — nove caracteres viram vinte e cinco. A folga
@@ -45,11 +51,29 @@ import { cn } from "@/lib/utils";
 
 const LIMITE = 900;
 
+/**
+ * Os números do exemplo.
+ *
+ * SÃO OS DA SATÖ, 18–24/08/2026 — a conta que tornou o defeito de
+ * agosto visível. O ROAS aqui é o da campanha de origem (12,35x, o do
+ * PDF), com o selo, e não o da conta inteira (8,11x, o que a legenda
+ * antiga imprimia). Quem abre esta tela vê logo de cara como a
+ * ressalva aparece para o cliente.
+ */
+const NUMEROS_EXEMPLO: LinhaDeNumero[] = [
+  { label: "Investimento", valor: "R$ 551,90", origem: null },
+  { label: "Faturamento", valor: "R$ 4.137,74", origem: null },
+  { label: "Pedidos", valor: "30", origem: null },
+  { label: "Custo por pedido", valor: "R$ 16,75", origem: 1 },
+  { label: "Retorno", valor: "12,35x", origem: 1 },
+];
+
 /** O exemplo da prévia. Semana fechada, que é o caso comum. */
 const EXEMPLO = {
   periodoLabel: "18 – 24 de agosto de 2026",
   dias: 7,
   cliente: "Satö",
+  numeros: NUMEROS_EXEMPLO,
 } as const;
 
 /** O mesmo exemplo fora da janela semanal, onde `{periodo}` muda. */
@@ -57,6 +81,7 @@ const EXEMPLO_MENSAL = {
   periodoLabel: "1 – 26 de agosto de 2026",
   dias: 26,
   cliente: "Satö",
+  numeros: NUMEROS_EXEMPLO,
 } as const;
 
 export function MessageSettingsDialog({ atual }: { atual: string }) {
@@ -129,6 +154,12 @@ function Formulario({
      escreve, então avisa em vez de barrar. */
   const semPeriodo = !texto.includes("{periodo}");
 
+  /* Sem `{numeros}` a mensagem volta a ser só um aviso de anexo. É
+     legítimo — foi assim entre 27/08 e 01/09 —, mas quem apaga o
+     marcador sem querer não descobre no envio: o texto continua
+     saindo, bonito e sem número nenhum. */
+  const semNumeros = !texto.includes("{numeros}");
+
   const invalido =
     limpo.length === 0 || texto.length > LIMITE || desconhecidos.length > 0;
 
@@ -190,9 +221,11 @@ function Formulario({
           ))}
         </ul>
         <p className="mt-1 text-2xs text-muted-foreground">
-          Não há marcador de investimento, custo ou retorno de propósito:
-          esses números vivem no PDF, onde o selo diz de qual campanha
-          eles saem. Repetidos aqui, eles divergiam do anexo.
+          Não existe marcador avulso de investimento, custo ou retorno —
+          só <code>{"{numeros}"}</code>, que traz o bloco inteiro
+          copiado dos cartões do PDF, com os rótulos da conta e o selo
+          da campanha de origem. É o que impede o texto de discordar do
+          anexo, como acontecia até agosto.
         </p>
       </div>
 
@@ -209,6 +242,13 @@ function Formulario({
         <p className="rounded-lg bg-warning-muted/50 px-3 py-2 text-2xs text-warning">
           Sem <code>{"{periodo}"}</code> a mensagem não diz de quando é o
           relatório. Quem receber dois seguidos não tem como distinguir.
+        </p>
+      )}
+
+      {semNumeros && desconhecidos.length === 0 && (
+        <p className="rounded-lg bg-warning-muted/50 px-3 py-2 text-2xs text-warning">
+          Sem <code>{"{numeros}"}</code> o cliente recebe o PDF sem
+          nenhum número na mensagem — só o aviso do anexo.
         </p>
       )}
 

@@ -15,6 +15,7 @@ import {
   mensagemDoCliente,
 } from "@/lib/reports/mensagem-do-cliente";
 import { formatDate, formatPeriod } from "@/lib/format";
+import type { MetricTotals } from "@/lib/metrics/kpi";
 import { sendReportFromUser } from "@/lib/whatsapp/session";
 import type { Client, ReportHistory } from "@/types/database";
 
@@ -781,6 +782,16 @@ export type ResumoDoPeriodo = {
    */
   origem: { spendCents: number; conversions: number; revenueCents: number };
   /**
+   * Os MESMOS totais, inteiros, no formato que `computeKpi` come.
+   *
+   * Existe para a estação montar a prévia da mensagem com
+   * `kpisDoTemplate` — a mesma função que monta os cartões do PDF. Os
+   * campos achatados acima continuam servindo aos cartões da tela; este
+   * serve ao texto que vai ao cliente, e ele não pode ser derivado de
+   * uma segunda conta.
+   */
+  totais: MetricTotals;
+  /**
    * Quantas linhas de `daily_metrics` existem na janela.
    *
    * ZERO LINHA E ZERO REAL SÃO COISAS DIFERENTES, e a tela precisa
@@ -863,6 +874,11 @@ export async function resumoDoPeriodo(
         conversions: totais.origem.conversions,
         revenueCents: totais.origem.revenueCents,
       },
+      /* Inteiro, com `campanhas` e `isolado` — é o que carrega o selo
+         "(de 1 campanha)" para a prévia da mensagem. Achatar aqui foi o
+         que obrigou a tela a recalcular, e recalcular foi o que fez a
+         legenda discordar do anexo. */
+      totais,
       linhas: metricas.length,
     },
   };

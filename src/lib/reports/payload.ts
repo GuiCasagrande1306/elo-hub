@@ -3,7 +3,7 @@ import "server-only";
 import {
   PLATFORM_LABELS,
   buildTrend,
-  computeKpi,
+  kpisDoTemplate,
   deriveMetric,
   splitByPlatform,
   EMPTY_TOTALS,
@@ -22,7 +22,7 @@ import {
 } from "@/lib/ads/creative-goal";
 import { isDemoMode } from "@/lib/env";
 import { formatPeriod } from "@/lib/format";
-import { mensagemDoCliente } from "./mensagem-do-cliente";
+import { linhasDaLegenda, mensagemDoCliente } from "./mensagem-do-cliente";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   buildPlatformDetail,
@@ -246,11 +246,12 @@ export async function buildReportPayload(options: {
      dependendo do negócio do cliente. */
   const rotulos = template.metric_labels ?? {};
 
-  const kpis: KpiResult[] = (template.metrics as MetricKey[]).map((key) => {
-    const kpi = computeKpi(key, metrics.currentTotals, metrics.previousTotals);
-    const rotulo = rotulos[key];
-    return rotulo ? { ...kpi, label: rotulo } : kpi;
-  });
+  const kpis: KpiResult[] = kpisDoTemplate(
+    template.metrics as MetricKey[],
+    rotulos,
+    metrics.currentTotals,
+    metrics.previousTotals,
+  );
 
   /* O destaque é UM DOS `kpis`, não um cálculo à parte: o número da capa
      e o da grade têm que ser o mesmo objeto, senão um dia divergem —
@@ -336,15 +337,11 @@ export async function buildReportPayload(options: {
  * duas chamam `mensagemDoCliente`, e é isso que impede a equipe de
  * conferir um texto e o cliente receber outro.
  *
- * SÓ O PERÍODO ENTRA. A legenda deixou de repetir os números do
- * relatório em 27/08/2026, depois que oito contas passaram a mandar
- * mensagem e anexo com ROAS diferentes — ver o cabeçalho de
- * `mensagem-do-cliente.ts`.
+ * OS NÚMEROS SAEM DO PAYLOAD, e o payload é o que virou PDF. Ver
+ * `linhasDaLegenda` para por que isso não é detalhe de implementação.
  *
- * SEM RAMO PARA SNAPSHOT ANTIGO, e ele podia sumir: o que restou vem de
- * `meta`, que todo payload gravado sempre teve. O caminho que remontava
- * a mensagem a partir dos KPIs existia só para os números, e não há
- * mais números.
+ * SEM RAMO PARA SNAPSHOT ANTIGO: tudo o que se lê aqui vem de `meta` e
+ * `kpis`, que todo payload gravado sempre teve.
  */
 export function buildGroupCaption(
   payload: ReportPayload,
@@ -355,6 +352,11 @@ export function buildGroupCaption(
    * que o cron preparou às 6h20 e alguém despacha às 15h sai com a
    * mensagem vigente às 15h. Se o texto mudou no meio, foi porque
    * alguém quis — e a versão nova é a que a agência quer dizer.
+   *
+   * OS NÚMEROS, AO CONTRÁRIO, SÃO OS DO SNAPSHOT. A voz é de agora; os
+   * valores são os do arquivo que está sendo anexado. Buscá-los "de
+   * agora" mandaria ao cliente um texto que não corresponde ao PDF que
+   * ele abriu.
    *
    * Sem valor, cai no de fábrica. É o que mantém o caminho de teste e
    * a prévia funcionando sem ida ao banco.
@@ -369,54 +371,10 @@ export function buildGroupCaption(
       ),
       dias: payload.meta.days,
       cliente: payload.client.name,
+      numeros: linhasDaLegenda(payload.kpis),
     },
     template,
   );
-}
-
-export function buildWhatsAppSummary(payload: ReportPayload): string {
-  const find = (key: MetricKey) => payload.kpis.find((k) => k.key === key);
-
-  const spend = find("spend");
-  const results = find("results");
-  const cpa = find("cpa");
-
-  const trendWord = (kpi?: KpiResult) => {
-    if (!kpi || kpi.deltaPercent === null) return "";
-    const arrow = kpi.direction === "up" ? "▲" : kpi.direction === "down" ? "▼" : "";
-    return ` ${arrow} ${Math.abs(kpi.deltaPercent).toFixed(1).replace(".", ",")}%`;
-  };
-
-  /* Razão sem denominador vira FRASE, não traço. "*—*" no meio de uma
-     mensagem de WhatsApp lê como falha do sistema, e some justamente a
-     informação que importa: não houve conversão no período. Antes daqui
-     saía "*R$ 0,00* ▼ 100,0%", que era pior — dizia o contrário do que
-     aconteceu. */
-  const linhaCpa = !cpa
-    ? ""
-    : cpa.indefinido
-      ? "📉 Custo por resultado: *sem conversões no período*"
-      : `📉 Custo por resultado: *${cpa.formatted}*${trendWord(cpa)}`;
-
-  const period = new Intl.DateTimeFormat("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-  });
-
-  const lines = [
-    `*${payload.client.name}* — relatório de mídia paga`,
-    `Período: ${period.format(new Date(`${payload.meta.periodStart}T12:00:00`))} a ${period.format(
-      new Date(`${payload.meta.periodEnd}T12:00:00`),
-    )}`,
-    "",
-    spend ? `💰 Investimento: *${spend.formatted}*${trendWord(spend)}` : "",
-    results ? `🎯 Resultados: *${results.formatted}*${trendWord(results)}` : "",
-    linhaCpa,
-    "",
-    "O relatório completo, com a análise e os criativos que rodaram, está no PDF em anexo.",
-  ];
-
-  return lines.filter((line) => line !== "").join("\n");
 }
 
 /** Total consolidado, usado no cabeçalho da capa. */

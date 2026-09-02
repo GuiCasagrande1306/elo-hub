@@ -6,7 +6,12 @@ import {
   tiposDeConversaoDaCarteira,
   tiposDeConversaoDoCliente,
 } from "@/lib/ads/conversao-do-cliente";
-import { buildTrend, previousPeriod, sumMetrics } from "@/lib/metrics/kpi";
+import {
+  buildTrend,
+  previousPeriod,
+  sumMetrics,
+  type MetricTotals,
+} from "@/lib/metrics/kpi";
 import { buildGoalProgress, periodElapsed } from "@/lib/metrics/goals";
 import {
   goalExecutedFrom,
@@ -402,6 +407,16 @@ export interface ClientWithGoal {
    */
   computedOrigem: { spendCents: number; conversions: number; revenueCents: number };
   /**
+   * Os MESMOS totais, inteiros, no formato que `computeKpi` come.
+   *
+   * A estação monta a prévia da mensagem do cliente com
+   * `kpisDoTemplate` a partir daqui — a mesma função que monta os
+   * cartões do PDF. Os campos achatados acima continuam servindo aos
+   * cartões da tela; este serve ao texto que vai ao cliente, que não
+   * pode sair de uma segunda conta. Ver `linhasDaLegenda`.
+   */
+  computedTotais: MetricTotals;
+  /**
    * O indicador desta conta. Resolvido no servidor porque depende da
    * unidade GRAVADA na meta, não só do segmento do cliente.
    */
@@ -514,6 +529,9 @@ export async function getClientsWithGoals(
           conversions: totals.origem.conversions,
           revenueCents: totals.origem.revenueCents,
         },
+        /* Inteiro, com `campanhas` e `isolado`: é o que carrega o selo
+           "(de 1 campanha)" para a prévia da mensagem. */
+        computedTotais: totals,
         computedGoalValue: goalExecutedFrom(metric, totals),
         trend: buildTrend(rows).map((p) => p.spend),
         linhasDeMetrica: rows.length,

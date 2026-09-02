@@ -16,7 +16,7 @@ import {
 import { goalExecutedFrom } from "@/lib/metrics/goal-metric";
 import { getMensagemDoCliente } from "@/lib/reports/mensagem-settings";
 import { resolverTemplate } from "@/lib/reports/template-resolver";
-import type { ClientSegment } from "@/types/database";
+import type { ClientSegment, MetricKey } from "@/types/database";
 import { listarPendentes } from "./actions";
 import { SendQueue } from "./send-queue";
 import { CommandStation } from "./command-station";
@@ -79,7 +79,14 @@ export default async function ReportsPage() {
       getMensagemDoCliente(),
     ]);
 
-  const resumos = comMetricas.map((linha) => ({
+  const resumos = comMetricas.map((linha) => {
+    /* Resolvido UMA vez por conta: o nome exibido, as métricas e os
+       rótulos saem todos do mesmo template. Enquanto só o nome vinha
+       daqui, a prévia da mensagem inventava os rótulos — e escrevia
+       "Resultados" onde o PDF escrevia "Pedidos". */
+    const template = resolverTemplate(templates, linha.client.segment);
+
+    return {
     id: linha.client.id,
     /* O compositor identifica a conta pelo SLUG, não pelo id — é o slug
        que vai na URL e o que `getClientBySlug` resolve. Mandar o id daqui
@@ -112,10 +119,18 @@ export default async function ReportsPage() {
        o PDF. A estação só exibe: o template é consequência do segmento,
        e o lugar de trocá-lo é o compositor, onde a escolha chega até a
        geração. */
-    templateName:
-      resolverTemplate(templates, linha.client.segment)?.name ??
-      "Padrão do segmento",
-  }));
+    templateName: template?.name ?? "Padrão do segmento",
+    /* AS TRÊS PEÇAS DA PRÉVIA DA MENSAGEM. Com elas a estação chama
+       `kpisDoTemplate` — a mesma função que monta os cartões do PDF —
+       em vez de derivar os números por conta própria. Ver
+       `linhasDaLegenda` em `mensagem-do-cliente.ts`. */
+    metricas: (template?.metrics ?? []) as MetricKey[],
+    rotulos: (template?.metric_labels ?? {}) as Partial<
+      Record<MetricKey, string>
+    >,
+    totais: linha.computedTotais,
+    };
+  });
 
 
   return (

@@ -419,6 +419,39 @@ export function computeKpi(
   };
 }
 
+/**
+ * A grade de KPIs de um template, com os rótulos da conta aplicados.
+ *
+ * UMA IMPLEMENTAÇÃO, DOIS LEITORES. O PDF monta os cartões daqui e a
+ * estação de comando monta a prévia da mensagem daqui — antes só o
+ * gerador do payload sabia fazer isso, e a tela recalculava por conta
+ * própria três dos números. Foi assim que a legenda passou a discordar
+ * do anexo em 27/08/2026 sem ninguém notar por quatro dias.
+ *
+ * O RÓTULO É DO TEMPLATE, não da métrica: o mesmo `conversions` é
+ * "Vendas", "Pedidos", "Leads" ou "Contatos" conforme o negócio. Era o
+ * outro lado da mesma divergência — a tela dizia "Resultados" onde o
+ * relatório dizia "Pedidos".
+ *
+ * `previous` opcional porque a legenda não usa variação nenhuma: quem
+ * só quer `label`, `formatted` e `origem` não precisa carregar o
+ * período anterior até aqui. Sem ele os deltas saem nulos, que é o
+ * mesmo estado de "sem base de comparação" que toda a interface já
+ * trata.
+ */
+export function kpisDoTemplate(
+  metrics: MetricKey[],
+  rotulos: Partial<Record<MetricKey, string>>,
+  current: MetricTotals,
+  previous: MetricTotals = EMPTY_TOTALS,
+): KpiResult[] {
+  return metrics.map((key) => {
+    const kpi = computeKpi(key, current, previous);
+    const rotulo = rotulos[key];
+    return rotulo ? { ...kpi, label: rotulo } : kpi;
+  });
+}
+
 /** Série diária pronta para gráfico, com moeda já convertida em reais. */
 export interface TrendPoint {
   date: string;
