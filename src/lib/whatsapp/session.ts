@@ -79,20 +79,67 @@ export async function getSessionStatus(userId: string): Promise<SessionStatus> {
 }
 
 /**
+ * O estado AO VIVO, de `instance/connectionState`.
+ *
+ * Aceita os dois formatos que a Evolution já devolveu: envelopado em
+ * `instance` (v2) ou cru. Qualquer outra coisa vira "" — que o chamador
+ * lê como desconectado, nunca como conectado.
+ */
+function estadoAoVivo(dado: unknown): string {
+  const d = (dado ?? {}) as { state?: string; instance?: { state?: string } };
+  return (d.instance?.state ?? d.state ?? "").toLowerCase();
+}
+
+/**
  * Estado de UMA instância, pelo nome.
  *
  * O núcleo que as duas famílias compartilham — pessoal e atendimento.
  * Separado para quem envia não recopiar o tratamento de formato da
  * Evolution, que muda de versão para versão (ver `achar`).
+ *
+ * ⚠️ O ESTADO SAI DE `connectionState`, NÃO DE `fetchInstances`.
+ * -------------------------------------------------------------------
+ * A Evolution guarda dois estados por instância, e eles podem
+ * discordar por dias. `fetchInstances.connectionStatus` é o REGISTRO
+ * SALVO no banco dela, atualizado nos eventos de conexão;
+ * `connectionState` é o socket do Baileys agora. Quando o WhatsApp
+ * invalida o aparelho vinculado, o socket cai e fica tentando
+ * reconectar, e o registro salvo às vezes nunca fica sabendo.
+ *
+ * Medido em 18/09/2026, no número do Bernardo: `fetchInstances` dizia
+ * `open`, parado desde 07/09, e `connectionState` dizia `connecting`
+ * — estável em quatro leituras ao longo de 30 segundos. Esta função
+ * lia o primeiro. A checagem antes do envio aprovava, a mensagem saía
+ * para uma conexão que não existia e voltava `Connection Closed`:
+ * quatro relatórios falharam assim em uma semana. E Configurações
+ * mostrava "Conectado" com um botão Desconectar que também falhava com
+ * `Connection Closed`, sem QR nenhum para ler — não havia saída pela
+ * tela.
+ *
+ * `fetchInstances` continua sendo consultado, mas só para o que ele
+ * sabe de verdade: se a instância EXISTE, e o número e o nome do
+ * perfil, que persistem mesmo desconectados.
+ *
+ * FALHA PARA O LADO DESCONECTADO. Se `connectionState` não responder,
+ * o estado é `close`: nunca se afirma `open` sem o socket confirmar.
+ * Recusar um envio que talvez funcionasse custa um clique em Conectar;
+ * aprovar um que não funciona custa um relatório que não chega e uma
+ * mensagem de erro culpando o lugar errado.
  */
 export async function statusDaInstancia(nome: string): Promise<SessionStatus> {
-  const resposta = await evolutionFetch("GET", "instance/fetchInstances");
-  if (!resposta.success) return { state: "absent" };
+  const [lista, vivo] = await Promise.all([
+    evolutionFetch("GET", "instance/fetchInstances"),
+    evolutionFetch(
+      "GET",
+      `instance/connectionState/${encodeURIComponent(nome)}`,
+    ),
+  ]);
+  if (!lista.success) return { state: "absent" };
 
-  const node = achar(resposta.data, nome);
+  const node = achar(lista.data, nome);
   if (!node) return { state: "absent" };
 
-  const bruto = (node.connectionStatus ?? "").toLowerCase();
+  const bruto = vivo.success ? estadoAoVivo(vivo.data) : "";
 
   return {
     state:
@@ -102,7 +149,6 @@ export async function statusDaInstancia(nome: string): Promise<SessionStatus> {
     profileName: node.profileName,
   };
 }
-
 
 export interface PairingResult {
   success: boolean;
@@ -205,6 +251,36 @@ export async function parearInstancia(nome: string): Promise<PairingResult> {
     if (qr) return { success: true, ...qr, state: "connecting" };
   }
 
+  /* PRESA EM "connecting": REINICIA ANTES DE PEDIR QR.
+     -----------------------------------------------------------------
+     `connecting` tem duas leituras. Uma é legítima: um QR está na tela
+     esperando a leitura. A outra é o socket tentando voltar com
+     credenciais que o WhatsApp já invalidou — e ele tenta para sempre.
+     Foi o estado do número do Bernardo por onze dias, a partir de
+     07/09/2026: `logout` respondia 500 `Connection Closed`, porque não
+     há conexão para deslogar.
+
+     `instance/restart` resolve os dois casos. Credencial válida, ele
+     reconecta; inválida, a Evolution descarta e abre pareamento novo —
+     foi o que liberou o Bernardo em 18/09. No caso legítimo, o QR que
+     estava na tela é trocado por outro, que é exatamente o que "Gerar
+     novo QR" pediu.
+
+     Só acontece porque alguém clicou em Conectar: nenhum caminho
+     automático reinicia a instância de ninguém. */
+  if (atual.state === "connecting") {
+    const reiniciada = await evolutionFetch(
+      "POST",
+      `instance/restart/${encodeURIComponent(nome)}`,
+    );
+    const qrDoReinicio = reiniciada.success
+      ? extrairQr(reiniciada.data)
+      : null;
+    if (qrDoReinicio) {
+      return { success: true, ...qrDoReinicio, state: "connecting" };
+    }
+  }
+
   const resposta = await evolutionFetch(
     "GET",
     `instance/connect/${encodeURIComponent(nome)}`,
@@ -213,12 +289,21 @@ export async function parearInstancia(nome: string): Promise<PairingResult> {
   if (!resposta.success) return { success: false, error: resposta.error };
 
   const qr = extrairQr(resposta.data);
+  if (qr) return { success: true, ...qr, state: "connecting" };
 
-  // Sem QR normalmente significa que conectou entre a checagem e esta
-  // chamada — corrida comum quando o usuário lê rápido.
-  return qr
-    ? { success: true, ...qr, state: "connecting" }
-    : { success: true, state: "open" };
+  /* SEM QR NÃO QUER DIZER CONECTADO. Antes daqui a função respondia
+     `open` direto, supondo a corrida em que a pessoa leu o QR entre a
+     checagem e esta chamada. A suposição valia para o caso feliz e
+     mentia no travado: a tela mostrava "Conectado" para um número que
+     não enviava nada. Pergunta ao socket. */
+  const depois = await statusDaInstancia(nome);
+  return depois.state === "open"
+    ? { success: true, state: "open" }
+    : {
+        success: false,
+        error:
+          "O servidor do WhatsApp não devolveu o QR. Espere alguns segundos e clique em Conectar de novo.",
+      };
 }
 
 function extrairQr(

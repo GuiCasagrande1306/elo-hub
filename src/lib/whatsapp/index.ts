@@ -473,7 +473,15 @@ function describeEvolutionError(
       : "Rota ou instância não encontrada na Evolution (404).";
   }
   if (/not.*connect|close|disconnect/i.test(text)) {
-    return `Instância desconectada — releia o QR Code no painel da Evolution. (${text})`;
+    /* QUEM LÊ ESTA FRASE DECIDE PELO LUGAR QUE ELA NOMEIA. Instância
+       pessoal (`user-<id>`) se repareia em Configurações → Meu WhatsApp;
+       o painel da Evolution é só da agência, e ninguém da equipe tem
+       acesso a ele. Até 18/09/2026 a frase era uma só, e foi ela que
+       o Bernardo recebeu em quatro envios seguidos — mandando-o a um
+       lugar onde não havia o que fazer. */
+    return path?.includes("/user-")
+      ? `Seu WhatsApp desconectou. Vá em Configurações → Meu WhatsApp e leia o QR de novo. (${text})`
+      : `Instância da agência desconectada — releia o QR Code no painel da Evolution. (${text})`;
   }
   if (/exists|not.*found|invalid.*(number|jid|group)/i.test(text)) {
     return `Destino inválido ou a instância não participa do grupo. (${text})`;

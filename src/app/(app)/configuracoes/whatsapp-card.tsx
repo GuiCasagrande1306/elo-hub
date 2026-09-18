@@ -119,12 +119,24 @@ export function WhatsAppCard({
 
   async function desconectar() {
     setCarregando(true);
+    setErro(null);
     limparTimers();
     setQr(null);
 
     try {
-      await fetch("/api/whatsapp/session", { method: "DELETE" });
+      /* O ERRO APARECE. Antes a resposta era ignorada e a tela só
+         relia o estado — quando o logout falhava, o cartão continuava
+         dizendo "Conectado" e o clique parecia não ter feito nada. Foi
+         o que aconteceria com o Bernardo em 18/09: `logout` voltava 500
+         `Connection Closed`, porque não havia conexão para encerrar. */
+      const r = await fetch("/api/whatsapp/session", { method: "DELETE" });
+      if (!r.ok) {
+        const dado = await r.json().catch(() => ({}));
+        setErro(dado.error ?? "Não foi possível desconectar.");
+      }
       await consultar();
+    } catch {
+      setErro("Falha de rede ao falar com o servidor.");
     } finally {
       setCarregando(false);
     }
@@ -152,7 +164,14 @@ export function WhatsAppCard({
             <p className="mt-0.5 text-xs text-muted-foreground">
               {conectado
                 ? `Conectado${status.phone ? ` — ${formatarTelefone(status.phone)}` : ""}`
-                : "Conecte seu celular para enviar mensagens em seu nome."}
+                : /* NÚMERO CONHECIDO E SEM CONEXÃO = CAIU. O texto de
+                     primeiro uso fazia uma queda parecer que nunca
+                     houve pareamento, e quem tinha enviado relatório
+                     ontem não se reconhecia nele. Com QR na tela é
+                     pareamento em curso, não queda. */
+                  status.phone && !qr
+                  ? `A conexão de ${formatarTelefone(status.phone)} caiu. Conecte de novo para voltar a enviar.`
+                  : "Conecte seu celular para enviar mensagens em seu nome."}
             </p>
           </div>
         </div>
