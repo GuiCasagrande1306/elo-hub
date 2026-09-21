@@ -6,6 +6,10 @@ import {
   type KpiResult,
 } from "@/lib/metrics/kpi";
 import type { AdCreative, DailyMetric, MetricKey } from "@/types/database";
+import {
+  ROTULO_DA_UNIDADE,
+  unidadeDaCampanha,
+} from "@/lib/ads/creative-goal";
 
 /* =====================================================================
    Quadro completo por plataforma
@@ -34,8 +38,35 @@ export interface PlatformCampaign {
   /** Já encurtado — ver `encurtar`. Altura de linha previsível no PDF. */
   name: string;
   spendCents: number;
-  results: number;
+  /**
+   * O que ESTA campanha compra: "Visitas ao perfil", "Impressões",
+   * "Cliques", ou o nome que a conta dá à conversão dela.
+   *
+   * Sem isto a coluna de resultado é ilegível depois que cada linha
+   * passou a ter a sua unidade — "131" e "4" na mesma coluna, um de
+   * visita e outro de conversa.
+   */
+  objetivo: string;
+  /**
+   * O resultado NA UNIDADE DE `objetivo`.
+   *
+   * `null` = não apurado, e só acontece com visita ao perfil em linha
+   * sincronizada antes da migration 76. Zero diria que a campanha não
+   * entregou nada, que é a afirmação errada.
+   */
+  results: number | null;
+  /** Custo de UMA unidade do resultado — de uma visita, de um clique. */
   cpaCents: number;
+  /**
+   * Sufixo do custo, quando a unidade não é a do resultado.
+   *
+   * Só "impressões" precisa: custo por impressão é fração de centavo e
+   * imprimiria "R$ 0,00". Ali o número é CPM, e sem o "/mil" ao lado
+   * quem lê entende mil vezes mais caro do que é.
+   */
+  custoSufixo: string;
+  /** Sem denominador não há custo — imprime "—", nunca "R$ 0,00". */
+  custoIndefinido: boolean;
   clicks: number;
   ctr: number;
   roas: number;
@@ -101,8 +132,11 @@ function metricasComNumero(
  * contra ele mesmo é o que mostra isso.
  *
  * `rotulos` vem do template — se a conta chama conversão de "Pedidos",
- * o quadro do Meta diz "Pedidos". A página A4 não tem template e passa
- * um objeto vazio.
+ * o quadro do Meta diz "Pedidos", e a coluna "Objetivo" da tabela de
+ * campanhas também. A folha A4 passa os MESMOS rótulos, por
+ * `print-data.ts`: é o que mantém a tabela que a equipe revisa igual à
+ * que o cliente recebe. (Esta nota já disse que a A4 passava um objeto
+ * vazio; era falso e induzia a erro ao ler a coluna nova.)
  *
  * ⚠️ `tiposDeConversao` NÃO É OPCIONAL NA PRÁTICA, mesmo tendo padrão.
  * É ele que faz custo por resultado e ROAS saírem da campanha de
@@ -138,7 +172,7 @@ export function buildPlatformDetail(
         const rotulo = rotulos[key];
         return rotulo ? { ...kpi, label: rotulo } : kpi;
       }),
-      campaigns: campanhasDaPlataforma(atuais, p.platform),
+      campaigns: campanhasDaPlataforma(atuais, p.platform, rotulos),
     };
   });
 }
@@ -153,11 +187,16 @@ export function buildPlatformDetail(
  * folha: medido, seis linhas com nome curto cabiam e seis com nome longo
  * estouravam para uma página órfã no meio do PDF do cliente.
  *
- * 42 caracteres é o que a coluna comporta em A4 na largura `flex: 3`.
+ * 32 caracteres é o que a coluna comporta em A4 na largura `flex: 2.6`
+ * — eram 42 com `flex: 3`, até a coluna "Objetivo" entrar em
+ * 21/09/2026. Mudar um sem o outro quebra o nome em duas linhas e a
+ * seção estoura para uma página órfã: o limite e o `flex` do cabeçalho
+ * em `document.tsx` andam casados.
+ *
  * O corte é no fim porque o começo do nome é o que identifica a
  * campanha — a convenção de nomenclatura põe o objetivo na frente.
  */
-const LIMITE_DO_NOME = 42;
+const LIMITE_DO_NOME = 32;
 
 function encurtar(nome: string): string {
   return nome.length <= LIMITE_DO_NOME
@@ -201,6 +240,7 @@ export function distribuirArredondamento(valores: number[]): number[] {
 function campanhasDaPlataforma(
   linhas: DailyMetric[],
   platform: AdCreative["platform"],
+  rotulos: Partial<Record<MetricKey, string>> = {},
 ): PlatformCampaign[] {
   const porCampanha = new Map<string, DailyMetric[]>();
 
@@ -236,7 +276,17 @@ function campanhasDaPlataforma(
 
      ⚠️ A COLUNA SÓ FECHA COM TODAS AS LINHAS VISÍVEIS. O PDF mostra as
      seis maiores e resume o resto em "Mais N campanhas"; ali a soma do
-     que aparece é menor de propósito, e a nota diz isso. */
+     que aparece é menor de propósito, e a nota diz isso.
+
+     ⚠️ E DESDE 21/09/2026 A COLUNA NÃO É MAIS DE UMA UNIDADE SÓ. Cada
+     linha mostra o que a SUA campanha compra — visita, impressão,
+     clique ou a conversão da conta —, então somar a coluna inteira
+     deixou de significar alguma coisa, e o card "Resultados" continua
+     sendo o total da conversão da conta. O arredondamento abaixo
+     continua valendo para as linhas de conversão, que são as que o
+     card conta: sem ele, duas campanhas de 9,5 e 5,95 imprimiam 10 e 6
+     contra um card de 15. É a coluna "Objetivo", ao lado, que impede a
+     leitura errada de números de unidades diferentes empilhados. */
   /* ORDENADO ANTES DE DISTRIBUIR, e por gasto — que é a ordem em que a
      tabela sai. O desempate por índice do maior resto usa a posição da
      lista; se a lista chegasse na ordem de iteração do Map (ou seja, a
@@ -268,11 +318,81 @@ function campanhasDaPlataforma(
          próprio custo, escondendo justamente o que a tabela existe para
          mostrar: quanto cada frente custou. */
       const t = sumMetrics(linhasDaCampanha);
+
+      /* A UNIDADE SAI DA PRÓPRIA CAMPANHA, não da conta.
+         -------------------------------------------------------------
+         Até 21/09/2026 esta coluna imprimia sempre `conversions`, que
+         é a conversão escolhida para a CONTA em `conversion-action.ts`.
+         Numa conta de captação isso é conversa iniciada — e a campanha
+         que compra visita ao perfil não gera nenhuma. Medido na Meu
+         Case, 11–17/09: "01 | ENGAJAMENTO INSTAGRAM", R$ 79,80,
+         PROFILE_AND_PAGE_ENGAGEMENT, resultado impresso 0. O mesmo PDF
+         mostrava 131 visitas no card do criativo, duas seções abaixo.
+
+         O objetivo chega vivo em `daily_metrics` desde que a campanha
+         de origem precisou dele. Tomamos o primeiro não-nulo: as linhas
+         de uma campanha são todas dela, e a Meta só muda objetivo
+         criando campanha nova. */
+      const comObjetivo = linhasDaCampanha.find(
+        (l) => l.optimization_goal || l.objective,
+      );
+      const unidade = unidadeDaCampanha(
+        comObjetivo?.optimization_goal ?? null,
+        comObjetivo?.objective ?? null,
+      );
+
+      /* NULO SE NENHUMA LINHA TROUXE O NÚMERO, e é a diferença entre
+         "não teve visita" e "este dia foi sincronizado antes da coluna
+         existir" (migration 76). Somar tratando nulo como zero
+         imprimiria um número menor que o real com cara de apurado. */
+      const visitas = linhasDaCampanha.reduce<number | null>(
+        (acc, l) =>
+          l.profile_visits === null || l.profile_visits === undefined
+            ? acc
+            : (acc ?? 0) + l.profile_visits,
+        null,
+      );
+
+      const resultado =
+        unidade === "visitas"
+          ? visitas
+          : unidade === "impressoes"
+            ? t.impressions
+            : unidade === "cliques"
+              ? t.clicks
+              : /* A conversão da conta, com o arredondamento que fecha
+                   com o card — ver a nota acima. */
+                arredondados[i];
+
+      /* O custo é o do MESMO denominador que a linha mostra. É a regra
+         que já vale no card do criativo: quem vê "131 visitas" ao lado
+         de "R$ 0,61" refaz a conta e fecha. Dividir pelo resultado da
+         conta aqui traria de volta a divergência de agosto, só que
+         dentro da própria linha. */
+      const custoIndefinido = resultado === null || resultado === 0;
+      const cpaCents = custoIndefinido
+        ? 0
+        : unidade === "impressoes"
+          ? /* CPM: custo por impressão é fração de centavo e sairia
+               "R$ 0,00". O "/mil" ao lado é o que impede a leitura mil
+               vezes mais cara. */
+            Math.round((t.spendCents / t.impressions) * 1000)
+          : Math.round(t.spendCents / (resultado as number));
+
       return {
         name: encurtar(name),
         spendCents: t.spendCents,
-        results: arredondados[i],
-        cpaCents: deriveMetric("cpa", t),
+        objetivo:
+          unidade === "conversao"
+            ? /* O nome que ESTA conta dá ao resultado — "Pedidos",
+                 "Leads". Cair em "Resultados" é o caso da folha A4, que
+                 não tem template. */
+              rotulos.results ?? rotulos.leads ?? "Resultados"
+            : ROTULO_DA_UNIDADE[unidade],
+        results: resultado,
+        cpaCents,
+        custoSufixo: unidade === "impressoes" ? "/mil" : "",
+        custoIndefinido,
         clicks: t.clicks,
         ctr: deriveMetric("ctr", t),
         roas: deriveMetric("roas", t),

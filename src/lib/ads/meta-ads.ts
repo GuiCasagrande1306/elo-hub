@@ -286,6 +286,15 @@ export function toNormalizedRow(
     clicks: toInt(row.clicks),
     conversions,
     revenueCents: revenueTotal,
+    /* CAMPO AUSENTE É NULO, não zero. A Meta omite
+       `instagram_profile_visits` quando a conta não tem Instagram
+       vinculado — e "a campanha teve zero visitas" é uma afirmação
+       diferente de "esta conta não mede visitas". A tabela do PDF
+       imprime "—" no segundo caso. */
+    profileVisits:
+      row.instagram_profile_visits === undefined
+        ? null
+        : toInt(row.instagram_profile_visits),
   };
 }
 

@@ -869,7 +869,13 @@ function PlatformPages({
               </Text>
 
               <View style={styles.tableHead}>
-                <Text style={[styles.th, { flex: 3 }]}>Campanha</Text>
+                {/* NOME MENOR PARA CABER O OBJETIVO. `flex: 3` dava 42
+                    caracteres (ver `LIMITE_DO_NOME`); com a coluna nova
+                    são 32, e `encurtar` foi ajustado junto — os dois
+                    números têm de andar casados, senão o nome quebra em
+                    duas linhas e a seção estoura para uma página órfã. */}
+                <Text style={[styles.th, { flex: 2.6 }]}>Campanha</Text>
+                <Text style={[styles.th, { flex: 1.4 }]}>Objetivo</Text>
                 <Text style={[styles.th, { flex: 1, textAlign: "right" }]}>
                   Investido
                 </Text>
@@ -895,15 +901,57 @@ function PlatformPages({
                   quase vazia. Seis cabe; sete já não. */}
               {p.campaigns.slice(0, 6).map((c) => (
                 <View key={c.name} style={styles.tableRow}>
-                  <Text style={[styles.td, { flex: 3 }]}>{semEmoji(c.name)}</Text>
+                  {/* UMA LINHA, GARANTIDA PELO RENDERIZADOR.
+                      `encurtar` corta em 32 caracteres, mas caractere
+                      não tem largura fixa: medido em 21/09/2026, um
+                      nome de 32 letras largas ("[WWWWW] MMMMM…")
+                      quebrava em duas linhas mesmo dentro do limite — e
+                      altura de linha variável é o que produz a página
+                      órfã que o limite existe para evitar. O corte por
+                      contagem continua como primeira defesa (e serve à
+                      folha A4); `maxLines` é a que não depende de
+                      estimativa. */}
+                  <Text
+                    style={[
+                      styles.td,
+                      { flex: 2.6, maxLines: 1, textOverflow: "ellipsis" },
+                    ]}
+                  >
+                    {semEmoji(c.name)}
+                  </Text>
+                  {/* O QUE A CAMPANHA COMPRA, e sem isto a coluna ao
+                      lado é ilegível: "131" e "4" na mesma coluna, um de
+                      visita ao perfil e outro de conversa iniciada.
+                      Menor e em cinza porque qualifica o número — não
+                      compete com ele. */}
+                  <Text
+                    style={[
+                      styles.td,
+                      {
+                        flex: 1.4,
+                        fontSize: 8,
+                        color: INK_SOFT,
+                        maxLines: 1,
+                        textOverflow: "ellipsis",
+                      },
+                    ]}
+                  >
+                    {c.objetivo}
+                  </Text>
                   <Text style={[styles.td, { flex: 1, textAlign: "right" }]}>
                     {formatCurrency(c.spendCents)}
                   </Text>
+                  {/* NULO É "—", NÃO ZERO. Acontece com visita ao perfil
+                      em período sincronizado antes da migration 76:
+                      imprimir 0 ali afirmaria que a campanha não
+                      entregou nada. */}
                   <Text style={[styles.td, { flex: 1, textAlign: "right" }]}>
-                    {formatNumber(c.results)}
+                    {c.results === null ? "—" : formatNumber(c.results)}
                   </Text>
                   <Text style={[styles.td, { flex: 1, textAlign: "right" }]}>
-                    {c.results > 0 ? formatCurrency(c.cpaCents) : "—"}
+                    {c.custoIndefinido
+                      ? "—"
+                      : `${formatCurrency(c.cpaCents)}${c.custoSufixo}`}
                   </Text>
                   {/* Cliques existia só na folha HTML: a equipe conferia
                       uma tabela de seis colunas e o cliente recebia uma

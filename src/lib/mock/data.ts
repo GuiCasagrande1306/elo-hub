@@ -415,6 +415,11 @@ function generateMetrics(): DailyMetric[] {
            esta linha exercita. */
         if (platform === "meta_ads") {
           const conversaoCents = Math.round(spendCents * 0.62);
+          const perfilCents = Math.round(spendCents * 0.18);
+          const imprConv = Math.round(impressions * 0.45);
+          const imprPerfil = Math.round(impressions * 0.25);
+          const cliquesConv = Math.round(clicks * 0.7);
+          const cliquesPerfil = Math.round(clicks * 0.15);
 
           rows.push({
             id: `${clientId}-${platform}-${date}-conv`,
@@ -424,12 +429,37 @@ function generateMetrics(): DailyMetric[] {
             campaign_id: `${clientId}-conv`,
             campaign_name: "01 | CONVERSÃO",
             spend_cents: conversaoCents,
-            impressions: Math.round(impressions * 0.45),
-            clicks: Math.round(clicks * 0.7),
+            impressions: imprConv,
+            clicks: cliquesConv,
             conversions,
             revenue_cents: revenueCents,
             objective: cfg.ticket > 0 ? "OUTCOME_SALES" : "OUTCOME_LEADS",
             optimization_goal: "OFFSITE_CONVERSIONS",
+            /* Campanha de venda também recebe visita — ela só não é o
+               que se cobra dela. O número existe e não entra na tabela. */
+            profile_visits: Math.round(imprConv * 0.012),
+          });
+
+          /* A CAMPANHA QUE O DEMO NÃO TINHA, e que é o caso do defeito
+             de 21/09/2026: ela compra VISITA AO PERFIL, não a conversão
+             da conta. Com `conversions: 0` e visitas de verdade, a
+             tabela do PDF imprimia "0" ao lado de R$ investido — e o
+             card do criativo logo abaixo mostrava as visitas. */
+          rows.push({
+            id: `${clientId}-${platform}-${date}-perfil`,
+            client_id: clientId,
+            platform,
+            metric_date: date,
+            campaign_id: `${clientId}-perfil`,
+            campaign_name: "02 | ENGAJAMENTO INSTAGRAM",
+            spend_cents: perfilCents,
+            impressions: imprPerfil,
+            clicks: cliquesPerfil,
+            conversions: 0,
+            revenue_cents: 0,
+            objective: "OUTCOME_ENGAGEMENT",
+            optimization_goal: "PROFILE_AND_PAGE_ENGAGEMENT",
+            profile_visits: Math.round(imprPerfil * 0.055),
           });
 
           rows.push({
@@ -438,14 +468,15 @@ function generateMetrics(): DailyMetric[] {
             platform,
             metric_date: date,
             campaign_id: `${clientId}-alc`,
-            campaign_name: "02 | RECONHECIMENTO",
-            spend_cents: spendCents - conversaoCents,
-            impressions: Math.round(impressions * 0.55),
-            clicks: clicks - Math.round(clicks * 0.7),
+            campaign_name: "03 | RECONHECIMENTO",
+            spend_cents: spendCents - conversaoCents - perfilCents,
+            impressions: impressions - imprConv - imprPerfil,
+            clicks: clicks - cliquesConv - cliquesPerfil,
             conversions: 0,
             revenue_cents: 0,
             objective: "OUTCOME_AWARENESS",
             optimization_goal: "REACH",
+            profile_visits: 0,
           });
         } else {
           rows.push({
@@ -462,6 +493,9 @@ function generateMetrics(): DailyMetric[] {
             revenue_cents: revenueCents,
             objective: null,
             optimization_goal: null,
+            /* Nulo, não zero: fora da Meta não existe visita ao perfil
+               do Instagram para apurar. */
+            profile_visits: null,
           });
         }
       }

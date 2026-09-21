@@ -375,5 +375,8 @@ export function toNormalizedRow(row: GoogleAdsRow): NormalizedMetricRow {
     // Fracionário de propósito — a coluna é numeric(12,2).
     conversions: toDecimal(row.metrics?.conversions),
     revenueCents: Math.round((row.metrics?.conversionsValue ?? 0) * 100),
+    /* Visita ao perfil do Instagram não existe no Google Ads. Nulo diz
+       "não se apura aqui"; zero diria que houve zero. */
+    profileVisits: null,
   };
 }

@@ -461,6 +461,8 @@ export interface DailyMetric {
   /** Ver `campanha-de-origem.ts`. `null` = desconhecido, não "nenhum". */
   objective: string | null;
   optimization_goal: string | null;
+  /** Visitas ao perfil no dia. `null` = não apurado, nunca "zero". */
+  profile_visits: number | null;
 }
 
 export interface AdCreative {

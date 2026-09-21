@@ -34,6 +34,15 @@ export interface NormalizedMetricRow {
   objective: string | null;
   /** O que o leilão otimiza. Mais específico que `objective`. */
   optimizationGoal: string | null;
+  /**
+   * Visitas ao perfil do Instagram da campanha no dia.
+   *
+   * `null` é estado legítimo e significa NÃO APURADO — o Google Ads não
+   * tem o conceito, e a Meta omite o campo em conta sem Instagram
+   * vinculado. Zero afirmaria que houve zero, e é a afirmação que faz o
+   * relatório dizer "0 visitas" numa campanha que entregou 131.
+   */
+  profileVisits: number | null;
 }
 
 export type SyncFailureCode =

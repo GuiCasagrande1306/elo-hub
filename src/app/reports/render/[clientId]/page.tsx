@@ -405,6 +405,11 @@ export default async function PrintReportPage({
                   <thead>
                     <tr className="border-b border-[#d8dce2] text-left text-[8px] uppercase tracking-[0.1em] text-[#8b95a1]">
                       <th className="py-2 font-semibold">Campanha</th>
+                      {/* A MESMA coluna do PDF. Enquanto a folha tinha
+                          seis colunas e o documento sete, a equipe
+                          conferia uma tabela e o cliente recebia outra
+                          — já aconteceu com "Cliques". */}
+                      <th className="py-2 font-semibold">Objetivo</th>
                       <th className="py-2 text-right font-semibold">Investido</th>
                       <th className="py-2 text-right font-semibold">Result.</th>
                       <th className="py-2 text-right font-semibold">Custo</th>
@@ -419,15 +424,28 @@ export default async function PrintReportPage({
                         rodapé (3 + i) passava a mentir. Seis cabe. */}
                     {p.campaigns.slice(0, 6).map((c) => (
                       <tr key={c.name} className="border-b border-[#f0f2f5]">
-                        <td className="py-2 pr-3">{c.name}</td>
+                        {/* `truncate` faz aqui o que `maxLines` faz no
+                            PDF: uma linha sempre, independente da
+                            largura das letras. Sem isso a folha que a
+                            equipe revisa quebra onde o documento do
+                            cliente não quebra. */}
+                        <td className="max-w-[170px] truncate py-2 pr-3">
+                          {c.name}
+                        </td>
+                        <td className="max-w-[90px] truncate py-2 pr-3 text-[9px] text-[#64707d]">
+                          {c.objetivo}
+                        </td>
                         <td className="py-2 text-right tabular-nums">
                           {formatCurrency(c.spendCents)}
                         </td>
+                        {/* Nulo é "—": ver a nota da migration 76. */}
                         <td className="py-2 text-right tabular-nums">
-                          {formatNumber(c.results)}
+                          {c.results === null ? "—" : formatNumber(c.results)}
                         </td>
                         <td className="py-2 text-right tabular-nums">
-                          {c.results > 0 ? formatCurrency(c.cpaCents) : "—"}
+                          {c.custoIndefinido
+                            ? "—"
+                            : `${formatCurrency(c.cpaCents)}${c.custoSufixo}`}
                         </td>
                         <td className="py-2 text-right tabular-nums">
                           {formatNumber(c.clicks)}
