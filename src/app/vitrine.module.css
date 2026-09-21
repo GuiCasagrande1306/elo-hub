@@ -1,0 +1,165 @@
+/* =====================================================================
+   A montagem da mensagem — a única animação da vitrine
+   ---------------------------------------------------------------------
+   A página mostra o que o sistema FAZ: linhas cruas de `daily_metrics`
+   viram a frase que o cliente lê no WhatsApp. A animação é essa
+   transformação acontecendo, não decoração por cima de um cartão.
+
+   ⚠️ NENHUM ESTADO BASE ESCONDE CONTEÚDO. Esta é a regra que já custou
+   caro aqui: `opacity: 0` escrito como estado inicial deixa o texto
+   invisível para sempre quando a animação não roda — JS desligado,
+   `prefers-reduced-motion`, navegador antigo, erro de hidratação.
+
+   Por isso toda regra estática abaixo é VISÍVEL, e o esconder vive
+   apenas dentro de `@keyframes` com `animation-fill-mode: backwards`:
+   o estado oculto existe só durante o atraso da animação, e some junto
+   com ela. Sem CSS de animação, a página é a mesma página, inteira.
+
+   E tudo dentro de `prefers-reduced-motion: no-preference`: quem pediu
+   menos movimento recebe a versão estática, que é completa.
+   ===================================================================== */
+
+.palco {
+  /* A malha de plotter ao fundo. Estática de propósito: o movimento da
+     página é um só, e ele é o da mensagem. */
+  background-image:
+    linear-gradient(
+      to right,
+      color-mix(in oklab, var(--hairline) 55%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      to bottom,
+      color-mix(in oklab, var(--hairline) 55%, transparent) 1px,
+      transparent 1px
+    );
+  background-size: 28px 28px;
+  /* A malha desaparece nas bordas para não virar moldura. */
+  mask-image: radial-gradient(
+    120% 90% at 30% 20%,
+    #000 35%,
+    transparent 78%
+  );
+}
+
+/* --- estados base: TUDO VISÍVEL ------------------------------------- */
+
+.linhaCrua {
+  opacity: 0.45;
+}
+
+.linhaDaMensagem {
+  opacity: 1;
+}
+
+.selo {
+  opacity: 1;
+  transform: none;
+}
+
+/* --- o movimento ---------------------------------------------------- */
+
+@media (prefers-reduced-motion: no-preference) {
+  /* As linhas cruas chegam primeiro, uma a uma, como quem lê um arquivo.
+     Elas ficam esmaecidas: são matéria-prima, não a resposta. */
+  .linhaCrua {
+    animation: entraDado 0.5s ease-out backwards;
+  }
+
+  /* Depois a mensagem se escreve, linha a linha. O atraso base é o
+     tempo de as linhas cruas terminarem — a leitura é causal: primeiro
+     os números, depois a frase. */
+  .linhaDaMensagem {
+    animation: entraTexto 0.45s ease-out backwards;
+  }
+
+  /* O selo de entregue fecha a sequência. É o único elemento que
+     entra com escala: ele é o ponto final da narrativa. */
+  .selo {
+    animation: entraSelo 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.4) backwards;
+    animation-delay: 1.9s;
+  }
+
+  @keyframes entraDado {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 0.45;
+      transform: none;
+    }
+  }
+
+  @keyframes entraTexto {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @keyframes entraSelo {
+    from {
+      opacity: 0;
+      transform: scale(0.72);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  /* A seta entre os dois blocos pulsa uma vez, no momento exato em que
+     o dado vira frase. Uma vez, não em laço: laço é enfeite. */
+  .fluxo {
+    animation: empurra 0.9s ease-in-out 1.05s 1 both;
+  }
+
+  @keyframes empurra {
+    0%,
+    100% {
+      transform: none;
+      opacity: 0.55;
+    }
+    45% {
+      transform: translateX(5px);
+      opacity: 1;
+    }
+  }
+}
+
+/* --- a esteira da semana -------------------------------------------- */
+/*
+   Revelação ligada à ROLAGEM, sem uma linha de JavaScript:
+   `animation-timeline: view()` é resolvido pelo próprio compositor. Em
+   navegador que não conhece a propriedade, a animação simplesmente não
+   roda — e o estado base já é o visível, então não falta nada.
+*/
+.passo {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .passo {
+      animation: sobe linear both;
+      animation-timeline: view();
+      animation-range: entry 10% cover 28%;
+    }
+
+    @keyframes sobe {
+      from {
+        opacity: 0.25;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: none;
+      }
+    }
+  }
+}

@@ -1,10 +1,11 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { ArrowRight, FileText } from "lucide-react";
+import { ArrowRight, Check, FileText } from "lucide-react";
 
 import { dataNoBrasil } from "@/lib/date-br";
 import { formatPeriod } from "@/lib/format";
 import { mensagemDoCliente } from "@/lib/reports/mensagem-do-cliente";
+import estilo from "./vitrine.module.css";
 
 /* =====================================================================
    A vitrine
@@ -14,29 +15,26 @@ import { mensagemDoCliente } from "@/lib/reports/mensagem-do-cliente";
    digitasse o domínio puro batia numa tela de login sem nenhuma
    explicação do que havia atrás dela.
 
-   O HERÓI É O ARTEFATO, NÃO UMA CAPTURA DE TELA. O que o Elo Hub
-   produz não é um painel bonito — é a mensagem que chega no WhatsApp do
-   cliente na segunda de manhã, com o PDF anexado. É isso que está no
-   alto da página, em tamanho real.
+   A PÁGINA MOSTRA A TRANSFORMAÇÃO, NÃO FALA DELA. A primeira versão
+   descrevia o produto em três cartões iguais — o formato que sai
+   idêntico para qualquer software. O que este sistema faz, porém, tem
+   forma própria: linhas de `daily_metrics`, que ninguém fora daqui
+   consegue ler, viram três frases que o dono de um restaurante entende
+   no celular. Essa passagem é o herói da página, e é ela que se anima.
 
-   E ELE É MONTADO PELA FUNÇÃO DO ENVIO. `mensagemDoCliente` é a mesma
-   que o orquestrador chama para despachar de verdade — ver
-   `lib/reports/mensagem-do-cliente.ts`. Uma cópia do texto escrita à
-   mão aqui envelheceria na primeira vez que a legenda mudasse, e a
-   página passaria a prometer um formato que o produto não entrega
-   mais. Foi o que aconteceu duas vezes DENTRO do produto, entre a tela
-   e o envio; não vale repetir na vitrine.
+   O TEXTO É MONTADO PELA FUNÇÃO DO ENVIO. `mensagemDoCliente` é a mesma
+   que o orquestrador chama para despachar de verdade. Uma cópia escrita
+   à mão aqui envelheceria na primeira mudança da legenda, e a vitrine
+   passaria a prometer um formato que o produto não entrega mais — foi o
+   que aconteceu duas vezes DENTRO do produto, entre a tela e o envio.
 
-   NÚMEROS DE EXEMPLO, E A PÁGINA DIZ ISSO. Não há conta de cliente
-   real aqui, nem depoimento, nem "N agências usam" — nada que eu não
-   possa provar. O período é o da última semana fechada, recalculado a
-   cada hora, para o exemplo não envelhecer sozinho.
+   NÚMEROS DE EXEMPLO, E A PÁGINA DIZ ISSO. Sem conta real, sem
+   depoimento, sem "N agências usam". O período é o da última semana
+   fechada e se refaz de hora em hora, para o exemplo não envelhecer.
 
-   FORA DO GOOGLE POR ENQUANTO. O layout raiz marca o site inteiro como
-   `noindex` por ser painel interno, e esta página herda isso de
-   propósito: publicar no índice de busca é decisão de quem vende, não
-   de quem programa. Quando for a hora, é uma linha — `robots` no
-   `metadata` abaixo.
+   FORA DO GOOGLE POR ENQUANTO: o layout raiz marca o site como
+   `noindex` por ser painel interno, e esta página herda de propósito.
+   Publicar no índice é decisão de quem vende.
    ===================================================================== */
 
 export const metadata: Metadata = {
@@ -45,9 +43,6 @@ export const metadata: Metadata = {
     "Os números da Meta e do Google viram relatório em PDF e mensagem no WhatsApp do cliente. O robô prepara; a equipe confere e dispara.",
 };
 
-/* A janela do exemplo se refaz de hora em hora. Sem isto, a página
-   nasceria congelada na data do build e em um mês estaria mostrando
-   "setembro" em pleno outubro. */
 export const revalidate = 3600;
 
 /** A última semana fechada, de segunda a domingo, no fuso de Brasília. */
@@ -64,11 +59,20 @@ function semanaFechada(): { inicio: string; fim: string } {
   return { inicio: iso(segunda), fim: iso(domingo) };
 }
 
+/* As colunas são as de `daily_metrics` mesmo — é o vocabulário do
+   sistema, e é justamente o que o cliente final nunca deveria precisar
+   ler. Os valores são de exemplo. */
+const LINHAS_CRUAS = [
+  ["2026-09-15", "meta_ads", "48200", "31"],
+  ["2026-09-16", "meta_ads", "39900", "28"],
+  ["2026-09-17", "google_ads", "59900", "37"],
+  ["…", "…", "…", "…"],
+];
+
 export default function VitrinePage() {
   const { inicio, fim } = semanaFechada();
 
-  /* A MESMA FUNÇÃO DO ENVIO, com números de exemplo. Ver o cabeçalho. */
-  const exemplo = mensagemDoCliente({
+  const mensagem = mensagemDoCliente({
     periodoLabel: formatPeriod(inicio, fim),
     dias: 7,
     cliente: "Cliente",
@@ -79,9 +83,14 @@ export default function VitrinePage() {
     ],
   });
 
+  /* Cada linha entra em sequência. O atraso é calculado aqui, e não em
+     CSS, porque ele depende da posição — e a classe do módulo é que
+     garante o estado base visível. */
+  const linhasDaMensagem = mensagem.split("\n");
+
   return (
     <div className="min-h-dvh bg-background text-foreground">
-      <header className="mx-auto flex max-w-5xl items-center justify-between px-6 py-5">
+      <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
         <span className="flex items-center gap-2.5">
           <span className="relative flex size-8 items-center justify-center rounded-lg bg-foreground text-background">
             <span className="text-sm font-bold leading-none">E</span>
@@ -95,168 +104,228 @@ export default function VitrinePage() {
 
         <Link
           href="/login"
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-hairline px-3.5 text-sm font-medium transition-colors hover:border-signal hover:text-signal"
+          className="inline-flex h-9 items-center rounded-lg border border-hairline px-3.5 text-sm font-medium transition-colors hover:border-signal hover:text-signal"
         >
           Entrar
         </Link>
       </header>
 
-      <main className="mx-auto max-w-5xl px-6 pb-20">
-        {/* ------------------------------ topo ------------------------ */}
-        <section className="grid items-center gap-10 py-10 sm:py-16 lg:grid-cols-[1fr_minmax(0,420px)] lg:gap-14">
-          <div>
-            <span className="eyebrow">Operação de mídia paga</span>
-            <h1 className="mt-3 text-3xl font-semibold leading-[1.12] tracking-tight sm:text-4xl lg:text-[2.75rem]">
-              O relatório do cliente fica pronto antes de alguém acordar.
-            </h1>
-            <p className="mt-4 max-w-prose text-base leading-relaxed text-muted-foreground">
-              O Elo Hub busca os números na Meta e no Google, monta o PDF e
-              deixa a mensagem escrita. Na manhã do envio, a equipe confere e
-              dispara pelo próprio WhatsApp — com o documento anexado.
-            </p>
+      <main>
+        {/* ====================== A PASSAGEM ======================= */}
+        {/* O herói não é um título sobre um fundo: é o dado cru virando
+            frase, em tamanho real, antes de qualquer promessa. */}
+        <section className={`${estilo.palco} border-y border-hairline`}>
+          <div className="mx-auto max-w-6xl px-6 py-12 sm:py-16">
+            <div className="grid items-center gap-6 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,420px)]">
+              {/* ---- o que chega das plataformas ---- */}
+              {/* `min-w-0`: item de grid tem `min-width: auto` e NÃO
+                  encolhe abaixo do próprio conteúdo. Sem isto, a tabela
+                  de 382px empurrava a coluna para 384 dentro de um
+                  contêiner de 342 no celular, e o cartão da mensagem ao
+                  lado saía cortado na borda da seção — medido em
+                  390px. */}
+              <div className="min-w-0">
+                <span className="eyebrow">daily_metrics</span>
+                {/* A tabela ganha rolagem PRÓPRIA no celular, em vez de
+                    espremer coluna de dado até virar ilegível. A página
+                    continua sem rolagem lateral. */}
+                <div className="mt-3 overflow-x-auto rounded-xl border border-hairline bg-surface/60">
+                  <div className="min-w-[384px]">
+                  <div className="grid grid-cols-[auto_1fr_auto_auto] gap-x-5 border-b border-hairline px-3 py-2 font-mono text-2xs text-muted-foreground">
+                    <span>metric_date</span>
+                    <span>platform</span>
+                    <span className="text-right">spend_cents</span>
+                    <span className="text-right">conversions</span>
+                  </div>
+                  <div className="divide-y divide-hairline/60">
+                    {LINHAS_CRUAS.map((linha, i) => (
+                      <div
+                        key={linha.join()}
+                        className={`${estilo.linhaCrua} grid grid-cols-[auto_1fr_auto_auto] gap-x-5 px-3 py-2 font-mono text-2xs tabular-nums`}
+                        style={{ animationDelay: `${0.12 * i}s` }}
+                      >
+                        {linha.map((celula, c) => (
+                          <span
+                            key={c}
+                            className={c > 1 ? "text-right" : "truncate"}
+                          >
+                            {celula}
+                          </span>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                  </div>
+                </div>
+                <p className="mt-2.5 font-mono text-2xs text-muted-foreground">
+                  o que a Meta e o Google devolvem
+                </p>
+              </div>
 
-            <div className="mt-7 flex flex-wrap items-center gap-3">
+              {/* ---- a passagem ---- */}
+              <div className="flex justify-center lg:px-2">
+                <ArrowRight
+                  className={`${estilo.fluxo} size-5 rotate-90 text-signal lg:rotate-0`}
+                  aria-hidden
+                />
+              </div>
+
+              {/* ---- o que chega ao cliente ---- */}
+              <figure className="min-w-0">
+                <span className="eyebrow">WhatsApp do cliente</span>
+                <div className="surface-card mt-3 p-3.5">
+                  <div className="flex items-center gap-2.5 rounded-lg bg-surface-2/70 p-2.5">
+                    <span className="grid size-9 shrink-0 place-items-center rounded-md bg-signal-muted text-signal">
+                      <FileText className="size-4" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-xs font-medium">
+                        Relatorio_Cliente.pdf
+                      </span>
+                      <span className="block text-2xs text-muted-foreground">
+                        PDF · 5 páginas
+                      </span>
+                    </span>
+                  </div>
+
+                  <p className="mt-3 font-mono text-xs leading-relaxed">
+                    {linhasDaMensagem.map((linha, i) => (
+                      <span
+                        key={i}
+                        className={`${estilo.linhaDaMensagem} block min-h-[1.1em]`}
+                        style={{ animationDelay: `${0.9 + 0.09 * i}s` }}
+                      >
+                        {linha}
+                      </span>
+                    ))}
+                  </p>
+
+                  <div className="mt-3 flex items-center justify-end gap-1.5">
+                    <span
+                      className={`${estilo.selo} inline-flex items-center gap-1 rounded-full bg-positive-muted px-2 py-0.5 text-2xs font-medium text-positive`}
+                    >
+                      <Check className="size-3" />
+                      entregue
+                    </span>
+                  </div>
+                </div>
+                <figcaption className="mt-2.5 font-mono text-2xs text-muted-foreground">
+                  exemplo · números fictícios
+                </figcaption>
+              </figure>
+            </div>
+          </div>
+        </section>
+
+        {/* ====================== A TESE ======================= */}
+        <section className="mx-auto max-w-6xl px-6 py-12 sm:py-16">
+          <div className="grid gap-8 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] lg:gap-16">
+            {/* A FRASE CARREGA OS DOIS LADOS DA PASSAGEM, e a tipografia
+                diz qual é qual: o que vem da plataforma está na mesma
+                mono da tabela acima; o que chega ao cliente, na voz do
+                texto corrido. `text-balance` porque com quebra manual a
+                primeira linha estourava e sobrava um "cabe" sozinho. */}
+            <h1 className="text-balance text-[2rem] font-semibold leading-[1.08] tracking-tight sm:text-[2.75rem] lg:text-[3.25rem]">
+              A{" "}
+              {/* `whitespace-nowrap`: o fragmento em mono é UMA unidade de
+                  sentido. Quebrado em "planilha da / Meta", lê como erro
+                  de renderização, não como escolha tipográfica. */}
+              <span className="whitespace-nowrap font-mono text-[0.86em] font-medium tracking-tighter text-muted-foreground">
+                planilha da Meta
+              </span>{" "}
+              não cabe no WhatsApp do cliente.
+            </h1>
+
+            <div className="lg:pt-2">
+              <p className="max-w-prose text-base leading-relaxed text-muted-foreground">
+                O Elo Hub soma o período nas duas plataformas, monta o PDF e
+                escreve a mensagem — com os mesmos números do anexo, inclusive
+                a ressalva de qual campanha cada um veio. Na manhã do envio, a
+                equipe confere e dispara pelo próprio WhatsApp.
+              </p>
+
               <Link
                 href="/login"
-                className="inline-flex h-11 items-center gap-2 rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+                className="mt-6 inline-flex h-11 items-center gap-2 rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
               >
                 Entrar no sistema
                 <ArrowRight className="size-4" />
               </Link>
-              <a
-                href="#semana"
-                className="inline-flex h-11 items-center px-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-              >
-                Como funciona a semana
-              </a>
             </div>
-          </div>
-
-          {/* O ARTEFATO. É a peça que a página existe para mostrar: o que
-              sai do sistema e chega em quem está de fora. */}
-          <figure className="surface-card p-4 sm:p-5">
-            <figcaption className="eyebrow mb-3">
-              O que chega ao cliente
-            </figcaption>
-
-            <div className="rounded-xl bg-surface-2/70 p-3">
-              <div className="flex items-center gap-2.5 rounded-lg bg-background/70 p-2.5 ring-1 ring-hairline">
-                <span className="grid size-9 shrink-0 place-items-center rounded-md bg-signal-muted text-signal">
-                  <FileText className="size-4" />
-                </span>
-                <span className="min-w-0">
-                  <span className="block truncate text-xs font-medium">
-                    Relatorio_Cliente.pdf
-                  </span>
-                  <span className="block text-2xs text-muted-foreground">
-                    PDF · 5 páginas
-                  </span>
-                </span>
-              </div>
-
-              <p className="mt-3 whitespace-pre-wrap font-mono text-xs leading-relaxed">
-                {exemplo}
-              </p>
-            </div>
-
-            <p className="mt-3 text-2xs leading-relaxed text-muted-foreground">
-              Exemplo, com números fictícios. O texto é montado pela mesma
-              função que despacha os envios de verdade, e cada número sai do
-              mesmo cartão que o PDF imprime — inclusive a ressalva de qual
-              campanha ele veio.
-            </p>
-          </figure>
-        </section>
-
-        {/* --------------------------- o que sai ---------------------- */}
-        <section className="border-t border-hairline py-12 sm:py-16">
-          <span className="eyebrow">O que o sistema entrega</span>
-          <div className="mt-6 grid gap-4 sm:grid-cols-3">
-            {[
-              {
-                titulo: "Relatório semanal",
-                texto:
-                  "Capa com o resultado do período, evolução diária, quadro por plataforma, campanha a campanha, e os criativos que rodaram.",
-              },
-              {
-                titulo: "Alertas de saldo",
-                texto:
-                  "As contas de anúncio são lidas direto na plataforma. O aviso chega antes de a campanha parar por falta de verba.",
-              },
-              {
-                titulo: "A operação junto",
-                texto:
-                  "Tarefas, esteira de criação e pauta de conteúdo no mesmo lugar dos números — não em outra ferramenta.",
-              },
-            ].map((item) => (
-              <article key={item.titulo} className="surface-card p-5">
-                <h2 className="text-sm font-semibold">{item.titulo}</h2>
-                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                  {item.texto}
-                </p>
-              </article>
-            ))}
           </div>
         </section>
 
-        {/* ---------------------------- a semana ---------------------- */}
-        {/* NUMERADO PORQUE É SEQUÊNCIA DE VERDADE: cada passo depende do
-            anterior ter acontecido, e a ordem é a do relógio. */}
-        <section id="semana" className="border-t border-hairline py-12 sm:py-16">
-          <span className="eyebrow">A semana</span>
-          <h2 className="mt-3 max-w-2xl text-xl font-semibold tracking-tight sm:text-2xl">
-            O robô prepara. A pessoa decide.
-          </h2>
+        {/* ====================== A SEMANA ======================= */}
+        {/* Um log, não uma timeline numerada: a coluna da esquerda é
+            QUANDO, em mono, do jeito que a agenda de envio mostra. */}
+        <section className="border-t border-hairline">
+          <div className="mx-auto max-w-6xl px-6 py-14 sm:py-20">
+            <span className="eyebrow">A semana</span>
 
-          <ol className="mt-8 grid gap-6 sm:grid-cols-3">
-            {[
-              {
-                quando: "Madrugada do dia agendado",
-                o_que:
-                  "O robô soma o período na Meta e no Google, gera o PDF e deixa o relatório pronto na fila.",
-              },
-              {
-                quando: "De manhã",
-                o_que:
-                  "A fila mostra o que está pronto, para qual grupo vai e o texto que acompanha. Dá para editar antes de enviar.",
-              },
-              {
-                quando: "Um clique",
-                o_que:
-                  "Sai pelo WhatsApp de quem enviou, com o PDF anexado — não por um número de robô que o cliente não reconhece.",
-              },
-            ].map((passo, i) => (
-              <li key={passo.quando} className="flex gap-3">
-                <span className="mt-0.5 font-mono text-xs text-signal">
-                  {String(i + 1).padStart(2, "0")}
-                </span>
-                <span>
-                  <span className="block text-sm font-medium">
+            <div className="mt-8 divide-y divide-hairline border-y border-hairline">
+              {[
+                {
+                  quando: "madrugada",
+                  titulo: "O robô soma o período",
+                  texto:
+                    "Busca Meta e Google na janela do relatório, isola a campanha que comprou o resultado, monta o PDF e deixa tudo na fila.",
+                },
+                {
+                  quando: "manhã",
+                  titulo: "A equipe confere",
+                  texto:
+                    "A fila mostra o que está pronto, para qual grupo vai e o texto que acompanha. Dá para editar a mensagem antes de enviar.",
+                },
+                {
+                  quando: "um clique",
+                  titulo: "Sai do seu número",
+                  texto:
+                    "O cliente recebe de quem ele já conhece, com o PDF anexado — não de um número de robô que ele não reconhece.",
+                },
+              ].map((passo) => (
+                <div
+                  key={passo.quando}
+                  className={`${estilo.passo} grid gap-2 py-6 sm:grid-cols-[130px_minmax(0,1fr)] sm:gap-8 sm:py-7`}
+                >
+                  <span className="font-mono text-2xs text-signal sm:pt-1">
                     {passo.quando}
                   </span>
-                  <span className="mt-1.5 block text-xs leading-relaxed text-muted-foreground">
-                    {passo.o_que}
-                  </span>
-                </span>
-              </li>
-            ))}
-          </ol>
+                  <div>
+                    <h2 className="text-base font-medium tracking-tight">
+                      {passo.titulo}
+                    </h2>
+                    <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+                      {passo.texto}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* O resto do sistema em uma linha, sem cartão: são coisas
+                que a equipe já conhece, e transformá-las em três caixas
+                iguais daria a elas um peso que não têm. */}
+            <p className="mt-8 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+              No resto da semana, o mesmo sistema cuida dos{" "}
+              <span className="text-foreground">alertas de saldo</span> das
+              contas de anúncio, das{" "}
+              <span className="text-foreground">tarefas e da esteira</span> de
+              criação, e da{" "}
+              <span className="text-foreground">pauta de conteúdo</span> que vai
+              para aprovação do cliente.
+            </p>
+          </div>
         </section>
 
-        {/* ----------------------------- entrar ----------------------- */}
-        <section className="border-t border-hairline py-12 sm:py-16">
-          <div className="surface-card flex flex-col items-start gap-5 p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8">
-            <div>
-              <h2 className="text-lg font-semibold tracking-tight">
-                Já tem acesso?
-              </h2>
-              <p className="mt-1.5 text-sm text-muted-foreground">
-                O acesso é da equipe e dos parceiros da Elo Marketing.
-              </p>
-            </div>
+        {/* ====================== ENTRAR ======================= */}
+        <section className="border-t border-hairline">
+          <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-5 px-6 py-12">
+            <p className="text-sm text-muted-foreground">
+              O acesso é da equipe e dos parceiros da Elo Marketing.
+            </p>
             <Link
               href="/login"
-              className="inline-flex h-11 shrink-0 items-center gap-2 rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+              className="inline-flex h-11 items-center gap-2 rounded-lg border border-hairline px-5 text-sm font-medium transition-colors hover:border-signal hover:text-signal"
             >
               Entrar
               <ArrowRight className="size-4" />
@@ -266,16 +335,10 @@ export default function VitrinePage() {
       </main>
 
       <footer className="border-t border-hairline">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-6 py-6">
-          <span className="text-2xs text-muted-foreground">
+        <div className="mx-auto max-w-6xl px-6 py-6">
+          <span className="font-mono text-2xs text-muted-foreground">
             Elo Hub · Elo Marketing
           </span>
-          <Link
-            href="/login"
-            className="text-2xs text-muted-foreground transition-colors hover:text-foreground"
-          >
-            Entrar
-          </Link>
         </div>
       </footer>
     </div>
