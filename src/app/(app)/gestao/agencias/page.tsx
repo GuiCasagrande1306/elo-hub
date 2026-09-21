@@ -28,7 +28,7 @@ export const metadata: Metadata = { title: "Agências" };
 export default async function AgenciasPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-  if (user.role !== "admin") redirect("/");
+  if (user.role !== "admin") redirect("/painel");
 
   const [agencias, clients] = await Promise.all([getAgencies(), getClients()]);
 

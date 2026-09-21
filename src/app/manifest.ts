@@ -25,7 +25,11 @@ export default function manifest(): MetadataRoute.Manifest {
     description:
       "Performance de mídia paga, operação de tarefas e relatórios da Elo Marketing.",
 
-    start_url: "/",
+    /* O ATALHO INSTALADO ABRE NO PAINEL, não na vitrine. Quem instalou
+       o app é da equipe e quer trabalhar; a página de venda na abertura
+       seria um clique a mais toda vez. A raiz virou pública em
+       21/09/2026 — ver `proxy.ts`. */
+    start_url: "/painel",
     // `standalone` remove a barra de endereço: instalado, parece app.
     display: "standalone",
     orientation: "portrait-primary",

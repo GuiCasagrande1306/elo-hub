@@ -37,7 +37,7 @@ export default async function RecorrenciaPage() {
   const user = await getCurrentUser();
 
   if (!user) redirect("/login");
-  if (user.role !== "admin") redirect("/");
+  if (user.role !== "admin") redirect("/painel");
 
   /* O deploy sobe o código; a migration é rodada à mão no Supabase.
      Entre um e outro, esta tela pede colunas que ainda não existem — e

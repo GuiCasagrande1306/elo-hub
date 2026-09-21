@@ -52,6 +52,11 @@ export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   const isPublicRoute =
+    /* A VITRINE. Desde 21/09/2026 a raiz é a página pública do produto,
+       e o painel mudou para /painel. Sem esta linha, quem digita o
+       domínio puro cai em /login?next=%2F — que é o que acontecia
+       antes, quando a raiz ERA o painel. */
+    pathname === "/" ||
     pathname.startsWith("/login") ||
     pathname.startsWith("/auth") ||
     // O service worker busca /offline durante o install para guardá-la

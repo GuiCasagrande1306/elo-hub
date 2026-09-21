@@ -31,7 +31,7 @@ export const metadata: Metadata = { title: "Gestão" };
    ---------------------------------------------------------------------
    PROTEÇÃO EM DUAS CAMADAS, e elas não são redundantes:
 
-   1. Aqui, no Server Component: `redirect("/")` para quem não é admin.
+   1. Aqui, no Server Component: `redirect("/painel")` para quem não é admin.
       É NAVEGAÇÃO — evita que um colaborador que digite /gestao veja um
       erro feio ou um esqueleto de página vazio.
 
@@ -49,7 +49,7 @@ export default async function GestaoPage() {
   const user = await getCurrentUser();
 
   if (!user) redirect("/login");
-  if (user.role !== "admin") redirect("/");
+  if (user.role !== "admin") redirect("/painel");
 
   const [{ transactions, monthly }, clients, fees, agencias] = await Promise.all([
     getFinancialData(12),

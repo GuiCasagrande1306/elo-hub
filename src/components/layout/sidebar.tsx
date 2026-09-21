@@ -76,7 +76,11 @@ export function Sidebar({ user, clients, onNavigate }: SidebarProps) {
           resto da sidebar. */}
       <div className="flex h-16 shrink-0 items-center px-5">
         <Link
-          href="/"
+          /* DENTRO DO SISTEMA A LOGO VOLTA AO PAINEL, não à vitrine.
+             A raiz virou a página pública em 21/09/2026; mandar quem
+             está trabalhando para a página de venda seria despejá-lo
+             para fora do sistema em um clique. */
+          href="/painel"
           onClick={onNavigate}
           aria-label="Elo Hub — ir para a visão geral"
           className="flex items-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"

@@ -52,7 +52,7 @@ export function LoginForm() {
       return;
     }
 
-    router.replace(searchParams.get("next") || "/");
+    router.replace(searchParams.get("next") || "/painel");
     router.refresh();
   }
 

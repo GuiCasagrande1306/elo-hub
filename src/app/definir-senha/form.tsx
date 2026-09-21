@@ -57,7 +57,7 @@ export function DefinirSenhaForm() {
     /* Para a raiz: quem decide o destino é a página inicial. Fixar uma
        rota aqui mandaria para a tela errada quem entrou por um caminho
        diferente. */
-    router.replace("/");
+    router.replace("/painel");
     router.refresh();
   }
 

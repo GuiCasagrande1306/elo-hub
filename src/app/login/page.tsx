@@ -1,9 +1,11 @@
 import { Suspense } from "react";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 
 import { LoginForm } from "./login-form";
 import { isDemoMode } from "@/lib/env";
+import { getCurrentUser } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Entrar" };
 
@@ -15,7 +17,18 @@ export const metadata: Metadata = { title: "Entrar" };
  * evita o "formulário centralizado flutuando no vazio" — layout que
  * denuncia página de autenticação genérica.
  */
-export default function LoginPage() {
+export default async function LoginPage() {
+  /* QUEM JÁ ENTROU NÃO VÊ A PORTA. Com a vitrine pública na raiz, o
+     caminho "clicar em Entrar" passa pelo /login toda vez, inclusive
+     para quem tem sessão — e mostrar o formulário a essa pessoa parece
+     que ela foi deslogada.
+
+     `getCurrentUser` é a MESMA checagem do layout do sistema, e isso
+     não é detalhe: com duas leituras diferentes de sessão, uma podia
+     mandar para /painel enquanto a outra devolvia para /login, e o
+     navegador ficaria no laço. Em modo demo não há sessão para ler. */
+  if (!isDemoMode && (await getCurrentUser())) redirect("/painel");
+
   return (
     <main className="grid min-h-dvh lg:grid-cols-2">
       <div className="flex flex-col justify-center px-6 py-12 sm:px-12 lg:px-16">
@@ -47,7 +60,7 @@ export default function LoginPage() {
                 dados de exemplo.
               </p>
               <Link
-                href="/"
+                href="/painel"
                 className="mt-4 inline-flex h-9 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
               >
                 Entrar na demonstração

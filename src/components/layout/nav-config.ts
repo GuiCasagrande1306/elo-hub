@@ -60,7 +60,7 @@ export const navGroups: NavGroup[] = [
        só gasta duas linhas de altura para repetir o que o próprio item
        já diz. O espaço até o bloco seguinte já separa. */
     label: null,
-    items: [{ href: "/", label: "Visão geral", icon: LayoutGrid }],
+    items: [{ href: "/painel", label: "Visão geral", icon: LayoutGrid }],
   },
   {
     label: "Operação",
