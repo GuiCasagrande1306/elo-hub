@@ -28,6 +28,11 @@ const bodySchema = z.object({
   nextSteps: z.array(z.string().max(500)).max(10).optional(),
   deliver: z.enum(["whatsapp", "none"]).default("none"),
   recipient: z.string().max(30).optional(),
+  /* O texto que a pessoa editou na estação. Ausente = o automático.
+     1024 é o corte do WhatsApp para legenda de documento: acima disso
+     a mensagem chegaria cortada no meio, então a rota recusa em vez de
+     deixar `sendReportFromUser` fatiar em silêncio. */
+  legenda: z.string().trim().min(1).max(1024).optional(),
 });
 
 export async function POST(request: NextRequest) {

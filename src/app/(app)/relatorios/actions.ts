@@ -340,8 +340,17 @@ export async function enviarRelatorio(
      da configuração vigente. */
   const modelo = await getMensagemDoCliente();
 
+  /* Legenda escrita à mão na estação vence a automática: o reenvio de
+     um relatório editado manda o que a pessoa escreveu para ELE, não o
+     texto padrão. `typeof` porque o snapshot é JSON antigo e o campo
+     só existe desde 18/09/2026. */
+  const editada = (linha.snapshot as { legendaEditada?: unknown } | null)
+    ?.legendaEditada;
+
   const legenda =
-    linha.snapshot && typeof linha.snapshot === "object"
+    typeof editada === "string" && editada.trim()
+      ? editada
+      : linha.snapshot && typeof linha.snapshot === "object"
       ? buildGroupCaption(linha.snapshot as never, modelo)
       : /* Sem snapshot — relatório antigo. Monta com o mesmo texto, e o
            período sai das colunas da própria linha do histórico. */

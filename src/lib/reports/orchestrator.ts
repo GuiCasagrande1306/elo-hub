@@ -55,6 +55,17 @@ export interface GenerateReportInput {
   source?: ReportSource;
   /** Marca a linha em `report_history` como disparo automático. */
   automated?: boolean;
+  /**
+   * Legenda escrita à mão na estação de comando, no lugar da automática.
+   *
+   * Ausente, o texto sai de `buildGroupCaption` com os números do
+   * payload — que é o caso normal e o único do cron. Presente, ela vai
+   * EXATAMENTE como a pessoa deixou: é o que a tela mostrava quando o
+   * botão foi clicado, e mandar outra coisa seria a divergência entre
+   * "o que a equipe conferiu" e "o que o cliente recebeu" que este
+   * pipeline inteiro existe para evitar.
+   */
+  legenda?: string;
 }
 
 export interface GenerateReportResult {
@@ -185,7 +196,14 @@ export async function generateAndDeliverReport(
     // O snapshot é gravado ANTES do render: se a geração do PDF falhar,
     // os dados do período continuam preservados para diagnóstico e para
     // uma nova tentativa sem reconsultar as plataformas.
-    await setStatus("generating", { snapshot: payload });
+    /* A legenda editada vai NO SNAPSHOT. Se este envio falhar e alguém
+       reenviar pela fila, `enviarRelatorio` refaz a mensagem a partir
+       daqui — sem isto o reenvio mandaria o texto automático, e não o
+       que a pessoa escreveu para este relatório. */
+    const legendaEditada = input.legenda?.trim() || undefined;
+    await setStatus("generating", {
+      snapshot: legendaEditada ? { ...payload, legendaEditada } : payload,
+    });
 
     /* --- 5. Renderizar ---------------------------------------------- */
     const { buffer, pageCount } = await renderReportPdf(payload);
@@ -295,7 +313,9 @@ export async function generateAndDeliverReport(
         remetente,
         recipient,
         downloadUrl,
-        buildGroupCaption(payload, await getMensagemDoCliente()),
+        /* Editada vence: é o texto que estava na tela no clique. */
+        legendaEditada ??
+          buildGroupCaption(payload, await getMensagemDoCliente()),
         client.name,
       );
 

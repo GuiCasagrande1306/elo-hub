@@ -4,7 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   AlertTriangle, BarChart3, Check, Copy, FileDown, Image as ImageIcon,
-  MessageCircle, Target, TrendingUp,
+  MessageCircle, Pencil, RotateCcw, Target, TrendingUp,
 } from "lucide-react";
 
 
@@ -13,6 +13,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import { formatCurrency, formatMultiplier, formatPeriod } from "@/lib/format";
 import {
   formatGoalValue,
@@ -110,6 +111,9 @@ export interface ClientSummary {
   totais: MetricTotals;
 }
 
+/** Corte do WhatsApp para legenda de documento. */
+const LIMITE_DA_LEGENDA = 1024;
+
 const SECOES = [
   { icon: BarChart3, titulo: "Resumo executivo", sub: "Investimento, resultados e custo" },
   { icon: TrendingUp, titulo: "Evolução no período", sub: "Série diária de gasto e retorno" },
@@ -134,6 +138,17 @@ export function CommandStation({
 }) {
   const [clientId, setClientId] = useState(clients[0]?.id ?? "");
   const [copiado, setCopiado] = useState(false);
+
+  /* A LEGENDA EDITADA À MÃO, amarrada à conta e à janela em que foi
+     escrita. A chave é o que impede o defeito mais caro desta tela: um
+     texto escrito para uma conta sair com o nome ou os números de outra.
+     Trocar cliente ou período limpa a edição (ver `trocarCliente` e
+     `trocarPeriodo`), e a comparação de chave abaixo é a rede de
+     segurança caso algum caminho novo esqueça de limpar. */
+  const [edicao, setEdicao] = useState<{ chave: string; texto: string } | null>(
+    null,
+  );
+  const campoDoTexto = useRef<HTMLTextAreaElement>(null);
   const [busy, setBusy] = useState<"pdf" | "envio" | null>(null);
 
   /* O QUE JÁ FOI ENVIADO NESTA SESSÃO, por conta E período.
@@ -285,6 +300,7 @@ export function CommandStation({
     setBuscando(false);
     setClientId(id);
     setOverride(null);
+    setEdicao(null);
     /* A conta nova abre na janela da meta dela, e ali quem responde é
        `cliente.linhas` — derivado, não guardado. */
     setSemDadoDaBusca(null);
@@ -294,6 +310,8 @@ export function CommandStation({
   /** Trocar o período REBUSCA. É o que impede a tela de mentir. */
   function trocarPeriodo(novo: Intervalo) {
     setPeriodo(novo);
+    /* O texto editado citava os números da janela anterior. */
+    setEdicao(null);
     if (!cliente) return;
 
     /* O NÚMERO VELHO SAI JUNTO COM O RÓTULO VELHO.
@@ -423,8 +441,29 @@ export function CommandStation({
     );
   }, [cliente, periodoLabel, diasDoPeriodo, modeloDaMensagem, totais]);
 
+  /* O QUE ESTÁ NA CAIXA É O QUE SAI. Editado, vale o texto da pessoa —
+     no Copiar e no envio; senão, o automático, que continua vindo dos
+     dados reais a cada troca de período. */
+  const textoEditado = edicao?.chave === chaveDoEnvio ? edicao.texto : null;
+  const editando = textoEditado !== null;
+  const textoFinal = textoEditado ?? mensagem;
+
+  /* Vazio mandaria o PDF sem legenda nenhuma; acima de 1024 o WhatsApp
+     corta a mensagem no meio. A rota recusa os dois — aqui a trava
+     aparece antes do clique. */
+  const legendaInvalida =
+    editando &&
+    (textoEditado.trim().length === 0 ||
+      textoEditado.length > LIMITE_DA_LEGENDA);
+
+  function editar() {
+    setEdicao({ chave: chaveDoEnvio, texto: mensagem });
+    // O campo acabou de deixar de ser só leitura: o cursor vai para ele.
+    requestAnimationFrame(() => campoDoTexto.current?.focus());
+  }
+
   async function copiar() {
-    await navigator.clipboard.writeText(mensagem);
+    await navigator.clipboard.writeText(textoFinal);
     setCopiado(true);
     toast.success("Mensagem copiada.");
     // Volta ao ícone original: o check permanente perde o significado.
@@ -472,7 +511,7 @@ export function CommandStation({
 
   /** Gera, arquiva e dispara pelo WhatsApp de quem está logado. */
   async function gerarEEnviar() {
-    if (naoPodeEnviar || jaEnviado) return;
+    if (naoPodeEnviar || jaEnviado || legendaInvalida) return;
     setBusy("envio");
 
     try {
@@ -484,6 +523,9 @@ export function CommandStation({
           periodStart: periodo.inicio,
           periodEnd: periodo.fim,
           deliver: "whatsapp",
+          /* Só quando editada. Ausente, o servidor monta a legenda com
+             os números do payload — o mesmo texto que a caixa mostra. */
+          ...(textoEditado !== null ? { legenda: textoEditado } : {}),
         }),
       });
 
@@ -594,19 +636,74 @@ export function CommandStation({
         </section>
 
         <section className="surface-card relative p-4">
-          <div className="flex items-center justify-between gap-2">
-            <span className="eyebrow">Texto para o cliente</span>
-            <Button size="sm" variant="ghost" onClick={copiar} disabled={!cliente}>
-              {copiado ? <Check className="size-3.5 text-positive" /> : <Copy className="size-3.5" />}
-              Copiar
-            </Button>
+          {/* `flex-wrap`: com "Voltar ao automático" os três elementos
+              não cabem numa linha de 375px, e sem quebra o Copiar era
+              empurrado para fora do cartão. */}
+          <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+            <span className="eyebrow">
+              Texto para o cliente
+              {editando && (
+                <span className="ml-1.5 font-normal normal-case tracking-normal text-warning">
+                  · editado
+                </span>
+              )}
+            </span>
+            <div className="flex items-center gap-1">
+              {editando ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setEdicao(null)}
+                >
+                  <RotateCcw className="size-3.5" />
+                  Voltar ao automático
+                </Button>
+              ) : (
+                /* Travado durante a busca: editar ali capturaria o texto
+                   SEM o bloco de números, que só chega quando a busca
+                   do período volta. */
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={editar}
+                  disabled={!cliente || buscando || !mensagem}
+                >
+                  <Pencil className="size-3.5" />
+                  Editar
+                </Button>
+              )}
+              <Button size="sm" variant="ghost" onClick={copiar} disabled={!cliente}>
+                {copiado ? <Check className="size-3.5 text-positive" /> : <Copy className="size-3.5" />}
+                Copiar
+              </Button>
+            </div>
           </div>
           <Textarea
-            value={mensagem}
-            readOnly
+            ref={campoDoTexto}
+            value={textoFinal}
+            readOnly={!editando}
+            onChange={(e) =>
+              setEdicao({ chave: chaveDoEnvio, texto: e.target.value })
+            }
+            aria-invalid={legendaInvalida || undefined}
             rows={9}
-            className="mt-2 resize-y font-mono text-xs"
+            className={cn(
+              "mt-2 resize-y font-mono text-xs",
+              editando && "border-warning/50",
+            )}
           />
+          {editando && (
+            <p
+              className={cn(
+                "mt-1 text-right text-2xs tabular-nums",
+                legendaInvalida ? "text-negative" : "text-muted-foreground",
+              )}
+            >
+              {textoEditado.trim().length === 0
+                ? "O texto não pode ficar vazio."
+                : `${textoEditado.length} / ${LIMITE_DA_LEGENDA}`}
+            </p>
+          )}
           {/* ZERO POR FALTA DE DADO NÃO PODE PARECER ZERO DE VERDADE.
               Sem este aviso a tela mostra R$ 0,00 nos dois casos, e o
               texto pronto para copiar sai afirmando ao cliente que ele
@@ -626,10 +723,29 @@ export function CommandStation({
               </span>
             </p>
           )}
+          {/* A promessa do texto automático — "nunca diz um prazo e
+              mostra outro" — deixa de valer quando alguém edita. A nota
+              muda junto, para ninguém confiar numa garantia que o texto
+              manual não tem. */}
           <p className="mt-1.5 text-2xs text-muted-foreground">
-            Números somados das métricas sincronizadas na janela acima.
-            Trocar o período rebusca no banco — o texto nunca fica
-            dizendo um prazo e mostrando outro.
+            {editando ? (
+              <>
+                <strong className="text-foreground">
+                  Este é o texto que vai no envio.
+                </strong>{" "}
+                Editado à mão, ele não acompanha mais os dados: trocar de
+                cliente ou de período descarta a edição e volta ao
+                automático.
+              </>
+            ) : (
+              <>
+                Números somados das métricas sincronizadas na janela acima.
+                Trocar o período rebusca no banco — o texto nunca fica
+                dizendo um prazo e mostrando outro. Use{" "}
+                <strong>Editar</strong> para acrescentar ou tirar algo
+                antes de enviar.
+              </>
+            )}
           </p>
         </section>
 
@@ -663,7 +779,9 @@ export function CommandStation({
                  clicável ao lado dele. Numa tarde de sete envios
                  seguidos, um aviso que não impede nada é um aviso que se
                  lê depois. Trocar o período limpa o estado. */
-              disabled={busy !== null || jaEnviado || naoPodeEnviar}
+              disabled={
+                busy !== null || jaEnviado || naoPodeEnviar || legendaInvalida
+              }
               onClick={gerarEEnviar}
               title={
                 jaEnviado

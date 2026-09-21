@@ -143,6 +143,15 @@ export interface ReportPayload {
   /** Texto escrito pelo time; vazio quando ainda não preenchido. */
   insights: string;
   nextSteps: string[];
+  /**
+   * A legenda do WhatsApp, quando foi escrita à mão na estação.
+   *
+   * Só existe no SNAPSHOT gravado em `report_history`, nunca no payload
+   * recém-montado — é o orquestrador que acrescenta. Serve ao reenvio
+   * pela fila: sem ela, reenviar um relatório editado mandaria o texto
+   * automático no lugar do que a pessoa escreveu.
+   */
+  legendaEditada?: string;
 }
 
 /** Criativo já com os derivados calculados — o PDF não faz conta. */
