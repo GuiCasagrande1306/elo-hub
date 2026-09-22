@@ -10,6 +10,7 @@ import { createSupabaseServerClient, getCurrentUser } from "@/lib/supabase/serve
 import { buildGroupCaption } from "@/lib/reports/payload";
 import { MARCA_INTERROMPIDO } from "@/lib/reports/envio-interrompido";
 import { getMensagemDoCliente } from "@/lib/reports/mensagem-settings";
+import { coberturaDaJanela } from "@/lib/reports/cobertura";
 import {
   MARCADORES,
   mensagemDoCliente,
@@ -262,6 +263,50 @@ export async function enviarRelatorio(
       error: quando
         ? `Este período já foi entregue em ${formatDate(quando)}. Se precisar mandar de novo, gere um relatório novo na estação.`
         : "Este período já foi entregue a este cliente.",
+    };
+  }
+
+  /* A JANELA DESTE RELATÓRIO FOI APURADA ATÉ O FIM?
+     -----------------------------------------------------------------
+     A estação de comando já perguntava isso antes de liberar o botão
+     dela; a FILA não perguntava nada — e é a fila que despacha o que o
+     robô preparou de madrugada.
+
+     Em 22/09/2026, 46 das 52 integrações Meta estavam com o token
+     invalidado desde o dia 18. O robô preparou relatórios de 15–21/09
+     com quatro dias de dado e eles apareceram aqui como prontos. Um
+     clique mandaria ao cliente uma semana somada pela metade, com a
+     capa e a mensagem carimbando sete dias.
+
+     Mesma função da tela, para as duas não divergirem. */
+  const cobertura = await coberturaDaJanela(
+    linha.client_id,
+    linha.period_start,
+    linha.period_end,
+  );
+
+  /* ZERO LINHA NO PERÍODO. A estação já recusava; a fila deixava passar,
+     e é a mesma pessoa clicando o mesmo tipo de botão. Um relatório sem
+     linha nenhuma afirma ao cliente que ele não investiu nada — e a
+     ausência tanto pode ser conta parada quanto período nunca
+     sincronizado, que é justamente o que não dá para distinguir sem
+     olhar. */
+  if (cobertura.semDado) {
+    return {
+      ok: false,
+      error:
+        "Este período não tem nenhum dado sincronizado. Os zeros do relatório seriam ausência de dado, não desempenho — confirme a sincronização do intervalo antes de enviar.",
+    };
+  }
+
+  if (cobertura.naoApurada) {
+    return {
+      ok: false,
+      error: `Os números deste relatório param em ${formatDate(
+        `${cobertura.ultimoDiaComDado}T12:00:00`,
+      )} e o período vai até ${formatDate(
+        `${linha.period_end}T12:00:00`,
+      )} — a coleta da conta está atrasada. Reconecte a plataforma em Configurações, peça a sincronização do intervalo e gere o relatório de novo.`,
     };
   }
 

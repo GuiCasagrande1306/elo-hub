@@ -5,6 +5,7 @@ import { isDemoMode } from "@/lib/env";
 import { MARCA_INTERROMPIDO } from "./envio-interrompido";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { generateAndDeliverReport } from "./orchestrator";
+import { coberturaDaJanela } from "./cobertura";
 import { systemSource } from "./source";
 import type { Client } from "@/types/database";
 
@@ -355,6 +356,35 @@ export async function dispatchScheduledReports(options?: {
       backfillsFeitos,
     );
     if (backfill) base.sincronizados.push(backfill);
+
+    /* O BACKFILL TENTOU. ELE CONSEGUIU?
+       ---------------------------------------------------------------
+       `garantirDadosDoPeriodo` pede o intervalo à plataforma antes de
+       gerar, mas ele depende da coleta funcionar. Com o token morto ele
+       não traz nada e o relatório era preparado assim mesmo, com o que
+       havia no banco — em 22/09/2026 isso encheu a fila de relatórios
+       de 15–21/09 com quatro dias de dado, prontos para alguém
+       despachar.
+
+       Preparar um relatório que não pode ser enviado é pior que não
+       preparar: ele entra na fila com a mesma cara dos bons, e a fila é
+       uma lista de coisas prontas. Aqui ele vira pendência explicada,
+       com o motivo que diz o que fazer. */
+    const cobertura = await coberturaDaJanela(
+      cliente.id,
+      janela.start,
+      janela.end,
+    );
+
+    if (cobertura.naoApurada) {
+      base.pulados.push({
+        slug: cliente.slug,
+        nome: cliente.name,
+        reportId: null,
+        motivo: `Dado apurado só até ${cobertura.ultimoDiaComDado}, e o período vai até ${janela.end}. Reconecte a plataforma e sincronize o intervalo.`,
+      });
+      continue;
+    }
 
     const resultado = await generateAndDeliverReport({
       clientSlug: cliente.slug,
