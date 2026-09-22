@@ -436,6 +436,30 @@ export interface ClientWithGoal {
    */
   linhasDeMetrica: number;
   /**
+   * O último dia da janela que TEM linha de métrica.
+   *
+   * `null` quando não há nenhuma. Serve para distinguir janela
+   * incompleta de janela vazia — e, junto com `sincronizacao` abaixo,
+   * para distinguir "não veiculou" de "não foi apurado".
+   */
+  ultimoDiaComDado: string | null;
+  /**
+   * Saúde da coleta desta conta, para a estação decidir se pode enviar.
+   *
+   * ⚠️ DIA SEM LINHA NÃO É DIA SEM DADO. A Meta não devolve linha para
+   * dia sem veiculação, então uma conta pausada no domingo tem 6 de 7
+   * dias legitimamente. Barrar o envio por contagem de dias produziria
+   * alarme falso justamente em quem está certo.
+   *
+   * Quem separa os dois casos é a coleta: se ela falhou, ou se a última
+   * sincronização bem-sucedida é anterior ao fim do período, os dias que
+   * faltam são NÃO APURADOS. Se ela está em dia, são dias sem anúncio.
+   *
+   * `ate` é a data em Brasília da sincronização mais recente entre as
+   * integrações ativas — `null` quando nenhuma jamais completou.
+   */
+  sincronizacao: { comErro: boolean; ate: string | null };
+  /**
    * A JANELA QUE FOI SOMADA — não a que alguém escolheu numa tela.
    *
    * Vem junto porque quem consome estes números precisa poder dizer de
@@ -454,6 +478,67 @@ export interface ClientWithGoal {
    * divergência de hidratação no marcador de ritmo.
    */
   progress: ReturnType<typeof buildGoalProgress>;
+}
+
+/**
+ * Saúde da coleta, por conta, numa consulta só.
+ *
+ * ⚠️ É O QUE SEPARA "NÃO VEICULOU" DE "NÃO FOI APURADO". A tabela de
+ * métrica não tem linha para dia sem veiculação, então contar dias
+ * nunca responde sozinho se um buraco na janela é silêncio do anúncio
+ * ou silêncio da coleta. Quem responde é a integração.
+ *
+ * Medido em 22/09/2026: 46 das 52 integrações Meta ativas estavam com
+ * o token invalidado desde 18/09, e a estação de comando continuava
+ * liberando o envio — a trava de então só reagia a ZERO linha, e havia
+ * linhas, só que velhas. Um relatório de 15–21/09 sairia com quatro
+ * dias somados sob o rótulo de sete.
+ *
+ * `ate` sai de `last_synced_at`, que desde a mesma data só é escrito em
+ * rodada bem-sucedida — ver `recordFailure` em `ads/sync.ts`. Enquanto
+ * ele também era escrito na falha, este campo diria "em dia" para uma
+ * conta parada havia um mês.
+ */
+async function saudeDaColetaDaCarteira(): Promise<
+  Map<string, { comErro: boolean; ate: string | null }>
+> {
+  const mapa = new Map<string, { comErro: boolean; ate: string | null }>();
+  if (isDemoMode) return mapa;
+
+  /* Sessão, não service_role: esta função alimenta a estação de comando,
+     e o que ela devolve tem de respeitar a mesma RLS que já filtrou a
+     carteira em `getClients`. Ler integração de conta que a pessoa não
+     enxerga não serviria para nada e vazaria a existência dela. */
+  const { data } = await (await createSupabaseServerClient())
+    .from("client_integrations")
+    .select("client_id, sync_error, last_synced_at")
+    .eq("is_active", true);
+
+  for (const linha of (data ?? []) as {
+    client_id: string;
+    sync_error: string | null;
+    last_synced_at: string | null;
+  }[]) {
+    const atual = mapa.get(linha.client_id) ?? { comErro: false, ate: null };
+
+    /* A conta pode ter Meta e Google. Um erro em qualquer uma já
+       compromete a janela, e a data que vale é a MAIS ANTIGA entre as
+       integrações: a janela só está coberta quando todas cobriram. */
+    const ate = linha.last_synced_at ? dataNoBrasil(linha.last_synced_at) : null;
+    mapa.set(linha.client_id, {
+      comErro: atual.comErro || Boolean(linha.sync_error),
+      ate:
+        atual.ate === null
+          ? ate
+          : ate === null
+            ? null
+            : ate < atual.ate
+              ? ate
+              : atual.ate,
+    });
+  }
+
+  return mapa;
 }
 
 /**
@@ -477,10 +562,14 @@ export async function getClientsWithGoals(
   /* Os tipos de conversão da CARTEIRA INTEIRA em duas consultas, antes
      do laço. Dentro dele seriam duas por conta — o mesmo erro que já
      custou 245 consultas na tela de performance. */
-  const [clients, goals, tiposPorCliente] = await Promise.all([
+  const [clients, goals, tiposPorCliente, saudeDaColeta] = await Promise.all([
     getClients(agency, opts),
     periodo ? getGoalsForMonth(periodo.start) : getCurrentGoals(),
     tiposDeConversaoDaCarteira(),
+    /* UMA consulta para a carteira inteira, fora do laço — dentro dele
+       seria uma por conta, o erro que já custou 245 consultas na tela de
+       performance. */
+    saudeDaColetaDaCarteira(),
   ]);
 
   return Promise.all(
@@ -535,6 +624,17 @@ export async function getClientsWithGoals(
         computedGoalValue: goalExecutedFrom(metric, totals),
         trend: buildTrend(rows).map((p) => p.spend),
         linhasDeMetrica: rows.length,
+        /* `reduce` e não `sort`: a lista já vem ordenada por data, mas
+           depender disso aqui amarraria este número à cláusula `order`
+           de outra função. */
+        ultimoDiaComDado: rows.reduce<string | null>(
+          (acc, r) => (acc === null || r.metric_date > acc ? r.metric_date : acc),
+          null,
+        ),
+        sincronizacao: saudeDaColeta.get(client.id) ?? {
+          comErro: false,
+          ate: null,
+        },
         period: { start, end },
         progress: buildGoalProgress({
           goal,

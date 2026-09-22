@@ -291,14 +291,22 @@ async function recordFailure(
   integration: IntegrationRow,
   failure: Omit<IntegrationSyncResult, "ok" | "rowsUpserted" | "spendCents" | "conversions">,
 ): Promise<IntegrationSyncResult> {
-  // O erro fica gravado na própria integração, visível em
-  // /configuracoes — console de serverless some, banco não.
+  /* O erro fica gravado na própria integração, visível em
+     /configuracoes — console de serverless some, banco não.
+
+     ⚠️ `last_synced_at` NÃO É TOCADO AQUI, e a ausência é o conserto.
+     Ele dizia "sincronizado agora" mesmo quando a rodada não trouxe uma
+     linha sequer, porque era escrito nos dois caminhos. Medido em
+     22/09/2026: 46 das 52 integrações Meta estavam com o token
+     invalidado desde 18/09 e TODAS exibiam "sincronizado hoje às 10:05"
+     — algumas sem dado novo desde agosto. O campo passa a significar o
+     que o nome promete: a última vez que dado de verdade entrou.
+
+     Quem quiser saber da última TENTATIVA lê `sync_error`, que é
+     escrito logo abaixo e some quando uma rodada dá certo. */
   await admin
     .from("client_integrations")
-    .update({
-      sync_error: `[${failure.code}] ${failure.message}`,
-      last_synced_at: new Date().toISOString(),
-    })
+    .update({ sync_error: `[${failure.code}] ${failure.message}` })
     .eq("id", integration.id);
 
   console.error(

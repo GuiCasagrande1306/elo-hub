@@ -14,7 +14,14 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { formatCurrency, formatMultiplier, formatPeriod } from "@/lib/format";
+import {
+  formatCurrency,
+  formatDate,
+  formatMultiplier,
+  formatPeriod,
+} from "@/lib/format";
+import { dataNoBrasil } from "@/lib/date-br";
+import { estadoDaJanela } from "@/lib/reports/janela-coberta";
 import {
   formatGoalValue,
   goalExecutedFrom,
@@ -94,6 +101,10 @@ export interface ClientSummary {
    * investiu nada no mês.
    */
   linhas: number;
+  /** Último dia da janela da meta com linha. `null` = nenhuma. */
+  ultimoDiaComDado: string | null;
+  /** Saúde da coleta — ver `saudeDaColetaDaCarteira` em `data.ts`. */
+  sincronizacao: { comErro: boolean; ate: string | null };
   /** Template que o segmento desta conta seleciona. Exibido, não escolhido. */
   templateName: string;
   /**
@@ -188,6 +199,8 @@ export function CommandStation({
        o texto que vai ao cliente sai destes, pela mesma função que o
        PDF usa. */
     totais: MetricTotals;
+    /** Último dia COM DADO da janela buscada. */
+    ultimoDia: string | null;
   } | null>(null);
   const [buscando, setBuscando] = useState(false);
 
@@ -282,6 +295,23 @@ export function CommandStation({
     ? (cliente?.linhas ?? 0) === 0
     : (semDadoDaBusca ?? false);
 
+  /* JANELA QUE ACABA ANTES DO PERÍODO — a regra mora em
+     `lib/reports/janela-coberta.ts`, com teste de mesa. Decisão de
+     interface escrita dentro do componente não tem como ser conferida
+     sem clicar, e esta decide se um relatório pode ou não sair. */
+  const ultimoDiaComDado = janelaDaMeta
+    ? (cliente?.ultimoDiaComDado ?? null)
+    : (override?.ultimoDia ?? null);
+
+  const { incompleta: janelaIncompleta, naoApurada: janelaNaoApurada } =
+    estadoDaJanela({
+      fim: periodo.fim,
+      hoje: dataNoBrasil(),
+      ultimoDiaComDado,
+      semDado,
+      sincronizacao: cliente?.sincronizacao ?? { comErro: true, ate: null },
+    });
+
   /* `buscando` ENTRA NA TRAVA. Sem ele, trocar o período liberava o
      botão durante toda a ida ao servidor: `semDado` tinha acabado de
      ser limpo e o guard interno de `gerarEEnviar` lia o mesmo valor
@@ -289,7 +319,8 @@ export function CommandStation({
      segundo — o bastante para o clique que o conserto existe para
      impedir. `semNumero` fecha o resto: sem número conferido não há o
      que enviar. */
-  const naoPodeEnviar = !cliente || buscando || semDado || semNumero;
+  const naoPodeEnviar =
+    !cliente || buscando || semDado || semNumero || janelaNaoApurada;
 
   /** Troca de conta reabre na janela da meta dela e descarta a busca. */
   function trocarCliente(id: string) {
@@ -365,6 +396,7 @@ export function CommandStation({
             revenueCents: r.resumo.origem.revenueCents,
           }),
           totais: r.resumo.totais,
+          ultimoDia: r.resumo.ultimoDia,
         });
       })
       .catch(() => {
@@ -723,6 +755,47 @@ export function CommandStation({
               </span>
             </p>
           )}
+          {/* JANELA QUE ACABA ANTES DO PERÍODO. Dois textos, porque são
+              dois problemas: coleta quebrada (barra o envio) e conta
+              que simplesmente não veiculou (só informa). */}
+          {janelaIncompleta && (
+            <p
+              className={cn(
+                "mt-2 flex items-start gap-2 rounded-lg px-3 py-2 text-2xs",
+                janelaNaoApurada
+                  ? "bg-negative-muted/50 text-negative"
+                  : "bg-surface-2/70 text-muted-foreground",
+              )}
+            >
+              <AlertTriangle className="mt-px size-3.5 shrink-0" />
+              <span>
+                {/* As datas ficam no MEIO da frase: `formatDate` devolve
+                    "17 de set." com o ponto da abreviação, e terminar a
+                    oração nela imprimia "set..". */}
+                {janelaNaoApurada ? (
+                  <>
+                    <strong>
+                      Os números param em{" "}
+                      {formatDate(`${ultimoDiaComDado}T12:00:00`)} e o período
+                      vai até {formatDate(`${periodo.fim}T12:00:00`)}
+                    </strong>{" "}
+                    — a coleta desta conta está atrasada, então os dias que
+                    faltam não foram apurados. <strong>Não envie</strong>:
+                    reconecte a plataforma em Configurações e peça a
+                    sincronização deste intervalo.
+                  </>
+                ) : (
+                  <>
+                    Os números param em{" "}
+                    {formatDate(`${ultimoDiaComDado}T12:00:00`)} — a coleta
+                    está em dia, então os dias sem linha são dias sem
+                    veiculação.
+                  </>
+                )}
+              </span>
+            </p>
+          )}
+
           {/* A promessa do texto automático — "nunca diz um prazo e
               mostra outro" — deixa de valer quando alguém edita. A nota
               muda junto, para ninguém confiar numa garantia que o texto

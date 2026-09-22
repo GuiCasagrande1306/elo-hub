@@ -810,6 +810,14 @@ export type ResumoDoPeriodo = {
    * inteiro sem backfill passou por relatório pronto para enviar.
    */
   linhas: number;
+  /**
+   * O último dia da janela com linha de métrica. `null` quando não há.
+   *
+   * A tela compara com o fim do período para saber se a janela está
+   * coberta até o fim — ver `saudeDaColetaDaCarteira` em `data.ts` para
+   * por que contar dias não basta sozinho.
+   */
+  ultimoDia: string | null;
 };
 
 /**
@@ -889,6 +897,10 @@ export async function resumoDoPeriodo(
          legenda discordar do anexo. */
       totais,
       linhas: metricas.length,
+      ultimoDia: metricas.reduce<string | null>(
+        (acc, m) => (acc === null || m.metric_date > acc ? m.metric_date : acc),
+        null,
+      ),
     },
   };
 }

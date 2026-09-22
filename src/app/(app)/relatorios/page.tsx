@@ -115,6 +115,11 @@ export default async function ReportsPage() {
        janela inicial; sem isso a trava só engatava depois de alguém
        mexer no seletor de período. */
     linhas: linha.linhasDeMetrica,
+    /* O fim real do dado e a saúde da coleta: juntos, eles dizem se um
+       buraco na janela é conta pausada ou coleta quebrada. Ver
+       `saudeDaColetaDaCarteira`. */
+    ultimoDiaComDado: linha.ultimoDiaComDado,
+    sincronizacao: linha.sincronizacao,
     /* Resolvido AQUI, pela mesma função que o compositor usa para gerar
        o PDF. A estação só exibe: o template é consequência do segmento,
        e o lugar de trocá-lo é o compositor, onde a escolha chega até a
