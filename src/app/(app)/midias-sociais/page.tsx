@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
-import { Database } from "lucide-react";
+import { ArrowUpRight, CalendarClock, Database } from "lucide-react";
 
 import { PageContainer, PageHeader } from "@/components/layout/page-header";
 import { SocialWorkspace } from "@/components/social/social-workspace";
@@ -82,6 +82,28 @@ export default async function MidiasSociaisPage() {
       <PageHeader
         title="Mídias sociais"
         description="Calendário editorial, aprovação do cliente e registro de publicação."
+        /* O CARIMBO É A METADE QUE FALTA AQUI. Esta tela planeja, coleta
+           aprovação e registra o que foi ao ar — e não publica, por
+           desenho (ver o cabeçalho do arquivo). Quem publica no
+           Instagram e no Facebook é o Carimbo, com a agenda e o link de
+           aprovação dele.
+
+           Abre em aba nova: é outro sistema, com login próprio, e
+           trocar a aba atual faria a pessoa perder o calendário que
+           estava montando. `rel` junto do `target` porque sem ele a
+           página de destino ganha acesso a `window.opener`. */
+        actions={
+          <a
+            href="https://carimbo.marketingelo.com.br"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-hairline px-3.5 text-sm font-medium transition-colors hover:border-signal hover:text-signal"
+          >
+            <CalendarClock className="size-4" />
+            Publicar no Carimbo
+            <ArrowUpRight className="size-3.5 opacity-60" />
+          </a>
+        }
       />
 
       <div className="mt-7">
