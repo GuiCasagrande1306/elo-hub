@@ -10,6 +10,7 @@ import {
   View,
 } from "@react-pdf/renderer";
 
+import { escalaDoGrafico } from "../escala-do-grafico";
 import type { ReportPayload } from "@/lib/reports/payload";
 import { copyDoAnuncio, semEmoji } from "./texto-seguro";
 import { payloadHeadline } from "@/lib/reports/payload";
@@ -19,6 +20,7 @@ import {
   formatDelta,
   formatMultiplier,
   formatNumber,
+  formatCurrencyCompact,
   formatPercent,
   formatPeriod,
 } from "@/lib/format";
@@ -1067,10 +1069,76 @@ function TrendBars({
     series.find((s) => data.some((p) => valorDaSerie(p, s) === max)) ??
     series[0];
 
+  /* ⚠️ EIXO SÓ QUANDO A ESCALA TEM UMA UNIDADE. As séries dividem um
+     quadro só; com dinheiro e contagem juntas, um "200" na lateral não
+     diz se são reais ou pedidos, e a marca do meio mentiria para uma
+     das duas. Hoje nenhum template mistura — três pedem ["results"] e
+     um pede ["spend","revenue"] —, mas o seletor permite, e o eixo
+     errado é pior que eixo nenhum. Sem ele, o gráfico volta ao que era:
+     barras comparáveis entre si, com o pico escrito embaixo. */
+  const unidades = new Set(series.map(unidadeDaSerie));
+  const escala = unidades.size === 1 ? escalaDoGrafico(max, [...unidades][0]) : null;
+
+  /* O topo do eixo é maior que o dado (ver `escalaDoGrafico`), então as
+     barras passam a ser medidas contra ele — senão a mais alta
+     encostaria no topo e desmentiria a própria marca. */
+  const teto = escala?.topo ?? max;
+
+  const rotuloDaMarca = (valor: number) =>
+    unidadeDaSerie(series[0]) === "contagem"
+      ? formatNumber(valor)
+      : /* Compacto: "R$ 40 mil" cabe na calha; "R$ 40.000,00" não, e o
+           react-pdf quebraria em duas linhas dentro de 7pt. */
+        formatCurrencyCompact(Math.round(valor * 100));
+
   return (
     <View>
-      <View style={styles.chartFrame}>
-        {data.map((point) => (
+      <View style={{ flexDirection: "row", gap: 5 }}>
+        {escala && (
+          /* A CALHA DO EIXO. Rótulos posicionados pelo VALOR, não
+             distribuídos em partes iguais: é isso que faz cada número
+             cair exatamente na linha que ele nomeia. */
+          <View style={{ width: LARGURA_DO_EIXO, height: 130 }}>
+            {escala.marcas.map((marca) => (
+              <Text
+                key={marca}
+                style={{
+                  position: "absolute",
+                  right: 0,
+                  // -3.2 centra o texto de 7pt na linha.
+                  bottom: (marca / teto) * ALTURA_DA_BARRA - 3.2,
+                  fontSize: 7,
+                  color: INK_SOFT,
+                }}
+              >
+                {rotuloDaMarca(marca)}
+              </Text>
+            ))}
+          </View>
+        )}
+
+        <View style={[styles.chartFrame, { flex: 1 }]}>
+          {/* AS LINHAS VÊM ANTES DAS BARRAS no JSX porque o react-pdf
+              pinta na ordem de declaração: depois, elas cruzariam por
+              cima do preenchimento. O zero não tem linha — é a borda
+              inferior do próprio quadro. */}
+          {escala?.marcas
+            .filter((marca) => marca > 0)
+            .map((marca) => (
+              <View
+                key={marca}
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  bottom: (marca / teto) * ALTURA_DA_BARRA,
+                  height: 0.5,
+                  backgroundColor: HAIRLINE,
+                }}
+              />
+            ))}
+
+          {data.map((point) => (
           <View
             key={point.date}
             style={{ flex: 1, flexDirection: "row", gap: 0.6, alignItems: "flex-end" }}
@@ -1082,7 +1150,10 @@ function TrendBars({
                   flex: 1,
                   // Mínimo de 2pt: dia com valor quase zero ainda precisa
                   // aparecer como barra, senão parece dado faltando.
-                  height: Math.max((valorDaSerie(point, s) / max) * 124, 2),
+                  height: Math.max(
+                    (valorDaSerie(point, s) / teto) * ALTURA_DA_BARRA,
+                    2,
+                  ),
                   backgroundColor: i === 0 ? accent : INK_SOFT,
                   borderTopLeftRadius: 1.5,
                   borderTopRightRadius: 1.5,
@@ -1091,9 +1162,17 @@ function TrendBars({
             ))}
           </View>
         ))}
+        </View>
       </View>
 
-      <View style={styles.chartAxis}>
+      {/* O eixo das datas começa depois da calha, para o primeiro dia
+          ficar sob a primeira barra e não sob o número do eixo. */}
+      <View
+        style={[
+          styles.chartAxis,
+          escala ? { marginLeft: LARGURA_DO_EIXO + 5 } : {},
+        ]}
+      >
         <Text>{formatDate(`${data[0].date}T12:00:00`)}</Text>
         <Text>pico {formatarSerie(max, serieDoPico)}</Text>
         <Text>{formatDate(`${data[data.length - 1].date}T12:00:00`)}</Text>
@@ -1147,6 +1226,19 @@ function TrendBars({
  * gráfico sempre desenhou, então a ausência de `options` mantém o
  * comportamento antigo em vez de esvaziar a seção.
  */
+/**
+ * Altura útil do quadro, em pontos.
+ *
+ * O `chartFrame` tem 130 e 1pt de `paddingBottom`; 124 é o que sobra
+ * para a barra mais alta. A constante existe porque o número aparece em
+ * três lugares agora — barra, linha do eixo e rótulo — e três cópias de
+ * 124 divergiriam no primeiro ajuste de altura.
+ */
+const ALTURA_DA_BARRA = 124;
+
+/** Calha do eixo vertical. Cabe "R$ 40 mil" em 7pt, que é o mais longo. */
+const LARGURA_DO_EIXO = 30;
+
 type SerieDoGrafico = "spend" | "results" | "revenue" | "cpa";
 
 const SERIES_VALIDAS: SerieDoGrafico[] = ["spend", "results", "revenue", "cpa"];
@@ -1172,6 +1264,17 @@ function seriesDoTemplate(
   );
 
   return validas.length > 0 ? validas.slice(0, 2) : ["spend"];
+}
+
+/**
+ * Em que unidade esta série se mede.
+ *
+ * Decide o rótulo do eixo vertical e, antes disso, SE existe eixo: com
+ * dinheiro e contagem na mesma escala não há número que sirva para as
+ * duas. Ver a nota em `TrendBars`.
+ */
+function unidadeDaSerie(s: SerieDoGrafico): "dinheiro" | "contagem" {
+  return s === "results" ? "contagem" : "dinheiro";
 }
 
 /** `TrendPoint` guarda dinheiro em REAIS, não centavos. */
