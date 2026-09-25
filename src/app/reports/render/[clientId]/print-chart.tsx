@@ -2,6 +2,16 @@
 
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
+import { formatCurrencyCompact, formatDate, formatNumber } from "@/lib/format";
+import type { TrendPoint } from "@/lib/metrics/kpi";
+import { escalaDoGrafico } from "@/lib/reports/escala-do-grafico";
+import {
+  ROTULO_DA_SERIE,
+  unidadeComum,
+  valorDaSerie,
+  type SerieDoGrafico,
+} from "@/lib/reports/serie-do-grafico";
+
 /* =====================================================================
    Gráfico da página de impressão
    ---------------------------------------------------------------------
@@ -16,40 +26,29 @@ import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
    2. `isAnimationActive={false}`. A animação de entrada é movida a
       requestAnimationFrame; o Puppeteer tira a foto antes de ela
       terminar e as barras saem cortadas ou zeradas.
+
+   ⚠️ ESTE GRÁFICO E O DO PDF SÃO O MESMO GRÁFICO. A folha existe para a
+   equipe conferir antes de enviar; enquanto os dois divergiam, a
+   revisão aprovava um desenho e o cliente recebia outro. Quatro
+   divergências foram fechadas em 25/09/2026 — série, granularidade,
+   número de séries e título —, e o que as separava está listado em
+   `lib/reports/serie-do-grafico.ts`.
+
+   A ESCALA TAMBÉM É A MESMA. `escalaDoGrafico` decide topo e marcas nos
+   dois; deixar o Recharts escolher sozinho faria a folha dizer 0–15 e o
+   PDF 0–16 para o mesmo dado, e quem comparasse os dois desconfiaria do
+   número, não da escala.
    ===================================================================== */
 
-export interface WeeklyPoint {
-  label: string;
-  spend: number;
-  results: number;
-}
-
-/**
- * A MESMA SÉRIE QUE O PDF DESENHA.
- *
- * ⚠️ Os dois renderizadores desenham o MESMO relatório: o `react-pdf`
- * (o padrão, que vai para o cliente) e esta folha A4 — fotografada pelo
- * Puppeteer quando `PDF_ENGINE=puppeteer`, e aberta pela equipe para
- * revisar antes de enviar.
- *
- * Enquanto os dois mostravam gasto, divergiam só na granularidade
- * (diário contra semanal). Quando o PDF passou a respeitar
- * `sections[].options.series`, esta folha ficou desenhando investimento
- * onde o arquivo entregue desenha pedidos — em três dos quatro
- * templates de produção. A equipe revisaria uma coisa e o cliente
- * receberia outra, que é o defeito que o módulo compartilhado de
- * `platform-detail` existe para não repetir.
- */
 export function PrintWeeklyChart({
   data,
   color,
-  serie = "spend",
+  series,
 }: {
-  data: WeeklyPoint[];
+  data: TrendPoint[];
   color: string;
-  serie?: "spend" | "results";
+  series: SerieDoGrafico[];
 }) {
-  const dinheiro = serie === "spend";
   if (data.length === 0) {
     return (
       <p className="py-16 text-center text-sm text-neutral-400">
@@ -58,41 +57,103 @@ export function PrintWeeklyChart({
     );
   }
 
+  const max = Math.max(
+    ...series.flatMap((s) => data.map((p) => valorDaSerie(p, s))),
+    0,
+  );
+
+  if (max <= 0) {
+    return (
+      <p className="py-16 text-center text-sm text-neutral-400">
+        Sem {ROTULO_DA_SERIE[series[0]].toLowerCase()} no período.
+      </p>
+    );
+  }
+
+  /* Eixo numérico só quando as séries dividem a mesma unidade — com
+     dinheiro e contagem no mesmo quadro, um "200" na lateral não diz se
+     são reais ou pedidos. Mesma regra do PDF. */
+  const unidade = unidadeComum(series);
+  const escala = unidade ? escalaDoGrafico(max, unidade) : null;
+
+  /* O Recharts precisa de chaves planas; `valorDaSerie` é quem sabe ler
+     cada série do ponto, e é dele que o PDF também lê. */
+  const pontos = data.map((p) => ({
+    dia: formatDate(`${p.date}T12:00:00`),
+    ...Object.fromEntries(series.map((s) => [s, valorDaSerie(p, s)])),
+  }));
+
+  const rotulo = (v: number) =>
+    unidade === "contagem"
+      ? formatNumber(v)
+      : formatCurrencyCompact(Math.round(v * 100));
+
   return (
+    <div className="flex flex-col items-center">
     <BarChart
       width={620}
       height={220}
-      data={data}
+      data={pontos}
       margin={{ top: 8, right: 8, bottom: 0, left: 8 }}
     >
       <CartesianGrid vertical={false} stroke="#e6e8ec" strokeDasharray="3 3" />
       <XAxis
-        dataKey="label"
+        dataKey="dia"
         tickLine={false}
         axisLine={false}
         tick={{ fill: "#64707d", fontSize: 11 }}
+        /* Com trinta dias, trinta rótulos viram uma tarja cinza. O
+           Recharts corta sozinho os que não cabem. */
+        interval="preserveStartEnd"
+        minTickGap={18}
       />
-      <YAxis
-        tickFormatter={(v: number) =>
-          dinheiro
-            ? `R$ ${v.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`
-            : v.toLocaleString("pt-BR", { maximumFractionDigits: 0 })
-        }
-        tickLine={false}
-        axisLine={false}
-        // 84, não 70: com a largura justa o Recharts quebra "R$ 3.000" em
-        // duas linhas. Ele mede o texto e parte a palavra quando o rótulo
-        // encosta no limite — e a medição em headless difere o suficiente
-        // para acontecer só em alguns ticks, o que parece defeito de dado.
-        width={84}
-        tick={{ fill: "#64707d", fontSize: 11 }}
-      />
-      <Bar
-        dataKey={serie}
-        fill={color}
-        radius={[5, 5, 0, 0]}
-        isAnimationActive={false}
-      />
+      {escala && (
+        <YAxis
+          domain={[0, escala.topo]}
+          ticks={[...escala.marcas].reverse()}
+          tickFormatter={rotulo}
+          tickLine={false}
+          axisLine={false}
+          // 84, não 70: com a largura justa o Recharts quebra "R$ 3.000" em
+          // duas linhas. Ele mede o texto e parte a palavra quando o rótulo
+          // encosta no limite — e a medição em headless difere o suficiente
+          // para acontecer só em alguns ticks, o que parece defeito de dado.
+          width={84}
+          tick={{ fill: "#64707d", fontSize: 11 }}
+        />
+      )}
+      {series.map((s, i) => (
+        <Bar
+          key={s}
+          dataKey={s}
+          /* A primeira série leva a cor da marca; a segunda, o cinza do
+             texto secundário. É a mesma dupla do PDF. */
+          fill={i === 0 ? color : "#64707d"}
+          radius={[5, 5, 0, 0]}
+          isAnimationActive={false}
+        />
+      ))}
     </BarChart>
+
+      {/* LEGENDA PRÓPRIA, e não a do Recharts. Esta versão da biblioteca
+          não aceita `payload`, e sem ele ela listava "Faturamento ·
+          Investimento" enquanto o PDF imprime "Investimento ·
+          Faturamento" — a mesma dupla em ordem trocada nos dois
+          documentos que deveriam ser um só. Dois quadrados e dois
+          rótulos não valem uma divergência. */}
+      {series.length > 1 && (
+        <div className="mt-1 flex items-center gap-3 text-[11px] text-[#64707d]">
+          {series.map((s, i) => (
+            <span key={s} className="flex items-center gap-1.5">
+              <span
+                className="inline-block size-[7px] rounded-[1px]"
+                style={{ backgroundColor: i === 0 ? color : "#64707d" }}
+              />
+              {ROTULO_DA_SERIE[s]}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

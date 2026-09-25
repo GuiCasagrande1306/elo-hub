@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 
 import { PrintWeeklyChart } from "./print-chart";
+import { ROTULO_DA_SERIE } from "@/lib/reports/serie-do-grafico";
 import { PrintToolbar } from "./print-toolbar";
 import { getPrintReportData } from "@/lib/reports/print-data";
 import { resolverAgencia } from "@/lib/reports/payload";
@@ -95,8 +96,8 @@ export default async function PrintReportPage({
     platforms,
     platformDetail,
     creatives,
-    weekly,
-    serieDoGrafico,
+    trend,
+    grafico,
     totals,
     creativesDoPeriodo,
   } = data;
@@ -275,17 +276,24 @@ export default async function PrintReportPage({
             ))}
           </div>
 
-          {/* Evolução semanal */}
+          {/* O GRÁFICO DIÁRIO, igual ao do PDF.
+              O título vem do template — era "Evolução semanal ·
+              Investimento por semana" escrito aqui, e seguia dizendo
+              "investimento" e "semana" enquanto o gráfico mostrava
+              contatos por dia. */}
           <div className="mt-7 rounded-xl border border-[#e6e8ec] p-5">
-            <h3 className="text-[13px] font-semibold">Evolução semanal</h3>
+            <h3 className="text-[13px] font-semibold">
+              {grafico.titulo ?? "Evolução no período"}
+            </h3>
             <p className="mt-0.5 text-[11px] text-[#64707d]">
-              Investimento por semana do período.
+              {grafico.series.map((s) => ROTULO_DA_SERIE[s]).join(" e ")} por
+              dia.
             </p>
             <div className="mt-3 flex justify-center">
               <PrintWeeklyChart
-                data={weekly}
+                data={trend}
                 color={brand}
-                serie={serieDoGrafico}
+                series={grafico.series}
               />
             </div>
           </div>

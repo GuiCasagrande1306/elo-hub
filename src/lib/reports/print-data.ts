@@ -15,7 +15,12 @@ import {
   sumMetrics,
   type KpiResult,
   type PlatformSplit,
+  type TrendPoint,
 } from "@/lib/metrics/kpi";
+import {
+  graficoDoTemplate,
+  type SerieDoGrafico,
+} from "./serie-do-grafico";
 import {
   buildPlatformDetail,
   type PlatformDetail,
@@ -53,27 +58,11 @@ const HERO_METRICS: MetricKey[] = ["spend", "results", "cpa"];
  */
 async function doTemplate(client: Client): Promise<{
   rotulos: Partial<Record<MetricKey, string>>;
-  /* A série do gráfico, do MESMO `sections[].options.series` que o PDF
-     lê. Sem isto a folha desenhava investimento onde o arquivo entregue
-     desenha pedidos — ver a nota em `PrintWeeklyChart`. */
-  serieDoGrafico: "spend" | "results";
+  /* O gráfico inteiro do MESMO template que o PDF lê: as séries e o
+     título. Ver `serie-do-grafico.ts` para a lista de divergências que
+     isso fecha. */
+  grafico: { series: SerieDoGrafico[]; titulo: string | null };
 }> {
-  const daSecao = (sections: unknown): "spend" | "results" => {
-    const s = Array.isArray(sections)
-      ? (sections as { type?: string; options?: { series?: unknown } }[]).find(
-          (x) => x.type === "trend_chart",
-        )
-      : null;
-    const serie = Array.isArray(s?.options?.series)
-      ? (s?.options?.series as unknown[])[0]
-      : null;
-    /* Só estas duas: o gráfico semanal tem UMA barra por semana, e
-       `revenue` numa escala de dinheiro junto com `spend` exigiria a
-       segunda série que esta folha não desenha. `spend` é o padrão
-       histórico dela. */
-    return serie === "results" ? "results" : "spend";
-  };
-
   if (isDemoMode) {
     const { demoTemplates } = await import("@/lib/mock/data");
     const t =
@@ -81,7 +70,7 @@ async function doTemplate(client: Client): Promise<{
       demoTemplates.find((x) => x.segment === client.segment);
     return {
       rotulos: t?.metric_labels ?? {},
-      serieDoGrafico: daSecao(t?.sections),
+      grafico: graficoDoTemplate(t?.sections),
     };
   }
 
@@ -96,7 +85,7 @@ async function doTemplate(client: Client): Promise<{
 
   return {
     rotulos: (data?.metric_labels ?? {}) as Partial<Record<MetricKey, string>>,
-    serieDoGrafico: daSecao(data?.sections),
+    grafico: graficoDoTemplate(data?.sections),
   };
 }
 
@@ -113,10 +102,16 @@ export interface PrintReportData {
   creatives: AdCreative[];
   /** Se os números da galeria foram apurados para o período. */
   creativesDoPeriodo: boolean;
-  /** Agregado por semana — o gráfico do resumo executivo. */
-  weekly: { label: string; spend: number; results: number }[];
-  /** Qual barra o gráfico semanal desenha. Igual à do PDF. */
-  serieDoGrafico: "spend" | "results";
+  /**
+   * A série DIÁRIA do gráfico — a mesma que o PDF desenha.
+   *
+   * Era agregada por semana até 25/09/2026: num relatório de sete dias,
+   * o PDF mostrava sete barras e esta folha mostrava UMA. Quem revisava
+   * não tinha como ver o dia fraco que o cliente ia ver.
+   */
+  trend: TrendPoint[];
+  /** As séries e o título do gráfico, do template. Iguais aos do PDF. */
+  grafico: { series: SerieDoGrafico[]; titulo: string | null };
   totals: { spendCents: number; results: number };
   period: { start: string; end: string };
 }
@@ -154,7 +149,7 @@ export async function getPrintReportData(
         periodEnd,
         template.rotulos,
         await tiposDeConversaoDoCliente(clientId),
-        template.serieDoGrafico,
+        template.grafico,
       ),
       /* A demonstração não chama a Graph API — os números vêm da
          fixture, que não tem janela. Marcar como "não apurado" faz a
@@ -227,7 +222,7 @@ export async function getPrintReportData(
       periodEnd,
       template.rotulos,
       await tiposDeConversaoDoCliente(clientId),
-      template.serieDoGrafico,
+      template.grafico,
     ),
     creativesDoPeriodo: metricasDoPeriodo !== null,
   };
@@ -306,7 +301,10 @@ function assemble(
   periodEnd: string,
   rotulos: Partial<Record<MetricKey, string>> = {},
   tiposDeConversao: string[] = [],
-  serieDoGrafico: "spend" | "results" = "spend",
+  grafico: { series: SerieDoGrafico[]; titulo: string | null } = {
+    series: ["spend"],
+    titulo: null,
+  },
 ): Omit<PrintReportData, "creativesDoPeriodo"> {
   const currentTotals = sumMetrics(current, tiposDeConversao);
   const previousTotals = sumMetrics(previous, tiposDeConversao);
@@ -331,8 +329,8 @@ function assemble(
       tiposDeConversao,
     ),
     creatives,
-    weekly: toWeekly(current),
-    serieDoGrafico,
+    trend: buildTrend(current, tiposDeConversao),
+    grafico,
     totals: {
       spendCents: currentTotals.spendCents,
       results: currentTotals.conversions,
@@ -348,20 +346,3 @@ function assemble(
  * ilegível. Quatro ou cinco barras semanais mostram a MESMA tendência e
  * cabem com folga — é a granularidade certa para relatório impresso.
  */
-function toWeekly(rows: DailyMetric[]) {
-  const daily = buildTrend(rows);
-  const semanas: { label: string; spend: number; results: number }[] = [];
-
-  for (let i = 0; i < daily.length; i += 7) {
-    const bloco = daily.slice(i, i + 7);
-    if (bloco.length === 0) continue;
-
-    semanas.push({
-      label: `Sem ${semanas.length + 1}`,
-      spend: bloco.reduce((acc, d) => acc + d.spend, 0),
-      results: bloco.reduce((acc, d) => acc + d.results, 0),
-    });
-  }
-
-  return semanas;
-}

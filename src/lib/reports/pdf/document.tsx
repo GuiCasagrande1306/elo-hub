@@ -11,6 +11,15 @@ import {
 } from "@react-pdf/renderer";
 
 import { escalaDoGrafico } from "../escala-do-grafico";
+import {
+  ROTULO_DA_SERIE,
+  formatarSerie,
+  seriesDoTemplate,
+  unidadeComum,
+  unidadeDaSerie,
+  valorDaSerie,
+  type SerieDoGrafico,
+} from "../serie-do-grafico";
 import type { ReportPayload } from "@/lib/reports/payload";
 import { copyDoAnuncio, semEmoji } from "./texto-seguro";
 import { payloadHeadline } from "@/lib/reports/payload";
@@ -1076,8 +1085,8 @@ function TrendBars({
      um pede ["spend","revenue"] —, mas o seletor permite, e o eixo
      errado é pior que eixo nenhum. Sem ele, o gráfico volta ao que era:
      barras comparáveis entre si, com o pico escrito embaixo. */
-  const unidades = new Set(series.map(unidadeDaSerie));
-  const escala = unidades.size === 1 ? escalaDoGrafico(max, [...unidades][0]) : null;
+  const unidade = unidadeComum(series);
+  const escala = unidade ? escalaDoGrafico(max, unidade) : null;
 
   /* O topo do eixo é maior que o dado (ver `escalaDoGrafico`), então as
      barras passam a ser medidas contra ele — senão a mais alta
@@ -1206,27 +1215,6 @@ function TrendBars({
 /* ------------------------------------------------------------------ */
 
 /**
- * O que o gráfico desenha, lido de `sections[].options.series`.
- *
- * ⚠️ ISSO ERA IGNORADO, e o título ficava mentindo. `SectionBody`
- * recebia só `section.type` e `TrendBars` desenhava `spend` sempre — em
- * TODOS os templates. Os quatro em produção pedem outra coisa:
- *
- *     delivery        "Pedidos por dia"        series: results
- *     leads           "Leads por dia"          series: results
- *     local_business  "Contatos por dia"       series: results
- *     ecommerce       "Investimento x receita" series: spend + revenue
- *
- * Ou seja, o PDF de qualquer conta de delivery saía com o título
- * "Pedidos por dia" sobre trinta barras cuja altura era o GASTO do dia,
- * e o único sinal disso era o "pico R$ 191,72" no eixo. O cliente lia o
- * pico de investimento de uma terça como pico de pedidos.
- *
- * `spend` como padrão para o template que não declarar nada: é o que o
- * gráfico sempre desenhou, então a ausência de `options` mantém o
- * comportamento antigo em vez de esvaziar a seção.
- */
-/**
  * Altura útil do quadro, em pontos.
  *
  * O `chartFrame` tem 130 e 1pt de `paddingBottom`; 124 é o que sobra
@@ -1238,61 +1226,6 @@ const ALTURA_DA_BARRA = 124;
 
 /** Calha do eixo vertical. Cabe "R$ 40 mil" em 7pt, que é o mais longo. */
 const LARGURA_DO_EIXO = 30;
-
-type SerieDoGrafico = "spend" | "results" | "revenue" | "cpa";
-
-const SERIES_VALIDAS: SerieDoGrafico[] = ["spend", "results", "revenue", "cpa"];
-
-const ROTULO_DA_SERIE: Record<SerieDoGrafico, string> = {
-  spend: "Investimento",
-  results: "Resultados",
-  revenue: "Faturamento",
-  cpa: "Custo por resultado",
-};
-
-function seriesDoTemplate(
-  options: Record<string, unknown> | undefined,
-): SerieDoGrafico[] {
-  const bruto = options?.series;
-  if (!Array.isArray(bruto)) return ["spend"];
-
-  /* DUAS NO MÁXIMO: são barras agrupadas dentro de uma moldura de 124pt
-     de altura e uma página A4 de largura. Com três, um período de trinta
-     dias dá noventa barras e nenhuma delas é legível. */
-  const validas = bruto.filter((s): s is SerieDoGrafico =>
-    SERIES_VALIDAS.includes(s as SerieDoGrafico),
-  );
-
-  return validas.length > 0 ? validas.slice(0, 2) : ["spend"];
-}
-
-/**
- * Em que unidade esta série se mede.
- *
- * Decide o rótulo do eixo vertical e, antes disso, SE existe eixo: com
- * dinheiro e contagem na mesma escala não há número que sirva para as
- * duas. Ver a nota em `TrendBars`.
- */
-function unidadeDaSerie(s: SerieDoGrafico): "dinheiro" | "contagem" {
-  return s === "results" ? "contagem" : "dinheiro";
-}
-
-/** `TrendPoint` guarda dinheiro em REAIS, não centavos. */
-function valorDaSerie(ponto: ReportPayload["trend"][number], s: SerieDoGrafico) {
-  return s === "spend"
-    ? ponto.spend
-    : s === "revenue"
-      ? ponto.revenue
-      : s === "cpa"
-        ? ponto.cpa
-        : ponto.results;
-}
-
-function formatarSerie(valor: number, s: SerieDoGrafico): string {
-  return s === "results"
-    ? formatNumber(Math.round(valor))
-    : formatCurrency(Math.round(valor * 100));
-}
 
 function PlatformBars({
   payload,
