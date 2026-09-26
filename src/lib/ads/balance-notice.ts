@@ -7,6 +7,8 @@ import { formatCurrency } from "@/lib/format";
 import { sendTextMessage } from "@/lib/whatsapp";
 import { instanceNameFor } from "@/lib/whatsapp/session";
 import { getBalanceAlertsAsSystem, type BalanceAlert } from "./balances";
+import { coletaParada } from "./coleta-parada";
+import { secaoDaColeta, type IntegracaoParada } from "./aviso-da-coleta";
 
 /* =====================================================================
    O aviso diário de saldo
@@ -25,6 +27,22 @@ import { getBalanceAlertsAsSystem, type BalanceAlert } from "./balances";
    cadastro, não risco de queda — e são 23 delas. Uma lista de 23 linhas
    dizendo "não sei" todo dia seria exatamente o ruído que faz o aviso
    ser silenciado.
+
+   ---------------------------------------------------------------------
+   A COLETA PARADA ANDA JUNTO, e não em mensagem separada.
+
+   Em 18/09/2026 a conta de Facebook que autorizava a carteira inteira
+   foi restringida, todos os tokens morreram e a coleta parou. O sistema
+   sabia — `sync_error` estava gravado desde a primeira madrugada — e
+   ninguém soube por quatro dias, porque a tela só conta quando alguém
+   abre. Outro canal de aviso seria mais um lugar para silenciar; este
+   já vai para o grupo de trabalho e já é lido.
+
+   E as duas coisas SE LÊEM JUNTAS: "restam 3 dias" é calculado sobre o
+   gasto médio de `daily_metrics`. Com a coleta parada, esse número
+   envelhece parado, sem nada na tela dizendo. Por isso a seção da
+   coleta vem ANTES da de saldo — quem lê precisa saber que o resto da
+   mensagem pode estar velho antes de agir sobre ele.
    ===================================================================== */
 
 export interface ResultadoDoAviso {
@@ -33,6 +51,8 @@ export interface ResultadoDoAviso {
   destino?: string;
   criticas?: number;
   desatualizadas?: number;
+  /** Integrações sem dado novo. Ver `coleta-parada.ts`. */
+  coletaParada?: number;
 }
 
 export async function enviarAvisoDeSaldo(): Promise<ResultadoDoAviso> {
@@ -61,14 +81,34 @@ export async function enviarAvisoDeSaldo(): Promise<ResultadoDoAviso> {
   const criticas = alertas.filter((a) => a.status === "critical");
   const desatualizadas = alertas.filter((a) => a.status === "stale");
 
-  if (criticas.length === 0 && desatualizadas.length === 0) {
+  /* ⚠️ MEDIDO AQUI E NÃO DENTRO DE `getBalanceAlertsAsSystem`: a coleta
+     parada não é um estado de saldo, é a razão pela qual o saldo pode
+     estar mentindo. Atravessar o cálculo de projeção com isto dentro
+     confundiria as duas coisas justamente onde elas precisam ficar
+     distintas. */
+  const parada = await coletaParada();
+
+  if (
+    criticas.length === 0 &&
+    desatualizadas.length === 0 &&
+    parada.length === 0
+  ) {
     /* NADA A DIZER É NOTÍCIA BOA, e não se manda notícia boa todo dia.
        Também não marca `last_sent_on`: se uma conta virar crítica às
        15h, o aviso de amanhã de manhã ainda é o primeiro do assunto. */
-    return { enviado: false, motivo: "nenhuma conta crítica ou desatualizada" };
+    return { enviado: false, motivo: "nada crítico, desatualizado ou parado" };
   }
 
-  const texto = montarMensagem(criticas, desatualizadas);
+  /* ⚠️ A COLETA PARADA MANDA O AVISO SOZINHA, sem nenhuma conta crítica.
+     É exatamente o caso de 18/09/2026: nenhum saldo estava zerando, e o
+     que estava errado era que o dado tinha parado de entrar. Com a trava
+     antiga — "só manda se houver crítica ou desatualizada" — aquele dia
+     não teria produzido mensagem nenhuma.
+
+     REPETE TODO DIA enquanto durar, e isso é proposital: não é ruído, é
+     uma queda que ninguém resolveu. `last_sent_on` mantém em uma por
+     dia. */
+  const texto = montarMensagem(criticas, desatualizadas, parada);
   const envio = await sendTextMessage(
     config.group_jid,
     texto,
@@ -89,6 +129,7 @@ export async function enviarAvisoDeSaldo(): Promise<ResultadoDoAviso> {
     destino: config.group_name ?? config.group_jid,
     criticas: criticas.length,
     desatualizadas: desatualizadas.length,
+    coletaParada: parada.length,
   };
 }
 
@@ -103,8 +144,17 @@ export async function enviarAvisoDeSaldo(): Promise<ResultadoDoAviso> {
 function montarMensagem(
   criticas: BalanceAlert[],
   desatualizadas: BalanceAlert[],
+  parada: IntegracaoParada[],
 ): string {
   const linhas: string[] = ["*Saldo de mídia — atenção hoje*", ""];
+
+  /* A COLETA VEM PRIMEIRO. Ver a nota no cabeçalho: os dias restantes
+     abaixo são calculados sobre o gasto de `daily_metrics`, então uma
+     coleta parada faz o resto da mensagem envelhecer sem avisar. Quem lê
+     precisa saber disso antes de agir sobre os números de baixo. */
+  if (parada.length > 0) {
+    linhas.push(...secaoDaColeta(parada), "");
+  }
 
   if (criticas.length > 0) {
     linhas.push(
@@ -156,7 +206,11 @@ function montarMensagem(
     linhas.push("");
   }
 
-  linhas.push("Conferir em Alertas de saldo.");
+  linhas.push(
+    parada.length > 0
+      ? "Conferir em Alertas de saldo. A coleta se resolve em Clientes → Contas de mídia."
+      : "Conferir em Alertas de saldo.",
+  );
 
   return linhas.join("\n");
 }
