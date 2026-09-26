@@ -57,6 +57,8 @@ export function MetaAccountPicker({
   const [erro, setErro] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
   const [buscou, setBuscou] = useState(false);
+  /* De quem é o acesso que produziu esta lista. Ver a nota no rodapé. */
+  const [acesso, setAcesso] = useState<string | null>(null);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -71,13 +73,20 @@ export function MetaAccountPicker({
          devolvesse a página de erro em HTML — foi assim que o envio de
          relatório falhou de forma ilegível antes. */
       const texto = await r.text();
-      let d: { ok?: boolean; accounts?: Conta[]; error?: string };
+      let d: {
+        ok?: boolean;
+        accounts?: Conta[];
+        error?: string;
+        acesso?: string | null;
+      };
       try {
         d = JSON.parse(texto) as typeof d;
       } catch {
         setErro(`O servidor respondeu ${r.status} sem JSON.`);
         return;
       }
+
+      setAcesso(d.acesso ?? null);
 
       if (d.ok) {
         setContas(d.accounts ?? []);
@@ -221,6 +230,25 @@ export function MetaAccountPicker({
               <CommandEmpty>Nenhuma conta encontrada.</CommandEmpty>
             )}
           </CommandList>
+
+          {/* DE QUEM É ESTA LISTA.
+
+              ⚠️ A pergunta "por que a conta do cliente não está aqui?"
+              nasce nesta caixa, e a resposta é sempre a mesma: a rota
+              chama `me/adaccounts`, então a lista é o que o DONO DO
+              TOKEN alcança — nada filtra por Business Manager. Sem esta
+              linha, quem procura uma conta que falta procura no lugar
+              errado. O conserto nunca é no sistema: é dar acesso a essa
+              pessoa, ou reautorizar com quem já tem. */}
+          {!carregando && acesso && (
+            <p className="border-t border-hairline px-3 py-2 text-2xs text-muted-foreground">
+              {contas.length > 0
+                ? `${contas.length} ${contas.length === 1 ? "conta" : "contas"} que ${acesso} alcança.`
+                : `Este é o acesso de ${acesso}.`}{" "}
+              Uma conta que falta aqui é acesso que falta a ele — não
+              defeito do sistema.
+            </p>
+          )}
         </Command>
       </PopoverContent>
     </Popover>

@@ -33,6 +33,19 @@ export interface OAuthState {
   platform: AdPlatform;
   /** Para onde devolver o usuário no fim. */
   returnTo: string;
+  /**
+   * Quem, no Elo Hub, começou o consentimento — nome e não id, porque o
+   * destino é `authorized_by_user_name`, que é fotografia do ato.
+   *
+   * VEM NO STATE e não da sessão: o callback recebe o navegador voltando
+   * de domínio externo, sem garantia de cookie — é justamente por isso
+   * que aquela rota não checa sessão. O state é assinado, então este
+   * campo é tão confiável quanto o `clientId` ao lado dele.
+   *
+   * Opcional porque um state emitido antes deste campo existir ainda
+   * pode estar em voo. Eles duram dez minutos.
+   */
+  userName?: string;
   exp: number;
 }
 
@@ -126,6 +139,22 @@ export async function saveIntegrationTokens(input: {
   externalAccountId?: string;
   displayName?: string;
   tokens: TokenBundle;
+  /**
+   * Quem é o dono deste token.
+   *
+   * ⚠️ NÃO É DETALHE DE AUDITORIA, é o que explica a lista de contas de
+   * anúncio. O token do Meta pertence a uma PESSOA, e o seletor mostra
+   * exatamente o que `me/adaccounts` dela alcança — nada no código
+   * filtra por Business Manager. Sem este registro, "por que a conta do
+   * cliente novo não aparece?" não tem resposta na tela.
+   */
+  authorizedBy?: {
+    /** Nome do dono do token na plataforma. Nulo quando ela não conta. */
+    name?: string | null;
+    externalId?: string | null;
+    /** Quem conduziu o consentimento dentro do Elo Hub. */
+    userName?: string | null;
+  };
 }): Promise<{ ok: true; integrationId: string } | { ok: false; error: string }> {
   const admin = createSupabaseAdminClient();
 
@@ -144,6 +173,14 @@ export async function saveIntegrationTokens(input: {
         display_name: input.displayName ?? null,
         is_active: true,
         sync_error: null,
+        /* REESCREVE A CADA REAUTORIZAÇÃO, de propósito: o dono do token
+           é o da autorização mais recente, e é esse que manda na lista
+           de contas. Guardar o primeiro seria guardar a informação
+           errada justamente depois de alguém trocar o autorizador. */
+        authorized_by_name: input.authorizedBy?.name ?? null,
+        authorized_by_external_id: input.authorizedBy?.externalId ?? null,
+        authorized_by_user_name: input.authorizedBy?.userName ?? null,
+        authorized_at: new Date().toISOString(),
       },
       { onConflict: "client_id,platform,external_account_id" },
     )

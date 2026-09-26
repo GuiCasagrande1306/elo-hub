@@ -302,6 +302,43 @@ function LinhaIntegracao({
         </Button>
       </div>
 
+      {/* DE QUEM É O TOKEN.
+
+          ⚠️ ISTO RESPONDE A PERGUNTA QUE NÃO TINHA RESPOSTA NA TELA. O
+          token do Meta pertence a uma PESSOA, e o seletor abaixo lista
+          exatamente o que `me/adaccounts` dela alcança — nada no código
+          filtra por Business Manager. Medido em 26/09/2026: as 60
+          integrações Meta ativas tinham as autorizações vivas todas no
+          mesmo usuário do Facebook, alcançando uma BM só.
+
+          Quando a conta de anúncios de um cliente novo não aparece na
+          lista, a causa é sempre esta — e sem a linha abaixo a pessoa
+          procura o defeito no sistema, não no acesso. */}
+      {status.connected && (status.authorizedByName || status.authorizedByUserName) && (
+        <p className="mt-2 text-2xs text-muted-foreground">
+          {status.authorizedByName ? (
+            <>
+              A lista de contas é a que{" "}
+              <span className="font-medium text-foreground">
+                {status.authorizedByName}
+              </span>{" "}
+              alcança no Facebook
+            </>
+          ) : (
+            <>Autorizado no Google</>
+          )}
+          {/* SÓ QUANDO OS NOMES DIFEREM. Na mesma pessoa a frase virava
+              "…que Ana Prado alcança no Facebook · pelo Elo Hub por Ana
+              Prado", que repete o nome sem dizer nada. Quando diferem,
+              a diferença é a informação: quem conduziu não é quem tem o
+              acesso. */}
+          {status.authorizedByUserName &&
+            status.authorizedByUserName !== status.authorizedByName &&
+            ` · pelo Elo Hub por ${status.authorizedByUserName}`}
+          {status.authorizedAt && ` · ${formatarDataHora(status.authorizedAt)}`}
+        </p>
+      )}
+
       {status.connected && (
         <div className="mt-3 border-t border-hairline pt-3">
           <div className="flex flex-wrap items-end gap-2">
@@ -508,6 +545,19 @@ function LinhaIntegracao({
       )}
     </div>
   );
+}
+
+/**
+ * "12/09/2026" a partir de um timestamp ISO.
+ *
+ * Sem hora: o que interessa é se a autorização é de antes ou de depois
+ * do problema que se está investigando, e minuto não muda essa resposta.
+ */
+function formatarDataHora(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
 }
 
 /** "05/08/2026" a partir de uma data YYYY-MM-DD. */

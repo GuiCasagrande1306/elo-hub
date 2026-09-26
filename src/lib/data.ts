@@ -1115,6 +1115,20 @@ export interface IntegrationStatus {
   displayName: string | null;
   lastSyncedAt: string | null;
   syncError: string | null;
+  /**
+   * De quem é o token, na plataforma.
+   *
+   * ⚠️ É O QUE EXPLICA A LISTA DE CONTAS DE ANÚNCIO. O token do Meta
+   * pertence a uma pessoa, e o seletor mostra exatamente o que
+   * `me/adaccounts` dela alcança — nada filtra por Business Manager.
+   * Nulo no Google (o escopo não revela) e nas linhas autorizadas antes
+   * de 26/09/2026.
+   */
+  authorizedByName: string | null;
+  authorizedByExternalId: string | null;
+  /** Quem conduziu o consentimento aqui dentro. */
+  authorizedByUserName: string | null;
+  authorizedAt: string | null;
   /** Só 'prepaid' entra no alerta de saldo. */
   billingType: "prepaid" | "postpaid";
   /** Evento do pixel que conta como conversão. null = padrão do segmento. */
@@ -1162,6 +1176,13 @@ export async function getClientIntegrations(
       displayName: platform === "meta_ads" ? "Verdi — Conta principal" : null,
       lastSyncedAt: null,
       syncError: null,
+      /* Com nome na demonstração porque esta linha é justamente o que
+         precisa ser demonstrado: sem ela, quem abre a demo não descobre
+         que a tela responde "de quem é este token". */
+      authorizedByName: platform === "meta_ads" ? "Ana Prado" : null,
+      authorizedByExternalId: null,
+      authorizedByUserName: platform === "meta_ads" ? "Ana Prado" : null,
+      authorizedAt: platform === "meta_ads" ? "2026-09-12T14:20:00Z" : null,
       billingType: "postpaid" as const,
       conversionActionType: null,
       fundsCents: null,
@@ -1174,7 +1195,10 @@ export async function getClientIntegrations(
   const { data } = await supabase
     .from("client_integrations")
     .select(
-      "platform, external_account_id, display_name, last_synced_at, sync_error, billing_type, conversion_action_type, funds_cents, funds_recorded_at, is_active",
+      /* LITERAL, nunca concatenado: o tipo do retorno é inferido do
+         texto deste select em tempo de compilação, e somar strings apaga
+         a inferência inteira. */
+      "platform, external_account_id, display_name, last_synced_at, sync_error, billing_type, conversion_action_type, funds_cents, funds_recorded_at, is_active, authorized_by_name, authorized_by_external_id, authorized_by_user_name, authorized_at",
     )
     .eq("client_id", clientId);
 
@@ -1187,6 +1211,11 @@ export async function getClientIntegrations(
       displayName: (linha?.display_name as string) ?? null,
       lastSyncedAt: (linha?.last_synced_at as string) ?? null,
       syncError: (linha?.sync_error as string) ?? null,
+      authorizedByName: (linha?.authorized_by_name as string) ?? null,
+      authorizedByExternalId:
+        (linha?.authorized_by_external_id as string) ?? null,
+      authorizedByUserName: (linha?.authorized_by_user_name as string) ?? null,
+      authorizedAt: (linha?.authorized_at as string) ?? null,
       billingType:
         (linha?.billing_type as "prepaid" | "postpaid") ?? "postpaid",
       conversionActionType:

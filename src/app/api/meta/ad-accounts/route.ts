@@ -60,14 +60,23 @@ export async function GET(request: NextRequest) {
 
   const { data: integracao } = await admin
     .from("client_integrations")
-    .select("id, integration_secrets(access_token)")
+    .select("id, authorized_by_name, integration_secrets(access_token)")
     .eq("client_id", clientId)
     .eq("platform", "meta_ads")
     .maybeSingle();
 
-  const token = (
-    integracao as { integration_secrets?: { access_token?: string | null } } | null
-  )?.integration_secrets?.access_token;
+  const vinculo = integracao as {
+    authorized_by_name?: string | null;
+    integration_secrets?: { access_token?: string | null };
+  } | null;
+
+  const token = vinculo?.integration_secrets?.access_token;
+
+  /* ⚠️ VIAJA COM A LISTA porque é a lista que provoca a pergunta. Esta
+     rota chama `me/adaccounts`: o que ela devolve é o que o DONO DO
+     TOKEN alcança, e nada aqui filtra por Business Manager. Sem dizer de
+     quem é o acesso, uma conta ausente parece defeito do sistema. */
+  const acesso = vinculo?.authorized_by_name ?? null;
 
   if (!token) {
     return NextResponse.json({
@@ -112,6 +121,7 @@ export async function GET(request: NextRequest) {
         const expirado = codigo === 190 || codigo === 102;
         return NextResponse.json({
           ok: false,
+          acesso,
           error: expirado
             ? "A autorização do Meta expirou. Clique em Reautorizar."
             : (dado.error?.message ?? `A Graph API respondeu ${resposta.status}.`),
@@ -156,5 +166,5 @@ export async function GET(request: NextRequest) {
         : 1,
   );
 
-  return NextResponse.json({ ok: true, accounts: contas });
+  return NextResponse.json({ ok: true, accounts: contas, acesso });
 }

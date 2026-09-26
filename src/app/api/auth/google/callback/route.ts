@@ -87,6 +87,13 @@ export async function GET(request: NextRequest) {
         : null,
       scopes: dado.scope ? dado.scope.split(" ") : null,
     },
+    /* SEM NOME DE PLATAFORMA, e é deliberado: o escopo pedido é só
+       `adwords`, que não revela identidade. Acrescentar `openid` para
+       descobrir o dono mudaria a tela de consentimento de todo mundo e
+       mandaria o app para nova revisão do Google — caro demais para uma
+       etiqueta. Fica quem conduziu o consentimento aqui dentro, que já
+       responde "quem foi" sem custo nenhum. */
+    authorizedBy: { userName: verificado.state.userName ?? null },
   });
 
   if (!salvo.ok) return falhar(request, salvo.error);

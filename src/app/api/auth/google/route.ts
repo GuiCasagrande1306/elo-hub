@@ -51,6 +51,9 @@ export async function GET(request: NextRequest) {
     clientId,
     platform: "google_ads",
     returnTo: request.nextUrl.searchParams.get("returnTo") ?? "/clientes",
+    /* Viaja no state porque o callback não tem sessão — ver a nota em
+       `OAuthState`. É o que faz a tela poder dizer quem autorizou. */
+    userName: user.full_name || user.email,
   });
 
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");

@@ -63,7 +63,21 @@ export async function GET(request: NextRequest) {
   const tokenLongo = await pegarToken(longo);
   const final = tokenLongo.ok ? tokenLongo : tokenCurto;
 
-  /* --- 3. Persistir ------------------------------------------------- */
+  /* --- 3. De quem é este token -------------------------------------
+     ⚠️ NÃO É ENFEITE. O token do Meta pertence a uma PESSOA, e o seletor
+     de contas de anúncio lista exatamente o que `me/adaccounts` dela
+     alcança — nada no código filtra por Business Manager. Sem registrar
+     o dono, "por que a conta deste cliente não aparece na lista?" fica
+     sem resposta na tela, e a resposta é sempre a mesma: porque quem
+     autorizou não enxerga aquela conta.
+
+     NUNCA DERRUBA O FLUXO. O token já é válido e o vínculo vale mais que
+     o rótulo: se esta chamada falhar, grava-se sem o nome. O contrário
+     — perder um consentimento recém-dado por causa de uma etiqueta —
+     obrigaria a pessoa a repetir o login por nada. */
+  const dono = await pegarDono(final.accessToken);
+
+  /* --- 4. Persistir ------------------------------------------------- */
   const salvo = await saveIntegrationTokens({
     clientId: verificado.state.clientId,
     platform: "meta_ads",
@@ -73,6 +87,11 @@ export async function GET(request: NextRequest) {
         ? new Date(Date.now() + final.expiresIn * 1000).toISOString()
         : null,
       scopes: ["ads_read", "business_management"],
+    },
+    authorizedBy: {
+      name: dono?.name ?? null,
+      externalId: dono?.id ?? null,
+      userName: verificado.state.userName ?? null,
     },
   });
 
@@ -112,6 +131,40 @@ async function pegarToken(url: URL): Promise<TokenOk | TokenErro> {
       ok: false,
       error: error instanceof Error ? error.message : "Falha de rede.",
     };
+  }
+}
+
+/**
+ * O dono do token, pela própria Graph API.
+ *
+ * `null` em qualquer tropeço — rede, permissão, JSON estranho. Ver a
+ * nota no passo 3 sobre por que isto não pode derrubar o consentimento.
+ */
+async function pegarDono(
+  accessToken: string,
+): Promise<{ id: string; name: string } | null> {
+  try {
+    const url = new URL(
+      `https://graph.facebook.com/${serverEnv.metaApiVersion}/me`,
+    );
+    url.searchParams.set("fields", "id,name");
+
+    const resposta = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      // Curto: é uma etiqueta. Não vale atrasar o redirecionamento de
+      // volta à tela por causa dela.
+      signal: AbortSignal.timeout(8_000),
+      cache: "no-store",
+    });
+
+    const dado = (await resposta.json().catch(() => ({}))) as {
+      id?: string;
+      name?: string;
+    };
+
+    return dado.id ? { id: dado.id, name: dado.name?.trim() || dado.id } : null;
+  } catch {
+    return null;
   }
 }
 
