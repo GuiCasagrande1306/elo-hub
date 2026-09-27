@@ -7,6 +7,7 @@ import {
   type MetricasDeCriativo,
 } from "./creative-insights";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { resolverMiniaturas } from "@/lib/data";
 import {
   buildTrend,
   computeKpi,
@@ -227,10 +228,25 @@ export async function getPrintReportData(
     totaisDoPeriodo(clientId, prev.start, prev.end),
   ]);
 
-  const criativos = aplicarMetricas(
-    (creatives.data ?? []) as AdCreative[],
-    metricasDoPeriodo,
-    6,
+  /* Resolve o caminho do bucket em URL assinada ANTES de montar o
+     documento. O bucket `ad-thumbs` é privado e a página usa
+     `storage_path` direto como `src`; sem isto, o primeiro criativo
+     copiado sairia como quadrado cinza no PDF do cliente.
+
+     Cliente ADMIN e não o da sessão: quem renderiza pode ser o
+     Puppeteer, que chega sem cookie. A autorização já aconteceu antes,
+     na validação do token.
+
+     Uma hora de validade basta: o Chromium rasteriza a imagem DENTRO do
+     PDF na geração, então o arquivo entregue não depende do link
+     continuar de pé. */
+  const criativos = await resolverMiniaturas(
+    admin,
+    aplicarMetricas(
+      (creatives.data ?? []) as AdCreative[],
+      metricasDoPeriodo,
+      6,
+    ),
   );
 
   const template = await doTemplate(client);

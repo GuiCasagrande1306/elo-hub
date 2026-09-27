@@ -1,6 +1,7 @@
 import "server-only";
 
 import { isDemoMode } from "@/lib/env";
+import { assinarMiniaturas } from "@/lib/ads/miniaturas";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   tiposDeConversaoDaCarteira,
@@ -315,7 +316,47 @@ export async function getCreatives(
     .limit(limit);
 
   if (error) throw error;
-  return (data ?? []) as AdCreative[];
+
+  /* ⚠️ RESOLVE O CAMINHO ANTES DE ENTREGAR À TELA. `ad-thumbs` é privado:
+     o banco guarda `<client_id>/<external_ad_id>`, e `AdGallery` usa
+     `storage_path` direto como `src` da imagem. Sem esta linha, o
+     primeiro criativo copiado viraria um endereço relativo inválido e a
+     miniatura sumiria — regressão causada justamente pelo trabalho de
+     consertar as miniaturas. Ver `assinarMiniaturas`. */
+  return await resolverMiniaturas(supabase, (data ?? []) as AdCreative[]);
+}
+
+/**
+ * Troca `storage_path` (caminho) pela URL assinada, em memória.
+ *
+ * O BANCO GUARDA CAMINHO, A VIEW RECEBE URL. Escrever no objeto em
+ * trânsito mantém `AdGallery` e a página do relatório sem mudança
+ * nenhuma — os dois já tratam `storage_path` como algo que serve de
+ * `src`, e agora serve de verdade.
+ *
+ * Quem não tiver cópia, ou cuja assinatura falhar, fica com
+ * `storage_path` nulo e a tela cai em `thumbnail_url` — o comportamento
+ * de hoje.
+ */
+export async function resolverMiniaturas<
+  T extends { storage_path: string | null },
+>(
+  cliente: Parameters<typeof assinarMiniaturas>[0],
+  criativos: T[],
+): Promise<T[]> {
+  const caminhos = criativos
+    .map((c) => c.storage_path)
+    .filter((p): p is string => Boolean(p));
+
+  if (caminhos.length === 0) return criativos;
+
+  const assinadas = await assinarMiniaturas(cliente, caminhos);
+
+  return criativos.map((c) =>
+    c.storage_path
+      ? { ...c, storage_path: assinadas.get(c.storage_path) ?? null }
+      : c,
+  );
 }
 
 /* ------------------------------------------------------------------ */

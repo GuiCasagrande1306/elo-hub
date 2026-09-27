@@ -3,6 +3,7 @@ import "server-only";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { googleAdsProvider } from "./google-ads";
 import { fetchActiveAds, fetchAdInsights, metaAdsProvider } from "./meta-ads";
+import { guardarMiniaturasPendentes } from "./miniaturas";
 import { currentMonthRange, lookbackRange } from "./normalize";
 import { conversionActionFor } from "./conversion-action";
 import type {
@@ -450,6 +451,17 @@ async function syncCreatives(
       })),
       { onConflict: "client_id,platform,external_ad_id" },
     );
+
+    /* ⚠️ DEPOIS DO UPSERT, e a ordem é obrigatória: a função procura
+       linhas com `storage_path` nulo para preencher, e antes do upsert
+       os anúncios novos desta rodada ainda não existem no banco.
+
+       NÃO ENTRA NO PAYLOAD ACIMA de propósito. `storage_path` fica fora
+       do upsert para SOBREVIVER a ele — incluí-lo com o valor que
+       temos em mão (nenhum) apagaria a cópia já feita em toda
+       sincronização seguinte, e a coluna voltaria a viver vazia, que é
+       o estado que este trabalho veio consertar. */
+    await guardarMiniaturasPendentes(admin, integration.client_id);
   } catch {
     // Silencioso de propósito — ver a nota no chamador.
   }
