@@ -321,13 +321,59 @@ export function toNormalizedRow(
 const AD_FIELDS = [
   "name",
   "effective_status",
-  "creative{thumbnail_url,image_url,body,title}",
+  /* ⚠️ `object_story_spec` ENTRA POR CAUSA DO TAMANHO DA IMAGEM.
+     `thumbnail_url` é SEMPRE um recorte de 64×64 — medido em 27/09/2026,
+     111 das 120 cópias guardadas tinham exatamente essa dimensão, com
+     1 a 2 KB. Serve de ícone e não de miniatura de relatório: ampliada
+     para os 46pt da tabela em tela de alta densidade, sai borrada.
+
+     E não adianta pedir maior: `thumbnail_width`/`thumbnail_height` na
+     consulta e `thumbnail_url.width(600).height(600)` no campo foram
+     testados contra a API e os dois devolveram 64×64 assim mesmo.
+
+     A capa em tamanho real está no `object_story_spec`: para vídeo, em
+     `video_data.image_url` (medido: 720×1280, 87 KB); para link, em
+     `link_data.picture`. `image_url` só existe em anúncio de imagem, e
+     era por isso que o vídeo — a maior parte da carteira — caía sempre
+     no recorte pequeno. */
+  "creative{thumbnail_url,image_url,body,title,object_story_spec}",
 ].join(",");
+
+/**
+ * A maior imagem disponível para o criativo.
+ *
+ * A ordem não é arbitrária — sai da medição contra a API:
+ *
+ *   image_url                        anúncio de imagem, tamanho cheio
+ *   object_story_spec.video_data     capa do vídeo (medido 720×1280)
+ *   object_story_spec.link_data      imagem do link
+ *   thumbnail_url                    recorte de 64×64, último recurso
+ *
+ * `thumbnail_url` fica por último e ainda assim fica: é o único campo
+ * que a Meta preenche em todo criativo, e uma imagem pequena na tabela
+ * é melhor que um quadrado cinza.
+ */
+function melhorImagem(
+  creative: MetaAdNode["creative"],
+): string | null {
+  return (
+    creative?.image_url ??
+    creative?.object_story_spec?.video_data?.image_url ??
+    creative?.object_story_spec?.link_data?.picture ??
+    creative?.thumbnail_url ??
+    null
+  );
+}
 
 export interface MetaActiveAd {
   externalAdId: string;
   name: string;
-  /** `image_url` quando existe; `thumbnail_url` como base. */
+  /**
+   * A MAIOR imagem que a Meta oferece para este anúncio.
+   *
+   * Ordem de preferência em `melhorImagem` — `thumbnail_url` é o último
+   * recurso justamente porque é um recorte de 64×64.
+   */
   imageUrl: string | null;
   /** Copy principal do anúncio. */
   body: string | null;
@@ -343,6 +389,10 @@ interface MetaAdNode {
     image_url?: string;
     body?: string;
     title?: string;
+    object_story_spec?: {
+      video_data?: { image_url?: string };
+      link_data?: { picture?: string };
+    };
   };
 }
 
@@ -393,8 +443,7 @@ export async function fetchActiveAds(
       .map((ad) => ({
         externalAdId: ad.id,
         name: ad.name?.trim() || "(sem nome)",
-        imageUrl:
-          ad.creative?.image_url ?? ad.creative?.thumbnail_url ?? null,
+        imageUrl: melhorImagem(ad.creative),
         body: ad.creative?.body?.trim() || null,
         headline: ad.creative?.title?.trim() || null,
       }));
