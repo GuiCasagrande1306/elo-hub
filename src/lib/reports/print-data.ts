@@ -25,6 +25,7 @@ import {
   buildPlatformDetail,
   type PlatformDetail,
 } from "./platform-detail";
+import { totaisDoPeriodo, type TotaisDoPeriodo } from "./totais-do-periodo";
 import type {
   AdCreative,
   Client,
@@ -113,6 +114,24 @@ export interface PrintReportData {
   /** As séries e o título do gráfico, do template. Iguais aos do PDF. */
   grafico: { series: SerieDoGrafico[]; titulo: string | null };
   totals: { spendCents: number; results: number };
+  /**
+   * Alcance, frequência, cliques no link e engajamento da janela.
+   *
+   * ⚠️ `null` = NÃO APURADO, jamais zero. Vem da Graph API na hora, e
+   * não do banco, porque alcance não se soma — ver `totais-do-periodo.ts`.
+   * Quando é nulo, as seções que dependem dele saem do documento em vez
+   * de imprimir zero.
+   */
+  totaisMeta: TotaisDoPeriodo | null;
+  /**
+   * Os mesmos totais na janela ANTERIOR, para a variação dos cartões.
+   *
+   * Separado e também anulável: a janela atual pode ter sido apurada e a
+   * anterior não (conta criada no meio, ou a API recusando só uma das
+   * duas). Nesse caso o cartão aparece com o número e SEM seta, que é
+   * mais honesto do que comparar contra um zero inventado.
+   */
+  totaisMetaAnterior: TotaisDoPeriodo | null;
   period: { start: string; end: string };
 }
 
@@ -156,6 +175,8 @@ export async function getPrintReportData(
          tela exibir a mesma ressalva que a produção exibiria, o que é o
          ponto de ter modo demo. */
       creativesDoPeriodo: false,
+      totaisMeta: await totaisDoPeriodo(clientId, periodStart, periodEnd),
+      totaisMetaAnterior: await totaisDoPeriodo(clientId, prev.start, prev.end),
     };
   }
 
@@ -198,11 +219,13 @@ export async function getPrintReportData(
      Puppeteer — mostraria os números da última sincronização enquanto o
      react-pdf mostraria os do período: dois documentos, duas verdades,
      para o mesmo cliente e o mesmo mês. */
-  const metricasDoPeriodo = await metricasDeCriativosNoPeriodo(
-    clientId,
-    periodStart,
-    periodEnd,
-  );
+  /* EM PARALELO: são duas chamadas à Graph API, e a página tem alguém
+     esperando. Em série, uma conta lenta pagaria o preço duas vezes. */
+  const [metricasDoPeriodo, totaisMeta, totaisMetaAnterior] = await Promise.all([
+    metricasDeCriativosNoPeriodo(clientId, periodStart, periodEnd),
+    totaisDoPeriodo(clientId, periodStart, periodEnd),
+    totaisDoPeriodo(clientId, prev.start, prev.end),
+  ]);
 
   const criativos = aplicarMetricas(
     (creatives.data ?? []) as AdCreative[],
@@ -225,6 +248,8 @@ export async function getPrintReportData(
       template.grafico,
     ),
     creativesDoPeriodo: metricasDoPeriodo !== null,
+    totaisMeta,
+    totaisMetaAnterior,
   };
 }
 
@@ -305,7 +330,10 @@ function assemble(
     series: ["spend"],
     titulo: null,
   },
-): Omit<PrintReportData, "creativesDoPeriodo"> {
+): Omit<
+  PrintReportData,
+  "creativesDoPeriodo" | "totaisMeta" | "totaisMetaAnterior"
+> {
   const currentTotals = sumMetrics(current, tiposDeConversao);
   const previousTotals = sumMetrics(previous, tiposDeConversao);
 

@@ -120,8 +120,24 @@ export const serverEnv = {
    */
   evolutionWebhookSecret: process.env.EVOLUTION_WEBHOOK_SECRET ?? "",
 
-  // Renderizador de PDF: "react-pdf" (padrão) ou "puppeteer"
-  pdfEngine: (process.env.PDF_ENGINE ?? "react-pdf") as "react-pdf" | "puppeteer",
+  /* Renderizador de PDF: "puppeteer" (padrão) ou "react-pdf".
+     ------------------------------------------------------------------
+     ⚠️ O PADRÃO MUDOU EM 27/09/2026, e a troca não é de gosto: o
+     relatório em FOLHA CONTÍNUA só existe na rota HTML
+     (`/reports/render/[clientId]`), que é o que o Puppeteer fotografa.
+     O `react-pdf` continua desenhando as três folhas A4 antigas — deixá-lo
+     como padrão faria todo este trabalho não chegar ao cliente, em
+     silêncio, porque os dois motores geram um PDF válido.
+
+     O PREÇO é real e vale saber: o Chromium tem cold start e consome
+     memória, então cada relatório leva alguns segundos a mais. No cron,
+     onde o orçamento é de toda a fila do dia, isso reduz quantos cabem
+     numa rodada — o que sobra entra na do dia seguinte, que é o
+     comportamento já previsto em `dispatchScheduledReports`.
+
+     PARA VOLTAR ATRÁS sem deploy: `PDF_ENGINE=react-pdf` no painel da
+     Vercel. O documento volta a sair em A4, com o desenho antigo. */
+  pdfEngine: (process.env.PDF_ENGINE ?? "puppeteer") as "react-pdf" | "puppeteer",
 
   // Módulo carregado quando pdfEngine = "puppeteer". Fica aqui, e não
   // inline no require, para que o bundler não consiga dobrar o valor

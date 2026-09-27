@@ -558,3 +558,124 @@ export async function fetchAdInsights(
 
   return mapa;
 }
+
+/* =====================================================================
+   Totais da CONTA na janela do relatório
+   ---------------------------------------------------------------------
+   ⚠️ EXISTE POR CAUSA DO ALCANCE, e o motivo é aritmético, não de
+   arquitetura: alcance NÃO SE SOMA. Uma pessoa atingida na segunda e na
+   quarta é UMA pessoa alcançada na semana, e duas se somarmos os dias.
+   Numa semana de sete dias o erro chega a multiplicar o número por
+   vários — e ele sairia impresso como "Alcance Total" no documento do
+   cliente.
+
+   Esta base já pagou por um alcance inventado: até a migration dos
+   segmentos, o código devolvia `impressões × 0,62` e imprimia aquilo
+   como alcance. O conserto foi tirar o número do relatório. Trazê-lo de
+   volta só vale medindo de verdade, e medir de verdade significa pedir
+   a JANELA INTEIRA de uma vez, deixando a desduplicação com quem tem o
+   dado: a Meta.
+
+   Por isso aqui NÃO há `time_increment`. A resposta é uma linha só, com
+   o alcance e a frequência reais do período.
+
+   Frequência vem pronta da API em vez de ser calculada como
+   impressões ÷ alcance: dá no mesmo quando os dois vêm da mesma
+   resposta, e evita divisão por zero em conta que não veiculou.
+   ===================================================================== */
+
+export interface TotaisDaConta {
+  /** Pessoas distintas alcançadas na janela. Desduplicado pela Meta. */
+  reach: number;
+  /** Média de vezes que cada pessoa viu. */
+  frequency: number;
+  impressions: number;
+  /** TODOS os cliques, inclusive em curtir, comentar e expandir. */
+  clicks: number;
+  /** Só os cliques que levaram ao destino. Sempre ≤ `clicks`. */
+  linkClicks: number;
+  /** Curtidas, comentários, salvamentos, cliques na página. */
+  pageEngagement: number;
+  spendCents: number;
+}
+
+/**
+ * Os totais da conta na janela exata, direto da Graph API.
+ *
+ * `null` em qualquer tropeço — e nunca zero. Repetir o `?? 0` do
+ * sincronizador aqui faria uma falha de rede virar "Alcance 0" impresso
+ * com confiança, que é o defeito que `creative-insights.ts` documenta em
+ * detalhe.
+ *
+ * TIMEOUT CURTO pelo mesmo motivo de lá: há alguém esperando a página, e
+ * no cron o orçamento é de toda a fila do dia.
+ */
+export async function fetchAccountTotals(
+  accessToken: string,
+  externalAccountId: string,
+  since: string,
+  until: string,
+  timeoutMs = 7_000,
+): Promise<TotaisDaConta | null> {
+  const accountId = externalAccountId.startsWith("act_")
+    ? externalAccountId
+    : `act_${externalAccountId}`;
+
+  const url = new URL(
+    `https://graph.facebook.com/${serverEnv.metaApiVersion}/${accountId}/insights`,
+  );
+  url.searchParams.set("level", "account");
+  url.searchParams.set(
+    "fields",
+    "reach,frequency,impressions,clicks,inline_link_clicks,spend,actions",
+  );
+  url.searchParams.set("time_range", JSON.stringify({ since, until }));
+
+  try {
+    const response = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+
+    if (!response.ok) return null;
+
+    const payload = (await response.json()) as {
+      data?: {
+        reach?: string;
+        frequency?: string;
+        impressions?: string;
+        clicks?: string;
+        inline_link_clicks?: string;
+        spend?: string;
+        actions?: { action_type: string; value: string }[];
+      }[];
+    };
+
+    /* Lista vazia = a conta não veiculou nada na janela. Aqui, ao
+       contrário do mapa de criativos, isso é uma resposta legítima e
+       não um sinal de falha: a API devolve zero linhas para período sem
+       veiculação. Mas devolver zeros seria afirmar mais do que se sabe
+       quando a causa foi outra, então segue `null` — quem chama já sabe
+       lidar, e o relatório simplesmente não mostra esses cartões. */
+    const linha = payload.data?.[0];
+    if (!linha) return null;
+
+    return {
+      reach: toInt(linha.reach),
+      frequency: toDecimal(linha.frequency),
+      impressions: toInt(linha.impressions),
+      clicks: toInt(linha.clicks),
+      linkClicks: toInt(linha.inline_link_clicks),
+      /* `page_engagement` agrega curtida, comentário, salvamento e
+         clique na página — é o mesmo número que o Gerenciador rotula
+         como "Engajamento da publicação". */
+      pageEngagement: toInt(
+        linha.actions?.find((a) => a.action_type === "page_engagement")?.value,
+      ),
+      spendCents: decimalToCents(linha.spend),
+    };
+  } catch {
+    return null;
+  }
+}

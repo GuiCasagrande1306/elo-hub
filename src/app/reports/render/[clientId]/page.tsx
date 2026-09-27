@@ -3,54 +3,69 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 
 import { PrintWeeklyChart } from "./print-chart";
-import { ROTULO_DA_SERIE } from "@/lib/reports/serie-do-grafico";
 import { PrintToolbar } from "./print-toolbar";
 import { getPrintReportData } from "@/lib/reports/print-data";
 import { resolverAgencia } from "@/lib/reports/payload";
 import { verifyPrintToken } from "@/lib/reports/print-token";
-import { PLATFORM_LABELS } from "@/lib/metrics/kpi";
 import { resolvePeriod } from "@/lib/date-br";
 import {
+  COLUNA_DO_FUNIL,
+  ESPACO_ENTRE_COLUNAS,
+  LARGURA_DA_FOLHA,
+  LARGURA_DO_GRAFICO,
+  etapasDoFunil,
+} from "@/lib/reports/rolagem";
+import { previousPeriod, type KpiResult } from "@/lib/metrics/kpi";
+import {
   formatCurrency,
-  formatDelta,
   formatNumber,
   formatPercent,
   formatPeriod,
 } from "@/lib/format";
 
 /* =====================================================================
-   Página de impressão do relatório — A4
+   Página do relatório — FOLHA CONTÍNUA
    ---------------------------------------------------------------------
-   Fotografada pelo Puppeteer, nunca navegada por um humano.
+   Fotografada pelo Puppeteer e também aberta pela equipe para revisar.
+
+   POR QUE ROLAGEM E NÃO A4. Até 27/09/2026 esta página desenhava três
+   folhas A4. O relatório é lido no WhatsApp, no celular, com o polegar
+   — e A4 num celular é uma folha inteira reduzida a um quinto do
+   tamanho, em que ninguém lê um rótulo de eixo. A folha contínua é uma
+   página só, larga de 1080pt, com a altura que o conteúdo pedir; o
+   Puppeteer mede essa altura e imprime uma página exata.
+
+   ⚠️ UM RENDERIZADOR SÓ. Esta página é a fonte do PDF que vai ao cliente
+   E a tela que a equipe revisa antes de enviar. Não é economia de
+   código: enquanto existiam duas, a revisão aprovava um desenho e o
+   cliente recebia outro, e isso aconteceu quatro vezes — a lista está
+   em `lib/reports/serie-do-grafico.ts`.
 
    NÃO usa os tokens do design system (`bg-background`, `text-foreground`).
-   Papel é sempre claro: se a página herdasse o tema, um gestor com o
-   sistema no escuro geraria um PDF de fundo navy que gasta meio
-   cartucho e fica ilegível impresso. As cores aqui são fixas e
-   pensadas para papel — só a cor da MARCA DO CLIENTE é dinâmica.
+   O documento é sempre claro: herdando o tema, um gestor com o sistema
+   no escuro geraria um PDF de fundo navy. As cores aqui são fixas — só
+   a da MARCA DO CLIENTE é dinâmica.
 
    `print-color-adjust: exact` é obrigatório: sem ele o Chrome descarta
-   fundos e cores de impressão e a capa sai branca.
+   fundos e o cabeçalho sai branco.
    ===================================================================== */
 
 /**
  * `title.absolute` NÃO é detalhe de SEO — é vazamento de marca.
  *
  * Sem título próprio, esta rota herda o `default` do layout raiz, que é
- * "Elo Hub". Com `PDF_ENGINE=puppeteer`, o Chrome grava `document.title`
- * no campo /Title do PDF: o arquivo que chega ao cliente de uma agência
- * parceira sai chamado "Elo Hub" nas Propriedades. E não há a string
- * "Elo" em arquivo nenhum do relatório para denunciar isso.
+ * "Elo Hub". O Chrome grava `document.title` no campo /Title do PDF: o
+ * arquivo que chega ao cliente de uma agência parceira sairia chamado
+ * "Elo Hub" nas Propriedades, e não há a string "Elo" em nenhum outro
+ * lugar do documento para denunciar isso.
  *
- * `absolute` é obrigatório: sem ele o template "%s · Elo Hub" do layout
- * recola a marca no fim.
+ * `absolute` é obrigatório: sem ele o template "%s · Elo Hub" recola a
+ * marca no fim.
  */
 export const metadata: Metadata = {
   title: { absolute: "Relatório de performance" },
   robots: { index: false, follow: false },
 };
-
-const A4 = "w-[210mm] min-h-[297mm]";
 
 export default async function PrintReportPage({
   params,
@@ -66,607 +81,690 @@ export default async function PrintReportPage({
      1. TOKEN — o Puppeteer. Chega sem cookie nenhum, então carrega um
         HMAC de vida curta com cliente e período assinados dentro.
 
-     2. SESSÃO — uma pessoa da equipe abrindo para revisar e salvar em
-        PDF pelo próprio navegador. Este caminho é novo e exigiu uma
-        checagem explícita: `getPrintReportData` usa o cliente ADMIN e
-        passa por cima do RLS — o que é correto para o Puppeteer e
-        perigoso para um humano. Sem a verificação abaixo, qualquer
-        colaborador logado abriria o relatório de qualquer conta
-        sabendo o UUID.
+     2. SESSÃO — alguém da equipe revisando. Este caminho exige a
+        checagem explícita abaixo: `getPrintReportData` usa o cliente
+        ADMIN e passa por cima do RLS — correto para o Puppeteer,
+        perigoso para um humano. Sem ela, qualquer colaborador logado
+        abriria o relatório de qualquer conta sabendo o UUID.
 
-     404 nos dois casos, nunca 403: um 403 confirmaria que aquele
-     clientId existe. */
+     404 nos dois casos, nunca 403: um 403 confirmaria que o clientId
+     existe. */
   const auth = verifyPrintToken(query.token ?? null);
   const porToken = auth.valid && auth.payload.clientId === clientId;
 
   if (!porToken && !(await equipePodeVer(clientId))) notFound();
 
-  /* Com token, o período vem assinado — não dá para trocar por query e
-     ver um intervalo que o gerador não autorizou. Sem token, quem manda
-     é a URL, e o RLS já limitou a conta. */
   const { periodStart, periodEnd } = porToken
     ? auth.payload
     : periodoDaQuery(query.inicio, query.fim);
+
   const data = await getPrintReportData(clientId, periodStart, periodEnd);
   if (!data) notFound();
 
   const {
     client,
     kpis,
-    platforms,
     platformDetail,
     creatives,
     trend,
     grafico,
     totals,
     creativesDoPeriodo,
+    totaisMeta,
+    totaisMetaAnterior,
   } = data;
+
   const agency = await resolverAgencia(client.agency_partner);
 
-  /* Fallback NEUTRO, não o navy da Elo que estava aqui: sem cor do
-     cliente, o documento não deve herdar a marca de uma agência. */
+  /* Fallback NEUTRO: sem cor do cliente, o documento não deve herdar a
+     marca de uma agência. */
   const brand = client.brand_primary ?? agency?.brandPrimary ?? "#4A5568";
 
   const assinatura = agency
     ? `${agency.name} · Relatório de performance`
     : "Relatório de performance";
+
   const periodo = formatPeriod(periodStart, periodEnd);
+  const anterior = janelaAnterior(periodStart, periodEnd);
+
+  const funil = etapasDoFunil({
+    spendCents: totals.spendCents,
+    resultados: totals.results,
+    totais: totaisMeta,
+    impressoes: somaDeKpi(kpis, platformDetail, "impressions"),
+    cliques: somaDeKpi(kpis, platformDetail, "clicks"),
+  });
 
   return (
     <>
       <style>{`
-        @page { size: A4; margin: 0; }
-        html, body { margin: 0; padding: 0; background: #fff; }
+        /* A altura é decidida pelo conteúdo e medida pelo Puppeteer —
+           ver \`renderWithPuppeteer\`. Declarar \`size\` fixo aqui
+           brigaria com a medição e produziria uma segunda página em
+           branco no fim. */
+        @page { margin: 0; }
+        html, body { margin: 0; padding: 0; background: #ffffff; }
         * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        .page { break-after: page; page-break-after: always; }
-        .page:last-child { break-after: auto; page-break-after: auto; }
-        @media print { .page { break-inside: avoid; } }
         /* O overlay de desenvolvimento do Next é um elemento fixo no
            canto da tela, e o Puppeteer fotografa o documento inteiro —
-           ele sai impresso como uma bolha preta na capa. Escondido só
-           aqui: nas outras rotas a ferramenta continua disponível. */
+           ele sai impresso como uma bolha escura. Escondido só aqui. */
         nextjs-portal { display: none; }
       `}</style>
 
-      {/* Só para quem abriu a página no navegador. O Puppeteer chega com
-          token e nunca chama `window.print()` — e mesmo que a barra
-          existisse no HTML dele, `print:hidden` a tira do PDF. */}
+      {/* Só para quem abriu no navegador. O Puppeteer chega com token e
+          nunca vê esta barra. */}
       {!porToken && <PrintToolbar />}
 
-      <main className="bg-white font-sans text-[#111827] antialiased">
-        {/* ============================ CAPA ============================ */}
-        <section className={`page relative flex flex-col overflow-hidden ${A4}`}>
+      <main
+        className="mx-auto bg-white font-sans text-[#111827] antialiased"
+        style={{ width: LARGURA_DA_FOLHA }}
+      >
+        {/* ======================= CABEÇALHO ======================= */}
+        <header
+          className="relative overflow-hidden px-16 pb-14 pt-16 text-white"
+          style={{
+            background: `linear-gradient(135deg, ${brand} 0%, ${shade(brand, 0.55)} 100%)`,
+          }}
+        >
+          {/* Dois círculos translúcidos: dão profundidade ao bloco sem
+              depender de imagem externa, que o Puppeteer teria de
+              esperar carregar. */}
           <div
-            className="absolute inset-0"
-            style={{
-              background: `linear-gradient(155deg, ${brand} 0%, ${shade(brand)} 100%)`,
-            }}
-          />
-
-          {/* Marca d'água geométrica: dá profundidade sem pesar na
-              impressão, ao contrário de uma imagem de fundo. */}
-          <div
+            className="pointer-events-none absolute -right-24 -top-24 size-80 rounded-full"
+            style={{ background: "rgba(255,255,255,0.10)" }}
             aria-hidden
-            className="absolute -right-24 -top-24 size-[420px] rounded-full opacity-[0.07]"
-            style={{ background: "#fff" }}
           />
           <div
+            className="pointer-events-none absolute -bottom-32 right-32 size-64 rounded-full"
+            style={{ background: "rgba(255,255,255,0.06)" }}
             aria-hidden
-            className="absolute -bottom-40 -left-32 size-[520px] rounded-full opacity-[0.05]"
-            style={{ background: "#fff" }}
           />
 
-          <div className="relative z-10 flex flex-1 flex-col px-[22mm] py-[26mm] text-white">
-            <p className="text-[10px] font-medium uppercase tracking-[0.28em] opacity-70">
-              Relatório de Performance
-            </p>
+          <div className="relative flex items-center gap-5">
+            {client.logo_url ? (
+              <img
+                src={client.logo_url}
+                alt=""
+                className="size-[68px] shrink-0 rounded-2xl bg-white object-contain p-1.5"
+              />
+            ) : (
+              <span
+                className="flex size-[68px] shrink-0 items-center justify-center rounded-2xl text-[22px] font-bold"
+                style={{ background: "rgba(255,255,255,0.18)" }}
+              >
+                {initials(client.name)}
+              </span>
+            )}
 
-            <div className="flex flex-1 flex-col items-center justify-center text-center">
-              {client.logo_url ? (
-                <img
-                  src={client.logo_url}
-                  alt={client.name}
-                  className="mb-8 max-h-[70px] max-w-[280px] object-contain"
-                />
-              ) : (
-                <span className="mb-8 flex size-[76px] items-center justify-center rounded-2xl bg-white/15 text-2xl font-bold ring-1 ring-inset ring-white/25">
-                  {initials(client.name)}
-                </span>
-              )}
-
-              <h1 className="text-[42px] font-bold leading-[1.05] tracking-[-0.03em]">
+            <div className="min-w-0">
+              <p className="text-[12px] font-semibold uppercase tracking-[0.18em] opacity-70">
+                Relatório de performance
+              </p>
+              <h1 className="mt-1 text-[40px] font-bold leading-[1.1] tracking-[-0.025em]">
                 {client.name}
               </h1>
-              <p className="mt-4 text-[15px] opacity-85">{periodo}</p>
-
-              <div className="mt-8 h-[3px] w-16 rounded-full bg-white/60" />
             </div>
-
-            {/* Assinatura de quem ATENDE esta conta, não de quem
-                escreveu o sistema. O monograma era um "E" desenhado no
-                código — a marca da Elo no relatório de toda agência
-                parceira. Agora sai do logo enviado, ou da inicial do
-                nome quando ainda não há arquivo. */}
-            <footer className="flex items-end justify-between">
-              {agency && (
-                <div className="flex items-center gap-2.5">
-                  {agency.logoUrl ? (
-                    <img
-                      src={agency.logoUrl}
-                      alt={agency.name}
-                      className="h-7 max-w-[120px] object-contain"
-                    />
-                  ) : (
-                    <span className="relative flex size-7 items-center justify-center rounded-md bg-white">
-                      <span
-                        className="text-[13px] font-bold leading-none"
-                        style={{ color: agency.brandPrimary ?? brand }}
-                      >
-                        {agency.name.trim().charAt(0).toUpperCase()}
-                      </span>
-                    </span>
-                  )}
-                  <div className="leading-tight">
-                    <p className="text-[13px] font-semibold">{agency.name}</p>
-                  </div>
-                </div>
-              )}
-
-              <p className="text-[10px] opacity-60">
-                Gerado em {new Date().toLocaleDateString("pt-BR")}
-              </p>
-            </footer>
           </div>
-        </section>
 
-        {/* ====================== RESUMO EXECUTIVO ====================== */}
-        <section className={`page flex flex-col px-[18mm] py-[16mm] ${A4}`}>
-          <PageHeader client={client.name} periodo={periodo} brand={brand} />
-
-          <h2 className="mt-8 text-[26px] font-bold tracking-[-0.025em]">
-            Resumo executivo
-          </h2>
-          <p className="mt-1 text-[12px] text-[#64707d]">
-            Google Ads e Meta Ads consolidados. A variação compara com o período
-            anterior de mesma duração.
+          <p className="relative mt-8 max-w-[760px] text-[15px] leading-relaxed opacity-85">
+            Resultados de <strong className="font-semibold">{periodo}</strong>
+            {anterior && (
+              <>
+                , comparados com{" "}
+                <strong className="font-semibold">{anterior}</strong>
+              </>
+            )}
+            .
           </p>
+        </header>
 
-          {/* KPIs grandes */}
-          <div className="mt-6 grid grid-cols-3 gap-3">
-            {kpis.map((kpi) => (
-              <div
-                key={kpi.key}
-                className="rounded-xl border border-[#e6e8ec] bg-[#fafbfc] p-4"
-                style={{ borderTopColor: brand, borderTopWidth: 3 }}
-              >
-                <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-[#64707d]">
-                  {kpi.label}
-                </p>
-                <p className="mt-2 text-[26px] font-bold leading-none tracking-[-0.03em]">
-                  {kpi.formatted}
-                </p>
-                {/* De onde o número saiu. Custo por resultado e ROAS são
-                    contados só nas campanhas de origem, então eles não
-                    fecham com o investimento do card ao lado — sem esta
-                    linha, quem divide na calculadora acha outro número e
-                    conclui que o relatório está errado. */}
-                {kpi.origem !== null && (
-                  <p className="mt-1 text-[8px] text-[#8b95a1]">
-                    de {kpi.origem} {kpi.origem === 1 ? "campanha" : "campanhas"}
-                  </p>
-                )}
-
-                {kpi.deltaPercent === null ? (
-                  <p className="mt-2.5 text-[10px] text-[#8b95a1]">
-                    sem base de comparação
-                  </p>
-                ) : (
-                  <p
-                    className="mt-2.5 text-[11px] font-semibold"
-                    style={{ color: sentimentColor(kpi.sentiment) }}
-                  >
-                    {kpi.deltaPercent > 0 ? "+" : ""}
-                    {kpi.deltaPercent.toFixed(1).replace(".", ",")}%
-                    <span className="ml-1.5 font-normal text-[#8b95a1]">
-                      vs. {kpi.previousFormatted}
-                    </span>
-                  </p>
-                )}
-              </div>
+        {/* ========================= NÚMEROS ========================= */}
+        <Secao titulo="Os números do período" brand={brand}>
+          <div className="grid grid-cols-4 gap-4">
+            {kpis.map((k) => (
+              <Cartao
+                key={k.key}
+                rotulo={k.label}
+                valor={k.formatted}
+                anterior={k.previousFormatted}
+                /* `deltaPercent` vem em PONTOS PERCENTUAIS do
+                   `computeKpi`; o cartão trabalha em fração. Dividir
+                   aqui, no ponto de encontro das duas convenções. */
+                delta={
+                  k.indefinido || k.deltaPercent === null
+                    ? null
+                    : k.deltaPercent / 100
+                }
+                sentimento={k.sentiment}
+              />
             ))}
-          </div>
 
-          {/* O GRÁFICO DIÁRIO, igual ao do PDF.
-              O título vem do template — era "Evolução semanal ·
-              Investimento por semana" escrito aqui, e seguia dizendo
-              "investimento" e "semana" enquanto o gráfico mostrava
-              contatos por dia. */}
-          <div className="mt-7 rounded-xl border border-[#e6e8ec] p-5">
-            <h3 className="text-[13px] font-semibold">
-              {grafico.titulo ?? "Evolução no período"}
-            </h3>
-            <p className="mt-0.5 text-[11px] text-[#64707d]">
-              {grafico.series.map((s) => ROTULO_DA_SERIE[s]).join(" e ")} por
-              dia.
-            </p>
-            <div className="mt-3 flex justify-center">
+            {/* ⚠️ SÓ APARECEM QUANDO FORAM APURADOS. `totaisMeta` é nulo
+                quando a Graph API não respondeu — e imprimir "Alcance 0"
+                nesse caso seria repetir o acidente que esta base já
+                cometeu, quando o alcance era `impressões × 0,62`. Ver
+                `lib/reports/totais-do-periodo.ts`. */}
+            {totaisMeta && (
+              <>
+                <Cartao
+                  rotulo="Alcance"
+                  valor={formatNumber(totaisMeta.reach)}
+                  anterior={
+                    totaisMetaAnterior
+                      ? formatNumber(totaisMetaAnterior.reach)
+                      : null
+                  }
+                  delta={variacao(
+                    totaisMeta.reach,
+                    totaisMetaAnterior?.reach,
+                  )}
+                  sentimento="positive"
+                />
+                <Cartao
+                  rotulo="Frequência"
+                  valor={totaisMeta.frequency.toFixed(2).replace(".", ",")}
+                  anterior={
+                    totaisMetaAnterior
+                      ? totaisMetaAnterior.frequency
+                          .toFixed(2)
+                          .replace(".", ",")
+                      : null
+                  }
+                  delta={variacao(
+                    totaisMeta.frequency,
+                    totaisMetaAnterior?.frequency,
+                  )}
+                  /* NEUTRO de propósito: frequência que sobe não é boa
+                     nem má sozinha — pode ser fidelização ou saturação,
+                     e só o contexto da conta decide. Pintar de verde ou
+                     vermelho afirmaria o que o número não diz. */
+                  sentimento="neutral"
+                />
+                <Cartao
+                  rotulo="Cliques no link"
+                  valor={formatNumber(totaisMeta.linkClicks)}
+                  anterior={
+                    totaisMetaAnterior
+                      ? formatNumber(totaisMetaAnterior.linkClicks)
+                      : null
+                  }
+                  delta={variacao(
+                    totaisMeta.linkClicks,
+                    totaisMetaAnterior?.linkClicks,
+                  )}
+                  sentimento="positive"
+                />
+                <Cartao
+                  rotulo="Engajamento"
+                  valor={formatNumber(totaisMeta.pageEngagement)}
+                  anterior={
+                    totaisMetaAnterior
+                      ? formatNumber(totaisMetaAnterior.pageEngagement)
+                      : null
+                  }
+                  delta={variacao(
+                    totaisMeta.pageEngagement,
+                    totaisMetaAnterior?.pageEngagement,
+                  )}
+                  sentimento="positive"
+                />
+              </>
+            )}
+          </div>
+        </Secao>
+
+        {/* ==================== FUNIL + EVOLUÇÃO ==================== */}
+        <Secao
+          titulo={grafico.titulo ?? "Do investimento ao resultado"}
+          brand={brand}
+        >
+          <div
+            className="grid"
+            style={{
+              gridTemplateColumns: `${COLUNA_DO_FUNIL}px ${LARGURA_DO_GRAFICO}px`,
+              gap: ESPACO_ENTRE_COLUNAS,
+            }}
+          >
+            <Funil etapas={funil} brand={brand} />
+
+            <div>
+              <p className="mb-3 text-[12px] font-semibold uppercase tracking-[0.1em] text-[#8b95a1]">
+                Dia a dia
+              </p>
               <PrintWeeklyChart
                 data={trend}
                 color={brand}
                 series={grafico.series}
+                largura={LARGURA_DO_GRAFICO}
               />
             </div>
           </div>
+        </Secao>
 
-          {/* Canais */}
-          <div className="mt-5 rounded-xl border border-[#e6e8ec] p-5">
-            <h3 className="text-[13px] font-semibold">Distribuição por canal</h3>
-
-            <div className="mt-4 flex flex-col gap-3.5">
-              {platforms.map((p) => (
-                <div key={p.platform}>
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-[12px] font-semibold">
-                      {PLATFORM_LABELS[p.platform]}
-                    </span>
-                    <span className="text-[12px] tabular-nums">
-                      {formatCurrency(p.totals.spendCents)}
-                      <span className="ml-2 text-[10px] text-[#64707d]">
-                        {formatPercent(p.spendShare, 0)}
-                      </span>
-                    </span>
-                  </div>
-
-                  <div className="mt-1.5 h-[6px] w-full overflow-hidden rounded-full bg-[#eef0f3]">
-                    <div
-                      className="h-full rounded-full"
-                      style={{
-                        width: `${Math.max(p.spendShare * 100, 1.5)}%`,
-                        background: brand,
-                      }}
-                    />
-                  </div>
-
-                  <p className="mt-1.5 text-[10px] text-[#64707d] tabular-nums">
-                    {formatNumber(Math.round(p.totals.conversions))} resultados ·{" "}
-                    {/* "—" e não "R$ 0,00" quando não houve conversão —
-                        mesma régua do PDF e da grade de KPIs. */}
-                    {p.cpaIndefinido ? "—" : formatCurrency(p.cpa)} por
-                    resultado
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <PageFooter numero={2} assinatura={assinatura} />
-        </section>
-
-        {/* ================== UMA PÁGINA POR PLATAFORMA ==================
-            Meta e Google separados, cada um com o quadro completo e as
-            próprias campanhas. O bloco acima mostra a FATIA do orçamento;
-            esta parte responde a pergunta que o cliente faz de verdade —
-            "como foi o Meta, como foi o Google" —, que a participação
-            esconde quando um canal entrega o dobro com metade da verba.
-
-            Sai do mesmo `buildPlatformDetail` que alimenta o PDF: dois
-            cálculos fariam a folha revisada aqui divergir do arquivo
-            enviado. */}
-        {platformDetail.map((p, i) => (
-          <section
-            key={p.platform}
-            className={`page flex flex-col px-[18mm] py-[16mm] ${A4}`}
-          >
-            <PageHeader client={client.name} periodo={periodo} brand={brand} />
-
-            <span
-              className="mt-8 inline-flex w-fit rounded px-2 py-1 text-[9px] font-bold uppercase tracking-[0.14em] text-white"
-              style={{ background: brand }}
+        {/* ======================== CAMPANHAS ======================== */}
+        {platformDetail.map((p) =>
+          p.campaigns.length === 0 ? null : (
+            <Secao
+              key={p.platform}
+              titulo={`Campanhas · ${p.label}`}
+              brand={brand}
             >
-              {p.label}
-            </span>
-
-            <h2 className="mt-3 text-[26px] font-bold tracking-[-0.025em]">
-              Desempenho no {p.label}
-            </h2>
-            <p className="mt-1 text-[12px] text-[#64707d]">
-              {formatPercent(p.spendShare, 0)} do investimento do período. A
-              variação compara este canal com ele mesmo no período anterior.
-            </p>
-
-            <div className="mt-6 grid grid-cols-3 gap-3">
-              {p.kpis.map((kpi) => (
-                <div
-                  key={kpi.key}
-                  className="rounded-xl border border-[#e6e8ec] bg-[#f8f9fb] p-4"
-                >
-                  <p className="text-[8px] font-semibold uppercase tracking-[0.14em] text-[#8b95a1]">
-                    {kpi.label}
-                  </p>
-                  <p className="mt-2 text-[20px] font-bold tracking-[-0.02em]">
-                    {kpi.formatted}
-                  </p>
-                  {kpi.origem !== null && (
-                    <p className="mt-1 text-[7.5px] text-[#8b95a1]">
-                      de {kpi.origem} {kpi.origem === 1 ? "campanha" : "campanhas"}
-                    </p>
-                  )}
-                  <p
-                    className="mt-1 text-[9px] font-medium"
-                    style={{ color: sentimentColor(kpi.sentiment) }}
+              <Tabela
+                cabecalho={[
+                  "Campanha",
+                  "Resultado",
+                  "Custo por resultado",
+                  "Investido",
+                ]}
+                alinhamento={["left", "right", "right", "right"]}
+              >
+                {p.campaigns.map((c, i) => (
+                  <tr
+                    key={`${c.name}-${i}`}
+                    className={i % 2 === 1 ? "bg-[#fafbfc]" : undefined}
                   >
-                    {kpi.deltaPercent === null
-                      ? "sem base anterior"
-                      : `${formatDelta(kpi.deltaPercent)} · antes ${kpi.previousFormatted}`}
-                  </p>
-                </div>
-              ))}
-            </div>
+                    <Td>
+                      <span className="font-medium">{c.name}</span>
+                    </Td>
+                    <Td alinhar="right">
+                      {/* O NÚMERO E A UNIDADE JUNTOS. Sem a unidade, "131"
+                          de visita ao perfil e "4" de conversa moram na
+                          mesma coluna e o cliente compara coisas
+                          diferentes. */}
+                      {c.results === null ? (
+                        <span className="text-[#8b95a1]">—</span>
+                      ) : (
+                        <>
+                          <span className="font-semibold tabular-nums">
+                            {formatNumber(c.results)}
+                          </span>
+                          <span className="ml-1.5 text-[11px] text-[#8b95a1]">
+                            {c.objetivo}
+                          </span>
+                        </>
+                      )}
+                    </Td>
+                    <Td alinhar="right">
+                      {c.results === null || c.results === 0 ? (
+                        <span className="text-[#8b95a1]">—</span>
+                      ) : (
+                        formatCurrency(c.cpaCents)
+                      )}
+                    </Td>
+                    <Td alinhar="right">{formatCurrency(c.spendCents)}</Td>
+                  </tr>
+                ))}
+              </Tabela>
+            </Secao>
+          ),
+        )}
 
-            {p.campaigns.length > 0 && (
-              <div className="mt-8">
-                <h3 className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#64707d]">
-                  Campanhas
-                </h3>
-
-                <table className="mt-3 w-full border-collapse text-[10px]">
-                  <thead>
-                    <tr className="border-b border-[#d8dce2] text-left text-[8px] uppercase tracking-[0.1em] text-[#8b95a1]">
-                      <th className="py-2 font-semibold">Campanha</th>
-                      {/* A MESMA coluna do PDF. Enquanto a folha tinha
-                          seis colunas e o documento sete, a equipe
-                          conferia uma tabela e o cliente recebia outra
-                          — já aconteceu com "Cliques". */}
-                      <th className="py-2 font-semibold">Objetivo</th>
-                      <th className="py-2 text-right font-semibold">Investido</th>
-                      <th className="py-2 text-right font-semibold">Result.</th>
-                      <th className="py-2 text-right font-semibold">Custo</th>
-                      <th className="py-2 text-right font-semibold">Cliques</th>
-                      <th className="py-2 text-right font-semibold">CTR</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {/* SEIS, medido no Chrome: com onze KPIs e oito
-                        linhas a seção media 306,6mm contra 297mm de
-                        folha, partia em duas e a numeração estática do
-                        rodapé (3 + i) passava a mentir. Seis cabe. */}
-                    {p.campaigns.slice(0, 6).map((c) => (
-                      <tr key={c.name} className="border-b border-[#f0f2f5]">
-                        {/* `truncate` faz aqui o que `maxLines` faz no
-                            PDF: uma linha sempre, independente da
-                            largura das letras. Sem isso a folha que a
-                            equipe revisa quebra onde o documento do
-                            cliente não quebra. */}
-                        <td className="max-w-[170px] truncate py-2 pr-3">
-                          {c.name}
-                        </td>
-                        <td className="max-w-[90px] truncate py-2 pr-3 text-[9px] text-[#64707d]">
-                          {c.objetivo}
-                        </td>
-                        <td className="py-2 text-right tabular-nums">
-                          {formatCurrency(c.spendCents)}
-                        </td>
-                        {/* Nulo é "—": ver a nota da migration 76. */}
-                        <td className="py-2 text-right tabular-nums">
-                          {c.results === null ? "—" : formatNumber(c.results)}
-                        </td>
-                        <td className="py-2 text-right tabular-nums">
-                          {c.custoIndefinido
-                            ? "—"
-                            : `${formatCurrency(c.cpaCents)}${c.custoSufixo}`}
-                        </td>
-                        <td className="py-2 text-right tabular-nums">
-                          {formatNumber(c.clicks)}
-                        </td>
-                        <td className="py-2 text-right tabular-nums">
-                          {formatPercent(c.ctr, 2)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-
-                {p.campaigns.length > 6 && (
-                  <p className="mt-2 text-[9px] italic text-[#8b95a1]">
-                    Mais {p.campaigns.length - 6}{" "}
-                    {p.campaigns.length - 6 === 1 ? "campanha" : "campanhas"} com
-                    investimento menor.
-                  </p>
-                )}
-              </div>
+        {/* ========================= ANÚNCIOS ========================= */}
+        {creatives.length > 0 && (
+          <Secao titulo="Anúncios em destaque" brand={brand}>
+            {!creativesDoPeriodo && (
+              <p className="mb-4 rounded-lg bg-[#fff8e6] px-4 py-2.5 text-[12px] text-[#7a5c00]">
+                Os números abaixo são da última sincronização, não da janela
+                deste relatório — não foi possível apurar o período anúncio a
+                anúncio.
+              </p>
             )}
 
-            <PageFooter numero={3 + i} assinatura={assinatura} />
-          </section>
-        ))}
-
-        {/* ===================== CRIATIVOS ATIVOS ====================== */}
-        <section className={`page flex flex-col px-[18mm] py-[16mm] ${A4}`}>
-          <PageHeader client={client.name} periodo={periodo} brand={brand} />
-
-          <h2 className="mt-8 text-[26px] font-bold tracking-[-0.025em]">
-            Anúncios que rodaram
-          </h2>
-          {/* A frase anterior afirmava "criativos ativos NO PERÍODO, com o
-              desempenho individual de cada um" — e os números vinham da
-              última sincronização, não do período da capa. O texto agora
-              descreve o que é: anúncios NO AR, cujo desempenho é apurado
-              para a janela do relatório. A diferença importa porque a
-              seleção continua sendo por status atual, então um anúncio
-              que rodou no período e já foi pausado não aparece aqui. */}
-          <p className="mt-1 text-[12px] text-[#64707d]">
-            {creativesDoPeriodo
-              ? "Anúncios no ar, com o desempenho de cada um apurado no período deste relatório."
-              : "Anúncios no ar, com o desempenho da última sincronização — não foi possível apurar estes anúncios no período deste relatório."}
-          </p>
-
-          {creatives.length === 0 ? (
-            <p className="mt-10 rounded-xl border border-dashed border-[#d8dce2] py-14 text-center text-[12px] text-[#8b95a1]">
-              Nenhum anúncio no ar sincronizado para esta conta.
-            </p>
-          ) : (
-            <div className="mt-6 grid grid-cols-3 gap-3">
-              {creatives.slice(0, 6).map((ad) => {
-                const cpa =
-                  ad.conversions > 0 ? ad.spend_cents / ad.conversions : 0;
-                const ctr = ad.impressions > 0 ? ad.clicks / ad.impressions : 0;
-
+            <Tabela
+              cabecalho={[
+                "Anúncio",
+                "Resultados",
+                "Investido",
+                "CTR",
+                "CPC",
+                "CPM",
+                "Impressões",
+                "Cliques",
+              ]}
+              alinhamento={[
+                "left",
+                "right",
+                "right",
+                "right",
+                "right",
+                "right",
+                "right",
+                "right",
+              ]}
+            >
+              {creatives.map((c, i) => {
+                const d = derivadas(c);
                 return (
-                  <article
-                    key={ad.id}
-                    className="overflow-hidden rounded-xl border border-[#e6e8ec]"
+                  <tr
+                    key={c.id}
+                    className={i % 2 === 1 ? "bg-[#fafbfc]" : undefined}
                   >
-                    <div className="relative aspect-[4/3] bg-[#eef0f3]">
-                      {ad.thumbnail_url ? (
-                        <img
-                          src={ad.thumbnail_url}
-                          alt={ad.ad_name ?? "Criativo"}
-                          className="size-full object-cover"
-                        />
-                      ) : (
-                        <div
-                          className="flex size-full items-center justify-center text-[10px] font-medium text-white"
-                          style={{ background: brand }}
-                        >
-                          {PLATFORM_LABELS[ad.platform]}
-                        </div>
-                      )}
-
-                      <span className="absolute left-2 top-2 rounded-full bg-black/70 px-2 py-0.5 text-[8px] font-semibold uppercase tracking-wide text-white">
-                        {PLATFORM_LABELS[ad.platform]}
+                    <Td>
+                      <div className="flex items-center gap-3">
+                        {/* ⚠️ A MINIATURA PODE FALHAR, e o desenho não pode
+                            depender dela. `thumbnail_url` aponta para um
+                            endereço da Meta que EXPIRA — medido em
+                            26/09/2026, 951 de 951 criativos ainda sem
+                            cópia no Storage. O quadrado cinza abaixo é o
+                            que aparece quando a imagem morre, e mantém a
+                            altura da linha estável. */}
+                        <span className="flex size-[46px] shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#eef1f4]">
+                          {c.storage_path || c.thumbnail_url ? (
+                            <img
+                              src={c.storage_path ?? c.thumbnail_url ?? ""}
+                              alt=""
+                              className="size-full object-cover"
+                            />
+                          ) : null}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium">
+                            {c.ad_name ?? "Anúncio"}
+                          </span>
+                          {c.campaign_name && (
+                            <span className="block truncate text-[11px] text-[#8b95a1]">
+                              {c.campaign_name}
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    </Td>
+                    <Td alinhar="right">
+                      <span className="font-semibold tabular-nums">
+                        {formatNumber(c.conversions)}
                       </span>
-                    </div>
-
-                    <div className="p-3">
-                      <p className="truncate text-[9px] uppercase tracking-[0.1em] text-[#8b95a1]">
-                        {ad.campaign_name}
-                      </p>
-                      <h4 className="mt-1 text-[11px] font-semibold leading-snug">
-                        {ad.headline ?? ad.ad_name}
-                      </h4>
-                      {ad.primary_text && (
-                        <p className="mt-1 line-clamp-2 text-[9px] leading-relaxed text-[#64707d]">
-                          {ad.primary_text}
-                        </p>
-                      )}
-
-                      <dl className="mt-2.5 grid grid-cols-3 gap-1 border-t border-[#eef0f3] pt-2">
-                        <Metric label="Investido" value={formatCurrency(ad.spend_cents)} />
-                        <Metric label="CTR" value={formatPercent(ctr, 2)} />
-                        <Metric
-                          label="CPA"
-                          value={cpa > 0 ? formatCurrency(cpa) : "—"}
-                          color={brand}
-                        />
-                      </dl>
-                    </div>
-                  </article>
+                    </Td>
+                    <Td alinhar="right">{formatCurrency(c.spend_cents)}</Td>
+                    <Td alinhar="right">{d.ctr}</Td>
+                    <Td alinhar="right">{d.cpc}</Td>
+                    <Td alinhar="right">{d.cpm}</Td>
+                    <Td alinhar="right">{formatNumber(c.impressions)}</Td>
+                    <Td alinhar="right">{formatNumber(c.clicks)}</Td>
+                  </tr>
                 );
               })}
-            </div>
-          )}
+            </Tabela>
+          </Secao>
+        )}
 
-          <div className="mt-6">
-            <div
-              className="rounded-xl p-5 text-white"
-              style={{ background: brand }}
-            >
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] opacity-75">
-                Consolidado do período
-              </p>
-              <div className="mt-2.5 flex items-baseline gap-6">
-                <span className="text-[22px] font-bold tracking-[-0.02em]">
-                  {formatCurrency(totals.spendCents)}
-                </span>
-                <span className="text-[13px] opacity-85">
-                  {formatNumber(Math.round(totals.results))} resultados
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Depois das páginas por plataforma — a numeração acompanha. */}
-          <PageFooter
-            numero={3 + platformDetail.length}
-            assinatura={assinatura}
-          />
-        </section>
+        {/* ========================== RODAPÉ ========================== */}
+        <footer className="mt-4 flex items-center justify-between border-t border-[#e6e8ec] px-16 py-8 text-[12px] text-[#8b95a1]">
+          <span>{assinatura}</span>
+          <span>{periodo}</span>
+        </footer>
       </main>
     </>
   );
 }
 
 /* ------------------------------------------------------------------ */
+/* Peças                                                               */
+/* ------------------------------------------------------------------ */
 
-function PageHeader({
-  client,
-  periodo,
+function Secao({
+  titulo,
   brand,
+  children,
 }: {
-  client: string;
-  periodo: string;
+  titulo: string;
   brand: string;
+  children: React.ReactNode;
 }) {
   return (
-    <header className="flex items-center justify-between border-b border-[#e6e8ec] pb-3">
-      <div className="flex items-center gap-2">
+    <section className="px-16 pt-12">
+      <div className="mb-6 flex items-center gap-3">
+        {/* Barrinha na cor da marca: separa as seções sem uma linha
+            horizontal atravessando a folha inteira a cada bloco. */}
         <span
-          className="size-4 rounded"
+          className="h-5 w-1 rounded-full"
           style={{ background: brand }}
           aria-hidden
         />
-        <span className="text-[11px] font-semibold">{client}</span>
+        <h2 className="text-[21px] font-bold tracking-[-0.02em]">{titulo}</h2>
       </div>
-      <span className="text-[10px] text-[#64707d]">{periodo}</span>
-    </header>
+      {children}
+    </section>
   );
 }
 
-function PageFooter({
-  numero,
-  assinatura,
+function Cartao({
+  rotulo,
+  valor,
+  anterior,
+  delta,
+  sentimento,
 }: {
-  numero: number;
-  assinatura: string;
+  rotulo: string;
+  valor: string;
+  anterior: string | null;
+  /** `null` = sem base de comparação. Mostra o número sem seta. */
+  delta: number | null;
+  sentimento: "positive" | "negative" | "neutral";
 }) {
-  return (
-    <>
-      {/* Empurra o rodapé para a base da folha. Sem isto ele fica logo
-          abaixo do conteúdo, e uma página curta sai com a numeração
-          boiando no meio do papel — parece relatório truncado.
+  /* A COR SAI DO SENTIDO, não do sinal. Custo por resultado que CAI é
+     notícia boa e sobe em verde se a gente pintar pelo sinal — por isso
+     quem decide é `sentiment`, já resolvido por `betterWhen`. */
+  const subiu = (delta ?? 0) > 0;
+  const bom =
+    sentimento === "neutral"
+      ? null
+      : (sentimento === "positive") === subiu || delta === 0;
 
-          `flex-1` come a sobra; `min-h-6` garante respiro mesmo quando
-          não sobra nada, que é o caso da página cheia de criativos. */}
-      <div className="min-h-6 flex-1" />
-      <footer className="flex items-center justify-between border-t border-[#e6e8ec] pt-3 text-[9px] text-[#8b95a1]">
-        <span>{assinatura}</span>
-        <span className="tabular-nums">{numero}</span>
-      </footer>
-    </>
-  );
-}
+  const cor =
+    bom === null ? "#64707d" : bom ? "#1f7a4d" : "#b03a2e";
+  const fundo =
+    bom === null ? "#f1f3f5" : bom ? "#e8f5ee" : "#fdecea";
 
-function Metric({
-  label,
-  value,
-  color,
-}: {
-  label: string;
-  value: string;
-  color?: string;
-}) {
   return (
-    <div className="min-w-0">
-      <dt className="truncate text-[7.5px] font-medium uppercase tracking-[0.08em] text-[#8b95a1]">
-        {label}
-      </dt>
-      <dd
-        className="mt-0.5 truncate text-[10px] font-semibold tabular-nums"
-        style={color ? { color } : undefined}
-      >
-        {value}
-      </dd>
+    <div className="rounded-xl border border-[#e6e8ec] bg-white p-4">
+      <p className="truncate text-[12px] font-medium text-[#64707d]">
+        {rotulo}
+      </p>
+      <div className="mt-2 flex items-baseline gap-2">
+        <span className="text-[26px] font-bold leading-none tracking-[-0.02em] tabular-nums">
+          {valor}
+        </span>
+        {delta !== null && delta !== undefined && (
+          <span
+            className="shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums"
+            style={{ color: cor, background: fundo }}
+          >
+            {subiu ? "▲" : delta < 0 ? "▼" : "•"}{" "}
+            {formatPercent(Math.abs(delta))}
+          </span>
+        )}
+      </div>
+      {anterior && (
+        <p className="mt-1.5 text-[11px] text-[#8b95a1]">
+          <span className="tabular-nums">{anterior}</span> no período anterior
+        </p>
+      )}
     </div>
+  );
+}
+
+/**
+ * O funil.
+ *
+ * Cada faixa é um trapézio desenhado por `clip-path`, e a largura cai
+ * proporcionalmente à posição — NÃO ao valor. Proporcional ao valor, um
+ * funil com 43 mil impressões e 9 conversas faria a última faixa medir
+ * meio pixel e sumir, que é justamente a etapa que interessa.
+ *
+ * A porcentagem à direita é a passagem de uma etapa para a seguinte, e
+ * só aparece entre etapas que se comparam: de impressão para clique faz
+ * sentido, de reais para impressão não.
+ */
+function Funil({
+  etapas,
+  brand,
+}: {
+  etapas: { rotulo: string; valor: string; taxa: number | null }[];
+  brand: string;
+}) {
+  const total = etapas.length;
+
+  return (
+    <div>
+      <p className="mb-3 text-[12px] font-semibold uppercase tracking-[0.1em] text-[#8b95a1]">
+        Funil
+      </p>
+
+      <div className="flex flex-col items-center gap-1.5">
+        {etapas.map((e, i) => {
+          /* De 100% a 52% da largura, em passos iguais. O corte do
+             trapézio é de 22px de cada lado — constante, para as faixas
+             ficarem paralelas em vez de abrir conforme estreitam. */
+          const largura = 100 - (i / Math.max(total - 1, 1)) * 48;
+
+          return (
+            <div key={e.rotulo} className="w-full">
+              <div
+                className="relative mx-auto flex h-[58px] items-center justify-center text-center"
+                style={{
+                  width: `${largura}%`,
+                  background: `linear-gradient(135deg, ${brand} 0%, ${shade(brand, 0.35)} 100%)`,
+                  /* Opacidade crescente: as etapas de baixo são as que
+                     importam, e ficam mais sólidas. */
+                  opacity: 0.45 + (i / Math.max(total - 1, 1)) * 0.55,
+                  clipPath:
+                    "polygon(0 0, 100% 0, calc(100% - 22px) 100%, 22px 100%)",
+                }}
+              >
+                <div className="px-6 text-white">
+                  <p className="text-[11px] font-medium leading-none opacity-90">
+                    {e.rotulo}
+                  </p>
+                  <p className="mt-1 text-[17px] font-bold leading-none tabular-nums">
+                    {e.valor}
+                  </p>
+                </div>
+              </div>
+
+              {e.taxa !== null && i < total - 1 && (
+                <p className="mt-1 text-center text-[10px] font-medium text-[#8b95a1] tabular-nums">
+                  {formatPercent(e.taxa)} seguem para a próxima etapa
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function Tabela({
+  cabecalho,
+  alinhamento,
+  children,
+}: {
+  cabecalho: string[];
+  alinhamento: ("left" | "right")[];
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-[#e6e8ec]">
+      <table className="w-full border-collapse text-[13px]">
+        <thead>
+          <tr className="bg-[#f7f8fa]">
+            {cabecalho.map((h, i) => (
+              <th
+                key={h}
+                className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.06em] text-[#64707d]"
+                style={{ textAlign: alinhamento[i] ?? "left" }}
+              >
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>{children}</tbody>
+      </table>
+    </div>
+  );
+}
+
+function Td({
+  children,
+  alinhar = "left",
+}: {
+  children: React.ReactNode;
+  alinhar?: "left" | "right";
+}) {
+  return (
+    <td
+      className="border-t border-[#eef1f4] px-4 py-3 align-middle tabular-nums"
+      style={{ textAlign: alinhar }}
+    >
+      {children}
+    </td>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Utilitários                                                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * CTR, CPC e CPM de um anúncio.
+ *
+ * Derivadas aqui porque `ad_creatives` guarda os quatro números brutos e
+ * não as razões. Todas as divisões são guardadas: um anúncio sem clique
+ * produziria `Infinity` no CPC, e `formatCurrency(Infinity)` imprime
+ * "R$ NaN" no documento do cliente.
+ */
+function derivadas(c: {
+  spend_cents: number;
+  impressions: number;
+  clicks: number;
+}): { ctr: string; cpc: string; cpm: string } {
+  return {
+    // Fração, não porcentagem: `formatPercent` multiplica por 100.
+    ctr: c.impressions > 0 ? formatPercent(c.clicks / c.impressions) : "—",
+    cpc: c.clicks > 0 ? formatCurrency(Math.round(c.spend_cents / c.clicks)) : "—",
+    cpm:
+      c.impressions > 0
+        ? formatCurrency(Math.round((c.spend_cents / c.impressions) * 1000))
+        : "—",
+  };
+}
+
+/**
+ * Variação entre dois números, como FRAÇÃO (0,12 = +12%).
+ *
+ * Fração porque é o que `formatPercent` espera — ver a nota em
+ * `EtapaDoFunil.taxa`, onde a confusão de unidade já imprimiu um número
+ * cem vezes maior.
+ *
+ * `null` quando não há base — e não zero. Sem período anterior, "0%"
+ * afirmaria estabilidade onde não há comparação nenhuma.
+ */
+function variacao(atual: number, anterior: number | undefined): number | null {
+  if (anterior === undefined || anterior === 0) return null;
+  return (atual - anterior) / anterior;
+}
+
+/**
+ * O total de uma métrica somando as plataformas.
+ *
+ * O funil precisa de impressões e cliques, que não estão entre os KPIs
+ * do topo (aqueles são investimento, resultado e custo). Sai de
+ * `platformDetail`, que é a MESMA apuração — em vez de somar
+ * `daily_metrics` de novo aqui e arriscar um número que diverge do
+ * quadro logo acima.
+ */
+function somaDeKpi(
+  kpis: KpiResult[],
+  detalhe: { kpis: KpiResult[] }[],
+  chave: string,
+): number {
+  const noTopo = kpis.find((k) => k.key === chave);
+  if (noTopo) return noTopo.value;
+
+  return detalhe.reduce(
+    (acc, p) => acc + (p.kpis.find((k) => k.key === chave)?.value ?? 0),
+    0,
   );
 }
 
@@ -679,7 +777,7 @@ function initials(name: string): string {
     .toUpperCase();
 }
 
-/** Escurece o hex da marca para o gradiente da capa. */
+/** Escurece o hex da marca para o gradiente. */
 function shade(hex: string, amount = 0.45): string {
   const n = parseInt(hex.replace("#", ""), 16);
   if (Number.isNaN(n)) return "#0d1826";
@@ -692,22 +790,24 @@ function shade(hex: string, amount = 0.45): string {
   return `#${[r, g, b].map((c) => c.toString(16).padStart(2, "0")).join("")}`;
 }
 
-function sentimentColor(sentiment: string): string {
-  if (sentiment === "positive") return "#1f7a4d";
-  if (sentiment === "negative") return "#b03a2e";
-  return "#64707d";
+/**
+ * A janela anterior por extenso, para a frase do cabeçalho.
+ *
+ * Usa `previousPeriod`, a MESMA função que calculou os números de
+ * comparação — escrever "os 7 dias anteriores" à mão diria uma coisa
+ * enquanto as setas comparariam outra.
+ */
+function janelaAnterior(inicio: string, fim: string): string | null {
+  const p = previousPeriod(inicio, fim);
+  return p ? formatPeriod(p.start, p.end) : null;
 }
 
 /**
  * A pessoa logada enxerga esta conta?
  *
- * A consulta usa o cliente com a chave ANON e o JWT da sessão, então
- * quem decide é a policy do Postgres — não uma regra escrita aqui. Um
- * colaborador fora da carteira recebe zero linhas e cai no `notFound`.
- *
- * Existe porque `getPrintReportData` roda com o cliente ADMIN: aquele
- * caminho ignora RLS de propósito (o Puppeteer não tem sessão), e sem
- * esta porta o acesso humano herdaria o mesmo bypass.
+ * A consulta usa a chave ANON e o JWT da sessão, então quem decide é a
+ * policy do Postgres. Um colaborador fora da carteira recebe zero linhas
+ * e cai no `notFound`.
  */
 async function equipePodeVer(clientId: string): Promise<boolean> {
   const { getCurrentUser, createSupabaseServerClient } = await import(
@@ -734,8 +834,8 @@ async function equipePodeVer(clientId: string): Promise<boolean> {
  * Período quando o acesso é humano.
  *
  * Data malformada cai nos últimos 30 dias em vez de derrubar a página:
- * quem abriu quer revisar um documento, e um erro aqui deixaria a aba
- * em branco sem dizer o motivo. O intervalo aparece impresso na capa,
+ * quem abriu quer revisar um documento, e um erro aqui deixaria a aba em
+ * branco sem dizer o motivo. O intervalo aparece impresso no cabeçalho,
  * então um padrão errado é visível, não silencioso.
  */
 function periodoDaQuery(

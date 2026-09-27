@@ -44,10 +44,19 @@ export function PrintWeeklyChart({
   data,
   color,
   series,
+  largura,
 }: {
   data: TrendPoint[];
   color: string;
   series: SerieDoGrafico[];
+  /**
+   * Largura em pixels, CALCULADA pela folha — ver `LARGURA_DO_GRAFICO`.
+   *
+   * É prop e não constante local porque o número tem de sair da mesma
+   * conta que define a coluna: enquanto esteve digitado aqui, o gráfico
+   * transbordava a folha e o Puppeteer cortava o eixo da direita.
+   */
+  largura: number;
 }) {
   if (data.length === 0) {
     return (
@@ -91,7 +100,7 @@ export function PrintWeeklyChart({
   return (
     <div className="flex flex-col items-center">
     <BarChart
-      width={620}
+      width={largura}
       height={220}
       data={pontos}
       margin={{ top: 8, right: 8, bottom: 0, left: 8 }}

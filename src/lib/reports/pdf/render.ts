@@ -3,6 +3,7 @@ import "server-only";
 import { serverEnv } from "@/lib/env";
 import { abrirNavegador } from "@/lib/pdf/browser";
 import { createPrintToken } from "@/lib/reports/print-token";
+import { LARGURA_DA_FOLHA } from "@/lib/reports/rolagem";
 import type { ReportPayload } from "@/lib/reports/payload";
 
 /* =====================================================================
@@ -109,10 +110,14 @@ async function renderWithPuppeteer(
   try {
     const page = await browser.newPage();
 
-    // Viewport na largura de uma folha A4 a 96dpi (210mm ≈ 794px). Sem
-    // isso o Chromium usa 800×600 e o layout responsivo do Tailwind
-    // escolhe breakpoints de celular para o papel.
-    await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 2 });
+    // Viewport na largura EXATA da folha contínua. Sem isso o Chromium
+    // usa 800×600 e o layout responsivo do Tailwind escolhe breakpoints
+    // de celular para o documento.
+    await page.setViewport({
+      width: LARGURA_DA_FOLHA,
+      height: 1400,
+      deviceScaleFactor: 2,
+    });
 
     // `networkidle0`: espera as miniaturas dos criativos e as fontes.
     // Sem isso o PDF sai com retângulos vazios no lugar dos anúncios.
@@ -123,14 +128,33 @@ async function renderWithPuppeteer(
     // e aí o PDF sai com a fonte de fallback.
     await page.evaluate(() => document.fonts.ready.then(() => true));
 
-    // `screen`, não `print`: o layout já é A4 e as media queries de
-    // impressão do Tailwind esconderiam elementos por engano.
+    // `screen`, não `print`: as media queries de impressão do Tailwind
+    // esconderiam elementos por engano.
     await page.emulateMediaType("screen");
 
+    /* ⚠️ A ALTURA É MEDIDA, NÃO DECLARADA — é isto que faz o documento
+       sair em UMA página contínua em vez de fatiado em folhas.
+
+       `scrollHeight` do elemento raiz, e não do `body`: margens que
+       colapsam ficam de fora do `body` e o PDF sairia com o rodapé
+       cortado por alguns pixels.
+
+       O `+ 2` cobre o arredondamento entre o pixel de CSS e o ponto do
+       PDF. Sem ele, um layout que termina numa fração de pixel gera uma
+       SEGUNDA PÁGINA quase vazia com a última linha partida ao meio —
+       que é exatamente o defeito que um relatório em folha contínua
+       existe para não ter. */
+    const altura = await page.evaluate(
+      () => document.documentElement.scrollHeight,
+    );
+
     const buffer = await page.pdf({
-      format: "A4",
+      width: `${LARGURA_DA_FOLHA}px`,
+      height: `${Math.ceil(altura) + 2}px`,
       printBackground: true,
-      preferCSSPageSize: true,
+      /* `preferCSSPageSize` fica FORA: com ele, um `@page { size }` que
+         alguém acrescentasse depois venceria a altura medida e o PDF
+         voltaria a quebrar em páginas, sem nada na tela denunciar. */
       margin: { top: "0", right: "0", bottom: "0", left: "0" },
     });
 
