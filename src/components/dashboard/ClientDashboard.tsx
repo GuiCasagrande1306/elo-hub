@@ -9,6 +9,7 @@ import { TrendChart } from "./trend-chart";
 import { PlatformSplitList } from "./platform-split";
 import { AdGallery } from "./ad-gallery";
 import { ClientSettingsCard } from "@/components/clients/client-settings-card";
+import { LinkDoRelatorio } from "@/components/clients/link-do-relatorio";
 import { ClientSettingsDialog } from "@/components/clients/client-settings-dialog";
 import { AdStructure } from "@/components/dashboard/ad-structure";
 import { Button } from "@/components/ui/button";
@@ -186,6 +187,12 @@ export function ClientDashboard({
                 integrations={integrations}
                 segment={client.segment}
               />
+              {/* Ao lado de "Gerar relatório" de propósito: são as duas
+                  formas de entregar o MESMO documento — um arquivo
+                  fechado num período, ou um endereço onde o cliente
+                  escolhe as datas. Separá-las em lugares diferentes
+                  faria uma delas nunca ser encontrada. */}
+              <LinkDoRelatorio clientId={client.id} />
               <Button
                 size="sm"
                 className="h-9"

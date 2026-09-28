@@ -92,6 +92,20 @@ export async function proxy(request: NextRequest) {
      */
     pathname.startsWith("/c/") ||
     /**
+     * O relatório que o cliente abre por link, com as datas editáveis.
+     * Mesma natureza de `/c/`: público de verdade, sem conta.
+     *
+     * A fechadura é um token de 32 bytes aleatórios que a página
+     * confere por igualdade exata no servidor, contra uma linha que a
+     * agência pode REVOGAR — ver `lib/reports/link-publico.ts`. Sem
+     * token válido a rota responde 404, nunca 403: um 403 confirmaria
+     * que aquele endereço já existiu.
+     *
+     * A página é `noindex`, `nofollow` e `nocache`, porque um link que
+     * caia num buscador deixa de ser secreto para sempre.
+     */
+    pathname.startsWith("/relatorio/") ||
+    /**
      * "Esqueci minha senha". Quem chega aqui não tem sessão — é o
      * motivo de a página existir. Mandá-la para `/login` fecharia a
      * porta na cara de quem já está do lado de fora.

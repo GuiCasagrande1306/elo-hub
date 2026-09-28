@@ -973,3 +973,96 @@ export async function checkInstagramAction(input: {
   );
   return { ok: true, dados: await checkInstagramConnection(input.clientId) };
 }
+
+/* ------------------------------------------------------------------ */
+/* Link público do relatório                                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * O link ativo do cliente, criando um se ainda não houver.
+ *
+ * ⚠️ ABRE UMA PORTA SEM SENHA, e o nome disfarça isso. Quem receber o
+ * endereço vê o desempenho de mídia da conta sem login nenhum — por
+ * isso a criação passa pela sessão de quem clicou, e a policy de
+ * INSERT exige `can_write_client`. Um colaborador fora da carteira não
+ * consegue abrir uma porta para uma conta que não administra.
+ *
+ * REAPROVEITA o link existente em vez de criar outro a cada clique:
+ * dois endereços ativos para o mesmo cliente significam dois links
+ * circulando, e revogar um deixaria o outro de pé sem ninguém notar.
+ */
+export async function gerarLinkDoRelatorio(clientId: string): Promise<
+  | { ok: true; token: string; viewCount: number; lastViewedAt: string | null }
+  | { ok: false; error: string }
+> {
+  if (isDemoMode) {
+    return {
+      ok: true,
+      token: "demonstracao-sem-link-real",
+      viewCount: 0,
+      lastViewedAt: null,
+    };
+  }
+
+  const { getCurrentUser } = await import("@/lib/supabase/server");
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Sessão expirada." };
+
+  const supabase = await createSupabaseServerClient();
+  const { linkAtivoDoCliente } = await import("@/lib/reports/link-publico");
+
+  const link = await linkAtivoDoCliente(
+    supabase as never,
+    clientId,
+    user.id ?? null,
+  );
+
+  if (!link) {
+    return {
+      ok: false,
+      error: "Não foi possível gerar o link. Você administra esta conta?",
+    };
+  }
+
+  return {
+    ok: true,
+    token: link.token,
+    viewCount: link.viewCount,
+    lastViewedAt: link.lastViewedAt,
+  };
+}
+
+/**
+ * Desliga o link — é o que se usa quando o contrato acaba.
+ *
+ * UPDATE e não DELETE: a linha fica, com `revoked_at` preenchido.
+ * Apagar destruiria o registro de que o link existiu e de quantas vezes
+ * foi aberto, que é exatamente o que se quer consultar depois de
+ * desconfiar que ele circulou além de quem devia.
+ *
+ * `count: "exact"` porque o PostgREST devolve `error: null` quando o
+ * UPDATE não casa linha nenhuma — sem a contagem, uma revogação que não
+ * aconteceu (por RLS, por exemplo) sairia como sucesso na tela, e
+ * alguém dormiria achando que fechou uma porta aberta.
+ */
+export async function revogarLinkDoRelatorio(
+  clientId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (isDemoMode) return { ok: true };
+
+  const supabase = await createSupabaseServerClient();
+
+  const { error, count } = await supabase
+    .from("report_share_links")
+    .update({ revoked_at: new Date().toISOString() }, { count: "exact" })
+    .eq("client_id", clientId)
+    .is("revoked_at", null);
+
+  if (error) return { ok: false, error: error.message };
+  if (!count) {
+    return { ok: false, error: "Nenhum link ativo para revogar." };
+  }
+
+  revalidatePath("/clientes");
+  return { ok: true };
+}
