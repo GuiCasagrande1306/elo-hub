@@ -28,6 +28,7 @@ import {
 } from "./platform-detail";
 import { totaisDoPeriodo, type TotaisDoPeriodo } from "./totais-do-periodo";
 import { coberturaDaJanela, type Cobertura } from "./cobertura";
+import { totaisDaLoja, type TotaisDaLoja } from "@/lib/loja/leitura";
 import type {
   AdCreative,
   Client,
@@ -147,6 +148,18 @@ export interface PrintReportData {
    * 7 dias", veria quase zero e concluiria que a campanha parou.
    */
   cobertura: Cobertura;
+  /**
+   * Faturamento da LOJA no período — pedidos pagos, receita e ticket.
+   *
+   * ⚠️ `null` para quem não tem loja cadastrada, que é a maioria da
+   * carteira. É isso que faz esta seção existir só no Atacado de Pratas
+   * e deixar os outros clientes exatamente como estavam.
+   *
+   * E não confundir com `revenue` dos KPIs: aquilo é a receita que o
+   * pixel ATRIBUIU ao anúncio; isto é a loja inteira. Ver
+   * `lib/loja/leitura.ts`.
+   */
+  loja: TotaisDaLoja | null;
   period: { start: string; end: string };
 }
 
@@ -193,6 +206,7 @@ export async function getPrintReportData(
       totaisMeta: await totaisDoPeriodo(clientId, periodStart, periodEnd),
       totaisMetaAnterior: await totaisDoPeriodo(clientId, prev.start, prev.end),
       cobertura: await coberturaDaJanela(clientId, periodStart, periodEnd),
+      loja: await totaisDaLoja(clientId, periodStart, periodEnd),
     };
   }
 
@@ -237,12 +251,13 @@ export async function getPrintReportData(
      para o mesmo cliente e o mesmo mês. */
   /* EM PARALELO: são duas chamadas à Graph API, e a página tem alguém
      esperando. Em série, uma conta lenta pagaria o preço duas vezes. */
-  const [metricasDoPeriodo, totaisMeta, totaisMetaAnterior, cobertura] =
+  const [metricasDoPeriodo, totaisMeta, totaisMetaAnterior, cobertura, loja] =
     await Promise.all([
       metricasDeCriativosNoPeriodo(clientId, periodStart, periodEnd),
       totaisDoPeriodo(clientId, periodStart, periodEnd),
       totaisDoPeriodo(clientId, prev.start, prev.end),
       coberturaDaJanela(clientId, periodStart, periodEnd),
+      totaisDaLoja(clientId, periodStart, periodEnd),
     ]);
 
   /* Resolve o caminho do bucket em URL assinada ANTES de montar o
@@ -284,6 +299,7 @@ export async function getPrintReportData(
     totaisMeta,
     totaisMetaAnterior,
     cobertura,
+    loja,
   };
 }
 
@@ -366,7 +382,11 @@ function assemble(
   },
 ): Omit<
   PrintReportData,
-  "creativesDoPeriodo" | "totaisMeta" | "totaisMetaAnterior" | "cobertura"
+  | "creativesDoPeriodo"
+  | "totaisMeta"
+  | "totaisMetaAnterior"
+  | "cobertura"
+  | "loja"
 > {
   const currentTotals = sumMetrics(current, tiposDeConversao);
   const previousTotals = sumMetrics(previous, tiposDeConversao);

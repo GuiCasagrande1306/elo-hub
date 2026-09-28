@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { totaisDaLoja } from "@/lib/loja/leitura";
 import type { Metadata } from "next";
 
 import { ClientDashboard } from "@/components/dashboard/ClientDashboard";
@@ -166,8 +167,15 @@ export default async function ClientPage({
     roas: trend.map((p) => (p.spend === 0 ? 0 : p.revenue / p.spend)),
   };
 
+  /* Faturamento da LOJA no mesmo intervalo dos cards acima.
+     ⚠️ `null` para quem não tem loja cadastrada — hoje, todo mundo
+     menos o Atacado de Pratas. A tela não desenha nada nesse caso, e
+     nenhum outro cliente muda. */
+  const loja = await totaisDaLoja(client.id, start, end);
+
   return (
     <ClientDashboard
+      loja={loja}
       client={client}
       agencias={nomesDeAgencia}
       kpis={kpis}

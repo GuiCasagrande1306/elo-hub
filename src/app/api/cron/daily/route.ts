@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { serverEnv } from "@/lib/env";
 import { syncAllClients } from "@/lib/ads/sync";
 import { enviarAvisoDeSaldo } from "@/lib/ads/balance-notice";
+import { sincronizarLojas } from "@/lib/loja/sync";
 import { dispatchScheduledReports } from "@/lib/reports/schedule";
 import { avisarRelatoriosProntos } from "@/lib/reports/aviso-interno";
 import { materializarMes, mesCorrente } from "@/lib/finance/recurrence";
@@ -236,6 +237,43 @@ export async function GET(request: NextRequest) {
     // `mode=month` porque a rodada diária também precisa capturar
     // reatribuições retroativas das plataformas.
     resposta.sync = await syncAllClients({ mode: "month" });
+  }
+
+  /* --- 2.5. Faturamento da loja ------------------------------------
+     Só os clientes com loja cadastrada em `store_integrations` — hoje,
+     o Atacado de Pratas. Quem não tem passa direto, e a etapa custa
+     uma consulta.
+
+     ⚠️ REPROCESSA O MÊS INTEIRO, não só o dia. Pedido muda de status
+     depois de nascer: o que estava "Em Análise" no dia 20 vira
+     "Confirmado" no dia 22 quando o boleto compensa, e passa a contar
+     no faturamento DO DIA 20. Incremental deixaria esse dia
+     subestimado para sempre. Ver `lib/loja/sync.ts`.
+
+     `?since=&until=` permite backfill de uma janela antiga sem esperar
+     o mês virar; sem eles, o mês corrente.
+
+     try/catch próprio como as outras etapas: falha na loja não pode
+     impedir o aviso de saldo de sair. */
+  if (rodar("loja")) {
+    try {
+      const ISO = /^\d{4}-\d{2}-\d{2}$/;
+      const since = searchParams.get("since");
+      const until = searchParams.get("until");
+      const range =
+        since && until && ISO.test(since) && ISO.test(until) && since <= until
+          ? { inicio: since, fim: until }
+          : undefined;
+
+      resposta.loja = await sincronizarLojas({
+        clientId: searchParams.get("clientId") ?? undefined,
+        range,
+      });
+    } catch (error) {
+      resposta.loja = {
+        erro: error instanceof Error ? error.message : "falha desconhecida",
+      };
+    }
   }
 
   /* --- 3. Aviso de saldo ------------------------------------------

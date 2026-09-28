@@ -60,6 +60,7 @@ export function FolhaDeRolagem({
     totaisMeta,
     totaisMetaAnterior,
     cobertura,
+    loja,
   } = data;
 
   /* Fallback NEUTRO: sem cor do cliente, o documento não deve herdar a
@@ -256,6 +257,73 @@ export function FolhaDeRolagem({
             )}
           </div>
         </Secao>
+
+        {/* ====================== LOJA (MAGAZORD) ====================== */}
+        {/* ⚠️ SÓ APARECE PARA QUEM TEM LOJA CADASTRADA. `loja` é nulo
+            para o resto da carteira, e a seção some inteira — nenhum
+            cliente sem integração vê diferença nenhuma no documento. */}
+        {loja && (
+          <Secao titulo="A loja no período" brand={brand}>
+            <div className="grid grid-cols-4 gap-4">
+              <Cartao
+                rotulo="Faturamento da loja"
+                valor={formatCurrency(loja.receitaCents)}
+                anterior={null}
+                delta={null}
+                sentimento="positive"
+              />
+              <Cartao
+                rotulo="Pedidos pagos"
+                valor={formatNumber(loja.pedidosPagos)}
+                anterior={null}
+                delta={null}
+                sentimento="positive"
+              />
+              <Cartao
+                rotulo="Ticket médio"
+                /* `null` sem pedido — um traço, nunca "R$ 0,00", que
+                   afirmaria que cada venda saiu de graça. */
+                valor={
+                  loja.ticketMedioCents === null
+                    ? "—"
+                    : formatCurrency(loja.ticketMedioCents)
+                }
+                anterior={null}
+                delta={null}
+                sentimento="positive"
+              />
+              <Cartao
+                /* ⚠️ "RETORNO SOBRE A LOJA", NUNCA "ROAS".
+                   ROAS divide a receita ATRIBUÍDA pelo gasto da campanha
+                   de origem — mede o anúncio. Este divide a loja INTEIRA
+                   pelo investimento total, e inclui venda orgânica,
+                   direta e de cliente recorrente, que aconteceriam sem
+                   anúncio nenhum. O número sai bem maior; chamá-lo de
+                   ROAS faria o cliente ler 12 onde o anúncio entregou 3. */
+                rotulo="Retorno sobre a loja"
+                valor={
+                  totals.spendCents > 0
+                    ? `${(loja.receitaCents / totals.spendCents)
+                        .toFixed(1)
+                        .replace(".", ",")}x`
+                    : "—"
+                }
+                anterior={null}
+                delta={null}
+                sentimento="positive"
+              />
+            </div>
+
+            <p className="mt-4 text-[12px] leading-relaxed text-[#64707d]">
+              Faturamento de <strong>todos os canais</strong> da loja — não
+              apenas do que veio pelos anúncios. Considera pedidos pagos;
+              cancelados e pedidos aguardando pagamento ficam de fora
+              {loja.pedidosDescartados > 0 &&
+                ` (${formatNumber(loja.pedidosDescartados)} no período)`}
+              .
+            </p>
+          </Secao>
+        )}
 
         {/* ==================== FUNIL + EVOLUÇÃO ==================== */}
         <Secao
