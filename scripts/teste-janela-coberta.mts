@@ -20,11 +20,31 @@
 import { estadoDaJanela } from "../src/lib/reports/janela-coberta";
 
 let falhas = 0;
-const ok = (nome: string, real: unknown, esperado: unknown) => {
-  const bate = JSON.stringify(real) === JSON.stringify(esperado);
-  if (!bate) {
+
+/**
+ * Compara SÓ as chaves que o caso declara.
+ *
+ * Era comparação do objeto inteiro, e acrescentar `coletaAtrasada` à
+ * resposta quebrou as quinze asserções de uma vez — nenhuma delas por
+ * estar errada. Um teste que falha quando o código ganha um campo novo
+ * e correto cobra manutenção sem pagar nada em segurança, e a saída
+ * fácil seria colar o campo nos quinze objetos esperados, deixando cada
+ * caso falar de coisas que não são dele.
+ *
+ * Com subconjunto, cada asserção continua dizendo uma coisa só, e o
+ * campo novo tem os seus próprios casos mais abaixo.
+ */
+const ok = (nome: string, real: unknown, esperado: Record<string, unknown>) => {
+  const r = real as Record<string, unknown>;
+  const diferente = Object.keys(esperado).filter(
+    (k) => JSON.stringify(r?.[k]) !== JSON.stringify(esperado[k]),
+  );
+
+  if (diferente.length > 0) {
     falhas++;
-    console.log(`✗ ${nome}\n   esperado: ${JSON.stringify(esperado)}\n   real:     ${JSON.stringify(real)}`);
+    console.log(
+      `✗ ${nome}\n   esperado: ${JSON.stringify(esperado)}\n   real:     ${JSON.stringify(real)}`,
+    );
   } else console.log(`✓ ${nome}`);
 };
 
@@ -125,6 +145,35 @@ ok("nenhuma sincronização completou → barra",
 ok("sem dado e sem coleta → a trava antiga responde, esta não",
    estadoDaJanela({ fim: "2026-09-21", hoje: HOJE, ultimoDiaComDado: null, semDado: true, sincronizacao: { comErro: false, ate: null } }),
    { incompleta: false, naoApurada: false });
+
+/* --- o campo que separa "não anunciou" de "não medimos" ------------- */
+/* ⚠️ `semDado` é ZERO LINHA, e sozinho não diz qual dos dois é. Como
+   `incompleta` exige um último dia com dado para comparar, ela é falsa
+   nos dois casos — então o documento do cliente precisa de
+   `coletaAtrasada` para escolher entre "não houve veiculação" (que
+   seria mentira se a coleta parou) e "não foi possível apurar" (que
+   assustaria quem só ficou uma semana sem anunciar). */
+
+ok("sem dado e coleta em dia → a conta não anunciou",
+   estadoDaJanela({ fim: "2026-09-21", hoje: HOJE, ultimoDiaComDado: null, semDado: true, sincronizacao: emDia }),
+   { incompleta: false, naoApurada: false, coletaAtrasada: false });
+
+ok("sem dado e coleta com erro → não foi apurado",
+   estadoDaJanela({ fim: "2026-09-21", hoje: HOJE, ultimoDiaComDado: null, semDado: true, sincronizacao: comErro }),
+   { incompleta: false, naoApurada: false, coletaAtrasada: true });
+
+ok("sem dado e coleta atrasada → não foi apurado",
+   estadoDaJanela({ fim: "2026-09-21", hoje: HOJE, ultimoDiaComDado: null, semDado: true, sincronizacao: atrasada }),
+   { coletaAtrasada: true });
+
+ok("sem dado e nenhuma sincronização completa → não foi apurado",
+   estadoDaJanela({ fim: "2026-09-21", hoje: HOJE, ultimoDiaComDado: null, semDado: true, sincronizacao: { comErro: false, ate: null } }),
+   { coletaAtrasada: true });
+
+/* E o par oposto: janela coberta, coleta em dia — nada a dizer. */
+ok("janela coberta e coleta em dia → coletaAtrasada falso",
+   estadoDaJanela({ fim: "2026-09-21", hoje: HOJE, ultimoDiaComDado: "2026-09-21", semDado: false, sincronizacao: emDia }),
+   { incompleta: false, naoApurada: false, coletaAtrasada: false });
 
 console.log(falhas === 0 ? "\nTUDO PASSOU" : `\n${falhas} FALHA(S)`);
 process.exit(falhas ? 1 : 0);

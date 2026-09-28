@@ -27,6 +27,7 @@ import {
   type PlatformDetail,
 } from "./platform-detail";
 import { totaisDoPeriodo, type TotaisDoPeriodo } from "./totais-do-periodo";
+import { coberturaDaJanela, type Cobertura } from "./cobertura";
 import type {
   AdCreative,
   Client,
@@ -133,6 +134,19 @@ export interface PrintReportData {
    * mais honesto do que comparar contra um zero inventado.
    */
   totaisMetaAnterior: TotaisDoPeriodo | null;
+  /**
+   * A janela pedida está coberta pelo dado?
+   *
+   * ⚠️ VIAJA COM O DOCUMENTO porque agora existe uma superfície onde
+   * QUEM ESCOLHE O PERÍODO É O CLIENTE. A trava de envio já usava esta
+   * mesma apuração para impedir que um relatório pela metade saísse
+   * pela fila; no link público não há fila nem revisão — o cliente
+   * digita duas datas e vê o resultado na hora.
+   *
+   * Sem isto, um cliente de conta com a coleta parada abriria "últimos
+   * 7 dias", veria quase zero e concluiria que a campanha parou.
+   */
+  cobertura: Cobertura;
   period: { start: string; end: string };
 }
 
@@ -178,6 +192,7 @@ export async function getPrintReportData(
       creativesDoPeriodo: false,
       totaisMeta: await totaisDoPeriodo(clientId, periodStart, periodEnd),
       totaisMetaAnterior: await totaisDoPeriodo(clientId, prev.start, prev.end),
+      cobertura: await coberturaDaJanela(clientId, periodStart, periodEnd),
     };
   }
 
@@ -222,11 +237,13 @@ export async function getPrintReportData(
      para o mesmo cliente e o mesmo mês. */
   /* EM PARALELO: são duas chamadas à Graph API, e a página tem alguém
      esperando. Em série, uma conta lenta pagaria o preço duas vezes. */
-  const [metricasDoPeriodo, totaisMeta, totaisMetaAnterior] = await Promise.all([
-    metricasDeCriativosNoPeriodo(clientId, periodStart, periodEnd),
-    totaisDoPeriodo(clientId, periodStart, periodEnd),
-    totaisDoPeriodo(clientId, prev.start, prev.end),
-  ]);
+  const [metricasDoPeriodo, totaisMeta, totaisMetaAnterior, cobertura] =
+    await Promise.all([
+      metricasDeCriativosNoPeriodo(clientId, periodStart, periodEnd),
+      totaisDoPeriodo(clientId, periodStart, periodEnd),
+      totaisDoPeriodo(clientId, prev.start, prev.end),
+      coberturaDaJanela(clientId, periodStart, periodEnd),
+    ]);
 
   /* Resolve o caminho do bucket em URL assinada ANTES de montar o
      documento. O bucket `ad-thumbs` é privado e a página usa
@@ -266,6 +283,7 @@ export async function getPrintReportData(
     creativesDoPeriodo: metricasDoPeriodo !== null,
     totaisMeta,
     totaisMetaAnterior,
+    cobertura,
   };
 }
 
@@ -348,7 +366,7 @@ function assemble(
   },
 ): Omit<
   PrintReportData,
-  "creativesDoPeriodo" | "totaisMeta" | "totaisMetaAnterior"
+  "creativesDoPeriodo" | "totaisMeta" | "totaisMetaAnterior" | "cobertura"
 > {
   const currentTotals = sumMetrics(current, tiposDeConversao);
   const previousTotals = sumMetrics(previous, tiposDeConversao);

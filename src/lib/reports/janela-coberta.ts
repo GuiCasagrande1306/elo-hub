@@ -51,6 +51,19 @@ export interface EstadoDaJanela {
    * sairia seria um período somado pela metade sob o rótulo inteiro.
    */
   naoApurada: boolean;
+  /**
+   * A coleta está atrasada, INDEPENDENTE de haver buraco na janela.
+   *
+   * ⚠️ EXISTE PARA O CASO `semDado`, que os outros dois não cobrem.
+   * Zero linha no período pode ser duas coisas opostas — a conta não
+   * anunciou, ou a gente não mediu — e `incompleta` é falso nos dois,
+   * porque ela exige um último dia com dado para comparar.
+   *
+   * Sem esta distinção o documento do cliente teria de escolher entre
+   * dizer "não houve veiculação" (podendo ser mentira) e "não foi
+   * possível apurar" (assustando quem só ficou uma semana sem anunciar).
+   */
+  coletaAtrasada: boolean;
 }
 
 export function estadoDaJanela(entrada: {
@@ -65,7 +78,9 @@ export function estadoDaJanela(entrada: {
   sincronizacao: SaudeDaColeta;
 }): EstadoDaJanela {
   const { fim, hoje, ultimoDiaComDado, semDado, sincronizacao } = entrada;
-  if (!fim) return { incompleta: false, naoApurada: false };
+  if (!fim) {
+    return { incompleta: false, naoApurada: false, coletaAtrasada: false };
+  }
 
   /* O ÚLTIMO DIA QUE JÁ DEVERIA ESTAR FECHADO.
      -----------------------------------------------------------------
@@ -93,7 +108,11 @@ export function estadoDaJanela(entrada: {
     sincronizacao.ate === null ||
     sincronizacao.ate <= alvo;
 
-  return { incompleta, naoApurada: incompleta && coletaAtrasada };
+  return {
+    incompleta,
+    naoApurada: incompleta && coletaAtrasada,
+    coletaAtrasada,
+  };
 }
 
 /** O dia anterior, em YYYY-MM-DD. `Date` em UTC para não pular por fuso. */

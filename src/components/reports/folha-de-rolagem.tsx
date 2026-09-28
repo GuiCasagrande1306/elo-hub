@@ -59,6 +59,7 @@ export function FolhaDeRolagem({
     creativesDoPeriodo,
     totaisMeta,
     totaisMetaAnterior,
+    cobertura,
   } = data;
 
   /* Fallback NEUTRO: sem cor do cliente, o documento não deve herdar a
@@ -158,6 +159,8 @@ export function FolhaDeRolagem({
             .
           </p>
         </header>
+
+        <TarjaDaJanela cobertura={cobertura} />
 
         {/* ========================= NÚMEROS ========================= */}
         <Secao titulo="Os números do período" brand={brand}>
@@ -441,6 +444,99 @@ export function FolhaDeRolagem({
 /* ------------------------------------------------------------------ */
 /* Peças                                                               */
 /* ------------------------------------------------------------------ */
+
+/**
+ * O aviso de que a janela não está coberta pelo dado.
+ *
+ * ⚠️ ANTES DOS NÚMEROS, não no rodapé: quem lê decide o que achar da
+ * conta nos primeiros segundos, e uma ressalva que chega depois disso
+ * chega tarde.
+ *
+ * TRÊS CASOS E UM SILÊNCIO, e o silêncio é a parte importante:
+ *
+ *   sem dado + coleta atrasada   "não foi possível apurar"
+ *   sem dado + coleta em dia     "não houve veiculação" — é verdade
+ *   buraco + coleta atrasada     "incompleto, medimos até tal dia"
+ *   buraco + coleta EM DIA       nada
+ *
+ * O último é o que não pode virar tarja. Buraco com a coleta em dia
+ * significa que a conta não anunciou naqueles dias — conta pausada no
+ * fim de semana é o caso comum. Avisar ali seria alarme falso semanal,
+ * e alarme falso repetido é exatamente como um aviso de verdade passa
+ * a ser ignorado. A mesma regra está em `janela-coberta.ts`, que
+ * escolheu não barrar o envio nesse caso pelo mesmo motivo.
+ *
+ * O TOM MUDA COM A CULPA. "Não houve veiculação" é fato da conta e sai
+ * em cinza; "não foi possível apurar" é falha nossa e sai em âmbar —
+ * pintar as duas de alerta faria o cliente cobrar explicação por uma
+ * semana em que ele mesmo pediu para pausar.
+ */
+function TarjaDaJanela({ cobertura }: { cobertura: PrintReportData["cobertura"] }) {
+  const { semDado, naoApurada, coletaAtrasada, ultimoDiaComDado } = cobertura;
+
+  if (semDado) {
+    return coletaAtrasada ? (
+      <Tarja tom="atencao">
+        Não foi possível apurar este período. Os dados ainda não chegaram
+        até aqui — assim que a medição for retomada, este relatório passa
+        a mostrá-los.
+      </Tarja>
+    ) : (
+      <Tarja tom="neutro">
+        Não houve veiculação de anúncios neste período.
+      </Tarja>
+    );
+  }
+
+  if (naoApurada) {
+    return (
+      <Tarja tom="atencao">
+        Os números abaixo estão incompletos
+        {ultimoDiaComDado
+          ? `: a medição vai até ${diaCurto(ultimoDiaComDado)}`
+          : ""}
+        . Os dias seguintes ainda não foram apurados, então o período
+        cobre menos dias do que o intervalo escolhido.
+      </Tarja>
+    );
+  }
+
+  return null;
+}
+
+function Tarja({
+  tom,
+  children,
+}: {
+  tom: "atencao" | "neutro";
+  children: React.ReactNode;
+}) {
+  const cor =
+    tom === "atencao"
+      ? { fundo: "#fff8e6", texto: "#7a5c00", borda: "#f0dfae" }
+      : { fundo: "#f4f6f8", texto: "#64707d", borda: "#e6e8ec" };
+
+  return (
+    <div className="px-16 pt-10">
+      <p
+        className="rounded-xl border px-5 py-3.5 text-[13px] leading-relaxed"
+        style={{
+          background: cor.fundo,
+          color: cor.texto,
+          borderColor: cor.borda,
+        }}
+      >
+        {children}
+      </p>
+    </div>
+  );
+}
+
+/** "18/09" a partir de YYYY-MM-DD. */
+function diaCurto(iso: string): string {
+  const [, m, d] = iso.split("-");
+  return `${d}/${m}`;
+}
 
 function Secao({
   titulo,

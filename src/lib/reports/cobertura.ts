@@ -51,6 +51,7 @@ export async function coberturaDaJanela(
   const vazio = {
     incompleta: false,
     naoApurada: false,
+    coletaAtrasada: false,
     ultimoDiaComDado: null,
     semDado: false,
   };
