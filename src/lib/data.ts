@@ -2,6 +2,11 @@ import "server-only";
 
 import { isDemoMode } from "@/lib/env";
 import { assinarMiniaturas } from "@/lib/ads/miniaturas";
+import {
+  clientesComLoja,
+  receitaDaLoja,
+  totaisDaLoja,
+} from "@/lib/loja/leitura";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   tiposDeConversaoDaCarteira,
@@ -603,7 +608,8 @@ export async function getClientsWithGoals(
   /* Os tipos de conversão da CARTEIRA INTEIRA em duas consultas, antes
      do laço. Dentro dele seriam duas por conta — o mesmo erro que já
      custou 245 consultas na tela de performance. */
-  const [clients, goals, tiposPorCliente, saudeDaColeta] = await Promise.all([
+  const [clients, goals, tiposPorCliente, saudeDaColeta, comLoja] =
+    await Promise.all([
     getClients(agency, opts),
     periodo ? getGoalsForMonth(periodo.start) : getCurrentGoals(),
     tiposDeConversaoDaCarteira(),
@@ -611,6 +617,9 @@ export async function getClientsWithGoals(
        seria uma por conta, o erro que já custou 245 consultas na tela de
        performance. */
     saudeDaColetaDaCarteira(),
+    /* Quem tem loja integrada, numa consulta só. Dentro do laço seriam
+       duas por conta — ver `clientesComLoja`. */
+    clientesComLoja(),
   ]);
 
   return Promise.all(
@@ -640,7 +649,40 @@ export async function getClientsWithGoals(
       const end = fimBruto > hoje ? hoje : fimBruto;
 
       const rows = await getMetrics(client.id, start, end);
-      const totals = sumMetrics(rows, tiposPorCliente.get(client.id));
+      const totaisDoPixel = sumMetrics(rows, tiposPorCliente.get(client.id));
+
+      /* ⚠️ COM LOJA INTEGRADA, O FATURAMENTO É O DA LOJA.
+         ----------------------------------------------------------------
+         O pixel superestima: no Atacado de Pratas ele dizia
+         R$ 167.408,76 onde a loja faturou R$ 83.809,26, e a meta exibia
+         123% batida sobre o número inflado.
+
+         A troca acontece AQUI, num único ponto, e não em cada campo
+         derivado: `computedGoalValue`, `progress` e a prévia da mensagem
+         saem todos de `totals`. Trocar em cada um separadamente é como
+         nasce a tela que discorda de si mesma.
+
+         `origem` recebe o mesmo valor com o gasto TOTAL: faturamento de
+         loja não tem campanha de origem — inclui orgânico, direto e
+         recorrente —, então a razão passa a ser sobre a conta inteira.
+
+         Só consulta quem tem loja; para os outros, nada muda. */
+      const receitaLoja = comLoja.has(client.id)
+        ? await receitaDaLoja(client.id, start, end)
+        : null;
+
+      const totals =
+        receitaLoja === null
+          ? totaisDoPixel
+          : {
+              ...totaisDoPixel,
+              revenueCents: receitaLoja,
+              origem: {
+                ...totaisDoPixel.origem,
+                spendCents: totaisDoPixel.spendCents,
+                revenueCents: receitaLoja,
+              },
+            };
 
       /* O segmento diz o padrão; a meta gravada diz a verdade. Sem meta
          no período cai no padrão do segmento, que é o que o card sem
@@ -718,13 +760,31 @@ export async function getClientGoalProgress(client: Client): Promise<{
   const totals = sumMetrics(rows);
   const metric = goalMetricFor(client.segment, goal.results_metric);
 
+  /* ⚠️ COM LOJA INTEGRADA, A META DE FATURAMENTO MEDE A LOJA — não o
+     que o pixel atribuiu.
+     -------------------------------------------------------------------
+     Medido no Atacado de Pratas em 28/09/2026: a meta exibia 123%
+     batida (R$ 159.701,70 de R$ 130.000) enquanto a loja havia
+     faturado cerca de R$ 88 mil no mesmo mês. O pixel superestima —
+     conta a mesma venda em mais de uma plataforma e credita
+     visualização —, e o erro aparecia justamente no número que a
+     agência apresenta como prova de resultado.
+
+     `null` para quem não tem loja: a maioria da carteira segue com o
+     número do pixel, exatamente como antes. */
+  const loja = await totaisDaLoja(
+    client.id,
+    goal.period_start,
+    goal.period_end,
+  );
+
   return {
     progress: buildGoalProgress({
       goal,
       metric,
       computedSpendCents: totals.spendCents,
       computedConversions: totals.conversions,
-      computedRevenueCents: totals.revenueCents,
+      computedRevenueCents: loja?.receitaCents ?? totals.revenueCents,
     }),
     period: { start: goal.period_start, end: goal.period_end },
   };

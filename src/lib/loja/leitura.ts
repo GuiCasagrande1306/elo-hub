@@ -125,3 +125,62 @@ export function retornoDaLoja(
   if (investimentoCents <= 0) return null;
   return receitaDaLojaCents / investimentoCents;
 }
+
+/**
+ * Quais clientes têm loja integrada — UMA consulta para a carteira.
+ *
+ * ⚠️ EXISTE PARA NÃO DOBRAR AS CONSULTAS DA LISTA. `getClientsWithGoals`
+ * já faz uma busca de métrica por cliente dentro do laço; chamar
+ * `totaisDaLoja` ali dentro somaria duas por conta — 114 consultas para
+ * atender uma loja. Com este conjunto em mãos, o laço só consulta quem
+ * realmente tem loja, que hoje é um cliente.
+ */
+export async function clientesComLoja(): Promise<Set<string>> {
+  if (isDemoMode) return new Set();
+
+  try {
+    const admin = createSupabaseAdminClient();
+    const { data, error } = await admin
+      .from("store_integrations")
+      .select("client_id")
+      .eq("is_active", true);
+
+    if (error) return new Set();
+    return new Set((data ?? []).map((l) => (l as { client_id: string }).client_id));
+  } catch {
+    return new Set();
+  }
+}
+
+/**
+ * Só a receita da loja no período, sem o resto.
+ *
+ * Versão enxuta de `totaisDaLoja` para quem já sabe que o cliente tem
+ * loja — pula a consulta de existência. `null` quando não há dado na
+ * janela, e quem chama mantém o número que tinha.
+ */
+export async function receitaDaLoja(
+  clientId: string,
+  inicio: string,
+  fim: string,
+): Promise<number | null> {
+  if (isDemoMode) return null;
+
+  try {
+    const admin = createSupabaseAdminClient();
+    const { data, error } = await admin
+      .from("store_daily")
+      .select("revenue_cents")
+      .eq("client_id", clientId)
+      .gte("metric_date", inicio)
+      .lte("metric_date", fim);
+
+    if (error || !data || data.length === 0) return null;
+    return (data as { revenue_cents: number }[]).reduce(
+      (a, l) => a + l.revenue_cents,
+      0,
+    );
+  } catch {
+    return null;
+  }
+}

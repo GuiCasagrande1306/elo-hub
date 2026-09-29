@@ -18,6 +18,7 @@ import {
 import {
   buildTrend,
   computeKpi,
+  previousPeriod,
   splitByPlatform,
 } from "@/lib/metrics/kpi";
 import {
@@ -139,6 +140,20 @@ export default async function ClientPage({
      plataforma mediu —, então quem manda é o segmento. */
   const metrica = defaultGoalMetricFor(client.segment);
 
+  /* Faturamento da LOJA no mesmo intervalo dos cards.
+     ⚠️ `null` para quem não tem loja cadastrada — hoje, todo mundo
+     menos o Atacado de Pratas. Sem loja, nada abaixo muda. */
+  const loja = await totaisDaLoja(client.id, start, end);
+
+  /* A janela ANTERIOR da loja, para a variação dos cartões.
+     Sem ela, o faturamento da loja seria comparado com o do pixel —
+     duas medidas diferentes numa seta só, que é o tipo de número que
+     ninguém consegue contestar porque parece coerente. */
+  const anterior = previousPeriod(start, end);
+  const lojaAnterior = loja
+    ? await totaisDaLoja(client.id, anterior.start, anterior.end)
+    : null;
+
   const kpis = heroMetricsFor(client.segment)
     .map((key) => computeKpi(key, metrics.currentTotals, metrics.previousTotals))
     /* "Resultados" e "Custo por Resultado" são rótulos genéricos do
@@ -152,6 +167,56 @@ export default async function ClientPage({
           ? { ...kpi, label: metrica.costLabel }
           : kpi,
     );
+
+  /* ⚠️ COM LOJA INTEGRADA, O FATURAMENTO É O DA LOJA — e o retorno
+     deixa de ser ROAS.
+     -------------------------------------------------------------------
+     O cartão de faturamento vinha do PIXEL, e o pixel superestima: em
+     29/08–27/09 ele dizia R$ 167.408,76 onde a loja faturou
+     R$ 83.809,26. O dobro. A meta do mês, calculada sobre o mesmo
+     número, exibia 123% batida quando o real estava perto de 68%.
+
+     `roas` NÃO pode simplesmente herdar a receita nova: ele divide pela
+     campanha de ORIGEM, e faturamento de loja não tem campanha de
+     origem — inclui orgânico, direto e recorrente. Vira faturamento da
+     loja ÷ investimento TOTAL, e por isso muda de nome: sob o rótulo
+     "ROAS" o cliente leria retorno de anúncio onde o número mede a loja
+     inteira.
+
+     Recalculado por `computeKpi` com os totais trocados, e não montado
+     à mão, para variação, sentido e formatação continuarem saindo do
+     mesmo lugar que os outros cartões. */
+  const kpisFinais = !loja
+    ? kpis
+    : kpis.map((kpi) => {
+        if (kpi.key !== "revenue" && kpi.key !== "roas") return kpi;
+
+        const comLoja = (
+          totais: typeof metrics.currentTotals,
+          receita: number,
+        ) => ({
+          ...totais,
+          revenueCents: receita,
+          /* Espalha o `origem` original e troca só os dois números:
+             `conversions`, `campanhas` e `isolado` continuam valendo, e
+             é deles que sai a nota de rodapé do cartão. */
+          origem: {
+            ...totais.origem,
+            spendCents: totais.spendCents,
+            revenueCents: receita,
+          },
+        });
+
+        const recalculado = computeKpi(
+          kpi.key,
+          comLoja(metrics.currentTotals, loja.receitaCents),
+          comLoja(metrics.previousTotals, lojaAnterior?.receitaCents ?? 0),
+        );
+
+        return kpi.key === "roas"
+          ? { ...recalculado, label: "Retorno sobre a loja" }
+          : { ...recalculado, label: "Faturamento da loja" };
+      });
 
   const trend = buildTrend(metrics.current);
 
@@ -167,18 +232,12 @@ export default async function ClientPage({
     roas: trend.map((p) => (p.spend === 0 ? 0 : p.revenue / p.spend)),
   };
 
-  /* Faturamento da LOJA no mesmo intervalo dos cards acima.
-     ⚠️ `null` para quem não tem loja cadastrada — hoje, todo mundo
-     menos o Atacado de Pratas. A tela não desenha nada nesse caso, e
-     nenhum outro cliente muda. */
-  const loja = await totaisDaLoja(client.id, start, end);
-
   return (
     <ClientDashboard
       loja={loja}
       client={client}
       agencias={nomesDeAgencia}
-      kpis={kpis}
+      kpis={kpisFinais}
       sparklines={sparklines}
       trend={trend}
       platforms={splitByPlatform(metrics.current)}
