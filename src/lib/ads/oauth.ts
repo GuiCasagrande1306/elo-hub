@@ -163,6 +163,77 @@ export async function saveIntegrationTokens(input: {
   // integrações com este marcador.
   const contaPendente = `pending:${input.platform}`;
 
+  /* ⚠️ REAUTORIZAR PRECISA ATUALIZAR A INTEGRAÇÃO QUE JÁ EXISTE, e não
+     criar uma segunda.
+     -------------------------------------------------------------------
+     O upsert abaixo casa por `(cliente, plataforma, conta)`, e no fluxo
+     de OAuth a conta ainda é desconhecida — entra como `pending:`. Para
+     um cliente que JÁ tinha conta vinculada, isso não atualiza nada:
+     insere uma linha nova.
+
+     O estrago, medido no Atacado de Pratas em 29/09/2026: o token NOVO
+     foi parar na linha `pending:` e a linha com `act_1861652284759010`
+     ficou com o token MORTO. Ou seja, reautorizar não consertava a
+     coleta — e o seletor de contas, que usa `maybeSingle`, passou a
+     responder "este cliente ainda não autorizou o Meta" com duas linhas
+     no banco e um token vivo em uma delas.
+
+     Quando a conta vem informada (o passo de vincular), o upsert
+     original continua valendo. */
+  if (!input.externalAccountId) {
+    const { data: existente } = await admin
+      .from("client_integrations")
+      .select("id, external_account_id")
+      .eq("client_id", input.clientId)
+      .eq("platform", input.platform)
+      /* A que TEM conta escolhida primeiro: é nela que a coleta roda.
+         Ordem descendente porque `pending:` vem depois de `act_` no
+         alfabeto — invertendo, a linha real fica na frente. */
+      .order("external_account_id", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    const alvo = existente as { id: string } | null;
+
+    if (alvo) {
+      const { error: erroUpdate } = await admin
+        .from("client_integrations")
+        .update({
+          is_active: true,
+          sync_error: null,
+          authorized_by_name: input.authorizedBy?.name ?? null,
+          authorized_by_external_id: input.authorizedBy?.externalId ?? null,
+          authorized_by_user_name: input.authorizedBy?.userName ?? null,
+          authorized_at: new Date().toISOString(),
+        })
+        .eq("id", alvo.id);
+
+      if (erroUpdate) {
+        return { ok: false, error: erroUpdate.message };
+      }
+
+      const { error: erroSegredo } = await admin
+        .from("integration_secrets")
+        .upsert(
+          {
+            integration_id: alvo.id,
+            access_token: input.tokens.accessToken,
+            refresh_token: input.tokens.refreshToken ?? null,
+            expires_at: input.tokens.expiresAt ?? null,
+            scopes: input.tokens.scopes ?? null,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "integration_id" },
+        );
+
+      if (erroSegredo) {
+        return { ok: false, error: `Falha ao gravar o token: ${erroSegredo.message}` };
+      }
+
+      return { ok: true, integrationId: alvo.id };
+    }
+  }
+
   const { data: integracao, error: erroIntegracao } = await admin
     .from("client_integrations")
     .upsert(

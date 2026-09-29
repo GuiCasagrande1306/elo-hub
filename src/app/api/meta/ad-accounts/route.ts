@@ -58,17 +58,33 @@ export async function GET(request: NextRequest) {
      de propósito — nenhuma sessão alcança token. Só o servidor. */
   const admin = createSupabaseAdminClient();
 
-  const { data: integracao } = await admin
-    .from("client_integrations")
-    .select("id, authorized_by_name, integration_secrets(access_token)")
-    .eq("client_id", clientId)
-    .eq("platform", "meta_ads")
-    .maybeSingle();
+  /* ⚠️ SEM `maybeSingle`, e isto é conserto de defeito real.
+     Com duas linhas de `meta_ads` para o mesmo cliente — o que a
+     reautorização criava antes de 29/09/2026 —, `maybeSingle` falha e
+     a rota respondia "este cliente ainda não autorizou o Meta" com um
+     token vivo no banco. A mensagem mandava a pessoa clicar em
+     Autorizar de novo, o que criava mais uma linha.
 
-  const vinculo = integracao as {
+     Aqui pega-se a linha que TEM token; havendo mais de uma, a que já
+     tem conta escolhida (`pending:` perde). */
+  const { data: linhas } = await admin
+    .from("client_integrations")
+    .select("id, external_account_id, authorized_by_name, integration_secrets(access_token)")
+    .eq("client_id", clientId)
+    .eq("platform", "meta_ads");
+
+  const candidatas = ((linhas ?? []) as unknown as {
+    external_account_id: string | null;
     authorized_by_name?: string | null;
-    integration_secrets?: { access_token?: string | null };
-  } | null;
+    integration_secrets?: { access_token?: string | null } | null;
+  }[]).filter((l) => l.integration_secrets?.access_token);
+
+  const vinculo =
+    candidatas.find(
+      (l) => !(l.external_account_id ?? "").startsWith("pending:"),
+    ) ??
+    candidatas[0] ??
+    null;
 
   const token = vinculo?.integration_secrets?.access_token;
 
