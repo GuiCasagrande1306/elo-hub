@@ -5,7 +5,13 @@ import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { useState } from "react";
 import { motion } from "motion/react";
-import { ChevronRight, ChevronsUpDown, LogOut, Settings } from "lucide-react";
+import {
+  ArrowUpRight,
+  ChevronRight,
+  ChevronsUpDown,
+  LogOut,
+  Settings,
+} from "lucide-react";
 
 import {
   DropdownMenu,
@@ -123,35 +129,70 @@ export function Sidebar({ user, clients, onNavigate }: SidebarProps) {
               <ul className="flex flex-col gap-0.5">
                 {itens.map((item) => {
                   const active = isNavActive(item, pathname);
+
+                  /* Aparência e conteúdo saem do `if`: o item externo e
+                     o interno são o MESMO botão, e a única diferença é a
+                     etiqueta HTML que o carrega. Duplicar as classes nos
+                     dois ramos deixaria um deles envelhecer sozinho. */
+                  const classe = cn(
+                    "group relative flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors",
+                    active
+                      ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+                      : "text-muted-foreground hover:bg-sidebar-accent/55 hover:text-foreground",
+                  );
+
+                  const conteudo = (
+                    <>
+                      {active && (
+                        <motion.span
+                          layoutId="sidebar-active"
+                          className="absolute left-0 top-1/2 h-5 w-[2px] -translate-y-1/2 rounded-full bg-signal"
+                          transition={{ type: "spring", stiffness: 520, damping: 38 }}
+                        />
+                      )}
+                      <item.icon
+                        className={cn(
+                          "size-4 shrink-0 transition-colors",
+                          active ? "text-signal" : "text-muted-foreground/80",
+                        )}
+                        strokeWidth={active ? 2.2 : 1.9}
+                      />
+                      {item.label}
+                    </>
+                  );
+
                   return (
                     <li key={item.href}>
-                      <Link
-                        href={item.href}
-                        onClick={onNavigate}
-                        aria-current={active ? "page" : undefined}
-                        className={cn(
-                          "group relative flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors",
-                          active
-                            ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-                            : "text-muted-foreground hover:bg-sidebar-accent/55 hover:text-foreground",
-                        )}
-                      >
-                        {active && (
-                          <motion.span
-                            layoutId="sidebar-active"
-                            className="absolute left-0 top-1/2 h-5 w-[2px] -translate-y-1/2 rounded-full bg-signal"
-                            transition={{ type: "spring", stiffness: 520, damping: 38 }}
-                          />
-                        )}
-                        <item.icon
-                          className={cn(
-                            "size-4 shrink-0 transition-colors",
-                            active ? "text-signal" : "text-muted-foreground/80",
-                          )}
-                          strokeWidth={active ? 2.2 : 1.9}
-                        />
-                        {item.label}
-                      </Link>
+                      {/* Externo sai como `<a>`, e não como `Link`: URL
+                          absoluta em `Link` não está documentada nesta
+                          versão do Next, e `rel` junto do `target` é
+                          obrigatório — sem ele a página de destino ganha
+                          acesso a `window.opener`.
+
+                          A seta é o que avisa que o clique sai do Hub.
+                          Sem ela o item parece uma tela do sistema e a
+                          aba nova chega como surpresa. */}
+                      {item.externo ? (
+                        <a
+                          href={item.href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={onNavigate}
+                          className={classe}
+                        >
+                          {conteudo}
+                          <ArrowUpRight className="ml-auto size-3.5 shrink-0 opacity-45" />
+                        </a>
+                      ) : (
+                        <Link
+                          href={item.href}
+                          onClick={onNavigate}
+                          aria-current={active ? "page" : undefined}
+                          className={classe}
+                        >
+                          {conteudo}
+                        </Link>
+                      )}
                     </li>
                   );
                 })}

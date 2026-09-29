@@ -130,9 +130,18 @@ export function GlobalSearch({
   }, [role, termo]);
 
   const ir = useCallback(
-    (href: string) => {
+    (href: string, externo?: boolean) => {
       setAberto(false);
       setTermo("");
+      /* Destino fora do Hub abre em aba nova, como na sidebar: é outro
+         sistema, com login próprio, e `router.push` numa URL absoluta
+         trocaria a aba — a pessoa perderia a tela em que estava por
+         causa de um atalho de teclado. `noopener` porque sem ele o
+         destino ganha acesso a `window.opener`. */
+      if (externo) {
+        window.open(href, "_blank", "noopener,noreferrer");
+        return;
+      }
       router.push(href);
     },
     [router],
@@ -238,7 +247,7 @@ export function GlobalSearch({
                   <CommandItem
                     key={item.href}
                     value={`nav:${item.href}`}
-                    onSelect={() => ir(item.href)}
+                    onSelect={() => ir(item.href, item.externo)}
                   >
                     <item.icon className="text-muted-foreground" />
                     <span className="truncate">{item.label}</span>

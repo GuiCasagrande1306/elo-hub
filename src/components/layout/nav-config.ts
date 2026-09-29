@@ -9,7 +9,7 @@ import {
   Repeat,
   NotebookPen,
   Settings,
-  Share2,
+  Stamp,
   TriangleAlert,
   Users,
   Workflow,
@@ -35,6 +35,15 @@ export interface NavItem {
    * escasso da interface — ver `FORA_DA_BARRA_MOBILE`.
    */
   foraDaBarraMobile?: boolean;
+  /**
+   * `href` é uma URL absoluta, para fora do Hub.
+   *
+   * Muda o comportamento em dois lugares: a sidebar desenha `<a
+   * target="_blank">` em vez de `Link`, e o ⌘K abre aba nova em vez de
+   * `router.push`. O item também nunca fica ativo — `isNavActive`
+   * compara com o `pathname`, que jamais será uma URL absoluta.
+   */
+  externo?: boolean;
 }
 
 export interface NavGroup {
@@ -74,9 +83,8 @@ export const navGroups: NavGroup[] = [
       { href: "/tarefas", label: "Tarefas", icon: CheckSquare, matchPrefix: true },
       /* Conteúdo fecha Operação, e não Análise: o brief é o que se
          combina com o cliente antes de gravar, não o que se olha
-         depois. Fica ao lado de Mídias sociais no fluxo real —
-         primeiro o documento define a linha, depois o calendário
-         agenda a peça. */
+         depois. Fica ao lado do Carimbo no fluxo real — primeiro o
+         documento define a linha, depois o Carimbo agenda a peça. */
       {
         href: "/conteudo",
         label: "Conteúdo",
@@ -109,11 +117,17 @@ export const navGroups: NavGroup[] = [
        são o dia a dia. */
     label: "Apps parceiros",
     items: [
+      /* O CARIMBO SUBSTITUIU A TELA DE MÍDIAS SOCIAIS, em 29/09/2026.
+         O módulo interno planejava, colhia a aprovação e registrava o
+         que foi ao ar — e não publicava, por desenho. O Carimbo faz as
+         três coisas E publica no Instagram e no Facebook, então manter
+         os dois deixava duas agendas disputando a mesma pauta, com a
+         que publica sendo sempre a verdadeira. */
       {
-        href: "/midias-sociais",
-        label: "Mídias sociais",
-        icon: Share2,
-        matchPrefix: true,
+        href: "https://carimbo.marketingelo.com.br",
+        label: "Carimbo",
+        icon: Stamp,
+        externo: true,
       },
       { href: "/elochat", label: "EloChat", icon: Workflow },
     ],
@@ -168,10 +182,10 @@ export const navGroups: NavGroup[] = [
  * ninguém abre Gestão do celular. "Apps parceiros" por espaço: a barra
  * já carrega sete itens e um oitavo truncaria o rótulo de todos.
  *
- * Mídias sociais funciona bem no celular — a agenda substitui a grade
- * abaixo de `lg` — e mesmo assim não entra aqui: o custo recai sobre os
- * sete destinos do dia a dia. Chega-se a ela pelo menu lateral ou pelo
- * ⌘K, que lê desta mesma lista.
+ * O Carimbo reforça o caso de "Apps parceiros" ficar fora: é outro
+ * sistema, e um dos sete espaços da barra gasto num atalho que troca de
+ * aplicativo é o pior uso possível dele. Chega-se aos dois pelo menu
+ * lateral ou pelo ⌘K, que lê desta mesma lista.
  */
 const FORA_DA_BARRA_MOBILE = new Set(["Sistema", "Apps parceiros"]);
 
