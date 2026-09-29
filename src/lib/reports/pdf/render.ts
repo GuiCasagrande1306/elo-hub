@@ -28,14 +28,54 @@ import type { ReportPayload } from "@/lib/reports/payload";
 export interface RenderedPdf {
   buffer: Buffer;
   pageCount: number | null;
+  /**
+   * Qual motor produziu este arquivo.
+   *
+   * Existe porque os dois desenham documentos DIFERENTES — folha
+   * contínua no Puppeteer, três folhas A4 no react-pdf. Quando a rede
+   * de segurança abaixo dispara, o cliente recebe o formato antigo, e
+   * quem olhar o resultado precisa poder saber disso sem abrir o PDF.
+   */
+  engine?: "react-pdf" | "puppeteer";
 }
 
 export async function renderReportPdf(
   payload: ReportPayload,
 ): Promise<RenderedPdf> {
-  return serverEnv.pdfEngine === "puppeteer"
-    ? renderWithPuppeteer(payload)
-    : renderWithReactPdf(payload);
+  if (serverEnv.pdfEngine !== "puppeteer") {
+    return { ...(await renderWithReactPdf(payload)), engine: "react-pdf" };
+  }
+
+  try {
+    return { ...(await renderWithPuppeteer(payload)), engine: "puppeteer" };
+  } catch (erro) {
+    /* ⚠️ REDE DE SEGURANÇA: relatório em formato antigo é melhor que
+       relatório nenhum.
+       -----------------------------------------------------------------
+       Em 29/09/2026, gerar um relatório em produção respondeu "exige
+       `puppeteer-core` e `@sparticuz/chromium` instalados" — os dois
+       declarados e presentes no repositório, mas ausentes do bundle da
+       função porque o rastreador do Next não enxerga `createRequire`
+       com nome variável. O conserto está no `outputFileTracingIncludes`
+       do `next.config.ts`, e SÓ DÁ PARA CONFERIR DEPOIS DO DEPLOY.
+
+       Enquanto o conserto não é provado em produção, e para qualquer
+       falha futura do Chromium — memória, cold start, limite de
+       tamanho —, a geração cai para o react-pdf em vez de falhar. O
+       cliente recebe o desenho A4 antigo, que é pior que a folha
+       contínua e infinitamente melhor que uma tela de erro na hora de
+       enviar.
+
+       NÃO É SILENCIOSO: o motivo vai para o log e `engine` diz no
+       retorno qual documento saiu. Fallback que ninguém percebe vira
+       "o relatório mudou de cara sozinho" três semanas depois. */
+    console.error(
+      "[pdf] Puppeteer falhou; gerando com react-pdf:",
+      erro instanceof Error ? erro.message : erro,
+    );
+
+    return { ...(await renderWithReactPdf(payload)), engine: "react-pdf" };
+  }
 }
 
 /* ------------------------------------------------------------------ */

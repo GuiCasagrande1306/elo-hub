@@ -69,10 +69,47 @@ const nextConfig: NextConfig = {
    * As chaves são globs de ROTA. Quatro caminhos geram PDF: a rota de
    * geração, a de pré-visualização, o cron diário e a rota de impressão.
    */
+  /**
+   * ⚠️ E O CHROMIUM TAMBÉM PRECISA VIAJAR — pelo mesmo motivo das
+   * fontes, e com o mesmo desfecho: só quebra depois do deploy.
+   *
+   * `serverExternalPackages` acima resolve metade do problema: diz ao
+   * bundler para NÃO empacotar. Mas quem copia os arquivos para dentro
+   * da função é o RASTREADOR, e ele segue `import` estático. Em
+   * `lib/pdf/browser.ts` o carregamento é `createRequire(base)(nome)`,
+   * com o nome numa variável — então não existe import algum para
+   * seguir, e os pacotes ficam de fora do bundle.
+   *
+   * O sintoma em produção, medido em 29/09/2026 ao gerar um relatório:
+   * "Em serverless, gerar PDF pelo navegador exige `puppeteer-core` e
+   * `@sparticuz/chromium` instalados" — com os dois declarados no
+   * `package.json` e presentes no repositório. A mensagem acusa
+   * ausência de dependência quando a ausência é do arquivo na função.
+   *
+   * As quatro rotas são as que ABREM navegador. `/reports/render/` fica
+   * de fora de propósito: ela é a página fotografada, não quem tira a
+   * foto — precisa das fontes, não do Chromium.
+   */
   outputFileTracingIncludes: {
-    "/api/reports/generate": ["src/assets/fonts/**/*"],
-    "/api/reports/preview": ["src/assets/fonts/**/*"],
-    "/api/cron/daily": ["src/assets/fonts/**/*"],
+    "/api/reports/generate": [
+      "src/assets/fonts/**/*",
+      "node_modules/@sparticuz/chromium/**/*",
+      "node_modules/puppeteer-core/**/*",
+    ],
+    "/api/reports/preview": [
+      "src/assets/fonts/**/*",
+      "node_modules/@sparticuz/chromium/**/*",
+      "node_modules/puppeteer-core/**/*",
+    ],
+    "/api/cron/daily": [
+      "src/assets/fonts/**/*",
+      "node_modules/@sparticuz/chromium/**/*",
+      "node_modules/puppeteer-core/**/*",
+    ],
+    "/api/conteudo/[id]/pdf": [
+      "node_modules/@sparticuz/chromium/**/*",
+      "node_modules/puppeteer-core/**/*",
+    ],
     "/reports/render/[clientId]": ["src/assets/fonts/**/*"],
   },
 
