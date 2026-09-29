@@ -5,7 +5,7 @@
   ],
   "crons": [
     {
-      "path": "/api/cron/daily?etapa=recorrencia,sync,saldo",
+      "path": "/api/cron/daily?etapa=recorrencia,tokens,sync,loja,saldo",
       "schedule": "20 9 * * *"
     }
   ]
