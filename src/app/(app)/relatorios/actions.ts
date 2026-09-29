@@ -920,10 +920,39 @@ export async function resumoDoPeriodo(
   const metricas = await getMetrics(clientId, start, end);
   /* Com os tipos: é o que faz o cartão da tela mostrar o mesmo custo e o
      mesmo retorno que o PDF gerado logo abaixo dele. */
-  const totais = sumMetrics(
+  const doPixel = sumMetrics(
     metricas,
     await tiposDeConversaoDoCliente(clientId),
   );
+
+  /* ⚠️ COM LOJA INTEGRADA, O FATURAMENTO DA MENSAGEM É O DA LOJA.
+     -------------------------------------------------------------------
+     Esta prévia é o texto que vai ao cliente pelo WhatsApp, e ele
+     estava citando o número do pixel: no Atacado de Pratas, 22–28/09,
+     dizia R$ 52.368,04 onde a loja faturou cerca de R$ 18 mil.
+
+     A troca acontece AQUI e não na tela porque `kpisDoTemplate` — a
+     mesma função que monta os cartões do PDF — come estes totais. Em
+     `print-data.ts` o documento faz a troca equivalente; se só um dos
+     dois trocasse, a legenda citaria um número e o anexo mostraria
+     outro, que é o defeito que esta prévia existe para impedir.
+
+     `null` para quem não tem loja: segue tudo do pixel, como antes. */
+  const { receitaDaLoja } = await import("@/lib/loja/leitura");
+  const receitaLoja = await receitaDaLoja(clientId, start, end);
+
+  const totais =
+    receitaLoja === null
+      ? doPixel
+      : {
+          ...doPixel,
+          revenueCents: receitaLoja,
+          origem: {
+            ...doPixel.origem,
+            spendCents: doPixel.spendCents,
+            revenueCents: receitaLoja,
+          },
+        };
 
   return {
     ok: true,

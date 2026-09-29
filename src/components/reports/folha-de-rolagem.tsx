@@ -264,6 +264,13 @@ export function FolhaDeRolagem({
             cliente sem integração vê diferença nenhuma no documento. */}
         {loja && (
           <Secao titulo="A loja no período" brand={brand}>
+            {/* ⚠️ O FATURAMENTO MORA AQUI, e não nos cartões do topo.
+                `HERO_METRICS` do relatório é investimento, resultados e
+                custo por resultado — receita nunca esteve lá. Uma
+                tentativa de enxugar esta seção "porque o número já
+                aparece acima" deixou o documento SEM faturamento
+                nenhum, com a nota de rodapé falando de um valor que
+                não existia na página. */}
             <div className="grid grid-cols-4 gap-4">
               <Cartao
                 rotulo="Faturamento da loja"
@@ -293,13 +300,12 @@ export function FolhaDeRolagem({
                 sentimento="positive"
               />
               <Cartao
-                /* ⚠️ "RETORNO SOBRE A LOJA", NUNCA "ROAS".
-                   ROAS divide a receita ATRIBUÍDA pelo gasto da campanha
-                   de origem — mede o anúncio. Este divide a loja INTEIRA
-                   pelo investimento total, e inclui venda orgânica,
-                   direta e de cliente recorrente, que aconteceriam sem
-                   anúncio nenhum. O número sai bem maior; chamá-lo de
-                   ROAS faria o cliente ler 12 onde o anúncio entregou 3. */
+                /* ⚠️ "RETORNO SOBRE A LOJA", NUNCA "ROAS". ROAS divide a
+                   receita ATRIBUÍDA pelo gasto da campanha de origem —
+                   mede o anúncio. Este divide a loja INTEIRA pelo
+                   investimento total, e inclui orgânico, direto e
+                   recorrente. Medido em 22–28/09 no Atacado de Pratas:
+                   6,71x aqui contra 16,39x que o pixel reportava. */
                 rotulo="Retorno sobre a loja"
                 valor={
                   totals.spendCents > 0

@@ -251,14 +251,24 @@ export async function getPrintReportData(
      para o mesmo cliente e o mesmo mês. */
   /* EM PARALELO: são duas chamadas à Graph API, e a página tem alguém
      esperando. Em série, uma conta lenta pagaria o preço duas vezes. */
-  const [metricasDoPeriodo, totaisMeta, totaisMetaAnterior, cobertura, loja] =
-    await Promise.all([
-      metricasDeCriativosNoPeriodo(clientId, periodStart, periodEnd),
-      totaisDoPeriodo(clientId, periodStart, periodEnd),
-      totaisDoPeriodo(clientId, prev.start, prev.end),
-      coberturaDaJanela(clientId, periodStart, periodEnd),
-      totaisDaLoja(clientId, periodStart, periodEnd),
-    ]);
+  const [
+    metricasDoPeriodo,
+    totaisMeta,
+    totaisMetaAnterior,
+    cobertura,
+    loja,
+    lojaAnterior,
+  ] = await Promise.all([
+    metricasDeCriativosNoPeriodo(clientId, periodStart, periodEnd),
+    totaisDoPeriodo(clientId, periodStart, periodEnd),
+    totaisDoPeriodo(clientId, prev.start, prev.end),
+    coberturaDaJanela(clientId, periodStart, periodEnd),
+    totaisDaLoja(clientId, periodStart, periodEnd),
+    /* A janela ANTERIOR da loja. Sem ela, o cartão compararia
+       faturamento de loja com faturamento de pixel — duas medidas
+       diferentes numa seta só. */
+    totaisDaLoja(clientId, prev.start, prev.end),
+  ]);
 
   /* Resolve o caminho do bucket em URL assinada ANTES de montar o
      documento. O bucket `ad-thumbs` é privado e a página usa
@@ -294,6 +304,8 @@ export async function getPrintReportData(
       template.rotulos,
       await tiposDeConversaoDoCliente(clientId),
       template.grafico,
+      loja,
+      lojaAnterior,
     ),
     creativesDoPeriodo: metricasDoPeriodo !== null,
     totaisMeta,
@@ -380,6 +392,8 @@ function assemble(
     series: ["spend"],
     titulo: null,
   },
+  loja: TotaisDaLoja | null = null,
+  lojaAnterior: TotaisDaLoja | null = null,
 ): Omit<
   PrintReportData,
   | "creativesDoPeriodo"
@@ -388,8 +402,42 @@ function assemble(
   | "cobertura"
   | "loja"
 > {
-  const currentTotals = sumMetrics(current, tiposDeConversao);
-  const previousTotals = sumMetrics(previous, tiposDeConversao);
+  const doPixel = sumMetrics(current, tiposDeConversao);
+  const anteriorDoPixel = sumMetrics(previous, tiposDeConversao);
+
+  /* COM LOJA INTEGRADA, RECEITA E RETORNO SAEM DA LOJA.
+     -------------------------------------------------------------------
+     ⚠️ HOJE ISTO NÃO MUDA O DOCUMENTO, e vale dizer para ninguém
+     procurar o efeito: `HERO_METRICS` é investimento, resultados e
+     custo por resultado — `revenue` e `roas` não estão lá, e o
+     faturamento do relatório vem da seção da loja. A substituição fica
+     como guarda: no dia em que alguém acrescentar `revenue` aos
+     cartões do topo para uma conta de e-commerce, ele nasce com o
+     número da loja em vez do número do pixel, que nesta conta reporta
+     2,4 vezes mais (R$ 52.368,04 contra R$ 21.451,85 em 22–28/09).
+
+     Onde a troca TEM efeito visível é na página do cliente e na prévia
+     da mensagem — `data.ts` e `relatorios/actions.ts`.
+
+     `origem` recebe o mesmo valor com o gasto TOTAL: faturamento de
+     loja não tem campanha de origem, então a razão passa a ser sobre a
+     conta inteira — e por isso o rótulo muda de ROAS para "Retorno
+     sobre a loja". Mesma troca da página do cliente, pelo mesmo
+     motivo. */
+  const comLoja = (base: typeof doPixel, receita: number) => ({
+    ...base,
+    revenueCents: receita,
+    origem: {
+      ...base.origem,
+      spendCents: base.spendCents,
+      revenueCents: receita,
+    },
+  });
+
+  const currentTotals = loja ? comLoja(doPixel, loja.receitaCents) : doPixel;
+  const previousTotals = loja
+    ? comLoja(anteriorDoPixel, lojaAnterior?.receitaCents ?? 0)
+    : anteriorDoPixel;
 
   return {
     client,
@@ -397,6 +445,18 @@ function assemble(
     // cliente não divirja do número que o gestor vê na tela.
     kpis: HERO_METRICS.map((key) => {
       const kpi = computeKpi(key, currentTotals, previousTotals);
+
+      /* Com loja, o rótulo precisa dizer o que o número virou. "ROAS"
+         sobre faturamento de loja inteira faria o cliente ler retorno
+         de anúncio onde o número mede orgânico, direto e recorrente
+         junto. Vence o rótulo do template. */
+      if (loja && key === "roas") {
+        return { ...kpi, label: "Retorno sobre a loja" };
+      }
+      if (loja && key === "revenue") {
+        return { ...kpi, label: "Faturamento da loja" };
+      }
+
       const rotulo = rotulos[key];
       return rotulo ? { ...kpi, label: rotulo } : kpi;
     }),
