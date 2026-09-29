@@ -4,6 +4,7 @@ import { serverEnv } from "@/lib/env";
 import { syncAllClients } from "@/lib/ads/sync";
 import { enviarAvisoDeSaldo } from "@/lib/ads/balance-notice";
 import { sincronizarLojas } from "@/lib/loja/sync";
+import { renovarTokensDaMeta } from "@/lib/ads/renovar-token";
 import { dispatchScheduledReports } from "@/lib/reports/schedule";
 import { avisarRelatoriosProntos } from "@/lib/reports/aviso-interno";
 import { materializarMes, mesCorrente } from "@/lib/finance/recurrence";
@@ -225,6 +226,30 @@ export async function GET(request: NextRequest) {
       resposta.aviso = {
         enviado: false,
         motivo: error instanceof Error ? error.message : "falha no aviso",
+      };
+    }
+  }
+
+  /* --- 1.5. Renovar os tokens da Meta ------------------------------
+     ANTES do sync, de propósito: um token renovado nesta rodada já é o
+     que a sincronização logo abaixo vai usar. Depois, o cliente ficaria
+     um dia inteiro coletando com o token velho — e se ele vencesse
+     nesse intervalo, a rodada perderia o dia por um motivo que já
+     estava resolvido.
+
+     Só troca o que está a menos de 14 dias do fim, e agrupa por valor:
+     quase toda a carteira compartilha o mesmo token. Ver
+     `lib/ads/renovar-token.ts`.
+
+     ⚠️ NÃO conserta sessão invalidada, que foi o que derrubou 48 contas
+     em 18/09 — aquilo exige reautorização, ou Usuário do Sistema da BM.
+     Esta etapa fecha só a porta do vencimento. */
+  if (rodar("tokens")) {
+    try {
+      resposta.tokens = await renovarTokensDaMeta();
+    } catch (error) {
+      resposta.tokens = {
+        erro: error instanceof Error ? error.message : "falha desconhecida",
       };
     }
   }
