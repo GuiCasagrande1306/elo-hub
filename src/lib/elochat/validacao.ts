@@ -26,6 +26,8 @@ export interface NoDoFluxo {
     texto?: string;
     botoes?: { id: string; label: string }[];
     cartoes?: { id: string; titulo: string; botao: string }[];
+    /** Só em gatilho de comentário e de palavra no direct. */
+    palavraChave?: string;
   };
 }
 
@@ -33,6 +35,12 @@ export interface ArestaDoFluxo {
   id: string;
   source: string;
   target: string;
+  /**
+   * De QUAL saída do nó a aresta parte — o id do botão, quando o bloco
+   * tem botões. É o que permite cada botão levar a uma resposta
+   * diferente; ver `saidaDe` em `motor.ts`.
+   */
+  sourceHandle?: string | null;
 }
 
 export type GravidadeDoProblema = "impede" | "avisa";
@@ -49,6 +57,9 @@ const GATILHOS = new Set(["comment", "story-reply", "keyword", "ad-click"]);
 
 /** Blocos cujo corpo de texto é a mensagem em si. */
 const PRECISA_DE_TEXTO = new Set(["message", "buttons", "carousel"]);
+
+/** Gatilhos que só disparam se houver uma palavra configurada. */
+const PRECISA_DE_PALAVRA = new Set(["comment", "keyword"]);
 
 /**
  * Tudo que está errado no fluxo, em ordem de gravidade.
@@ -98,7 +109,17 @@ export function problemasDoFluxo(
   }
 
   for (const n of nos) {
-    const { blockId, texto, botoes, cartoes } = n.data;
+    const { blockId, texto, botoes, cartoes, palavraChave } = n.data;
+
+    /* ⚠️ GATILHO SEM PALAVRA NÃO DISPARA NUNCA, e publicar assim
+       entrega um fluxo mudo que parece ligado. O motor recusa o
+       casamento com palavra vazia justamente para não responder a
+       qualquer comentário — então a ausência aqui não é "responde
+       tudo", é "responde nada", e as duas leituras erradas custam
+       caro. */
+    if (PRECISA_DE_PALAVRA.has(blockId) && !palavraChave?.trim()) {
+      impede(n.id, "Este gatilho não tem palavra: ele nunca dispararia.");
+    }
 
     if (PRECISA_DE_TEXTO.has(blockId) && !texto?.trim()) {
       impede(n.id, "Mensagem sem texto: nada seria enviado.");

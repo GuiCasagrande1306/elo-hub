@@ -37,6 +37,7 @@ import {
   BLOCK_BY_ID,
   BLOCK_TYPES,
   BLOCOS_COM_BOTOES,
+  BLOCOS_COM_PALAVRA,
   BLOCOS_COM_TEXTO,
   KIND_LABELS,
   KIND_STYLES,
@@ -647,6 +648,7 @@ function Editor({
      comenta — que é exatamente o contrário do que acontece. */
   const mandaMensagem = BLOCOS_COM_TEXTO.has(no.data.blockId);
   const aceitaBotoes = BLOCOS_COM_BOTOES.has(no.data.blockId);
+  const pedePalavra = BLOCOS_COM_PALAVRA.has(no.data.blockId);
   const ehCarrossel = no.data.blockId === "carousel";
 
   function editarBotao(id: string, label: string) {
@@ -694,6 +696,27 @@ function Editor({
             o formulário. Enterrá-la embaixo de três campos faria o painel
             precisar de rolagem justamente no momento de digitar. */}
         {mandaMensagem && <InstagramPreview dados={no.data} />}
+
+        {/* ⚠️ A PALAVRA VEM ANTES DO NOME DO PASSO. Num gatilho ela é o
+            que o bloco FAZ — sem ela ele não dispara nunca —, enquanto
+            o nome é só etiqueta. Campo que decide comportamento embaixo
+            de campo cosmético é o tipo de ordem que faz alguém publicar
+            um gatilho vazio. */}
+        {pedePalavra && (
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="no-palavra">Palavra que dispara</Label>
+            <Input
+              id="no-palavra"
+              value={no.data.palavraChave ?? ""}
+              placeholder="quero"
+              onChange={(e) => onEditar({ palavraChave: e.target.value })}
+            />
+            <p className="text-2xs text-muted-foreground">
+              Sem diferenciar maiúscula nem acento: “QUERO”, “quero” e
+              “Quero!” disparam igual.
+            </p>
+          </div>
+        )}
 
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="no-titulo">Nome do passo</Label>

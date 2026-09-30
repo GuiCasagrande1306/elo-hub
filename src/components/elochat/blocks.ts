@@ -144,6 +144,21 @@ export const BLOCOS_COM_TEXTO = new Set(["message", "buttons", "carousel"]);
 /** Só estes aceitam botão. Ver o comentário do topo sobre o teto de 3. */
 export const BLOCOS_COM_BOTOES = new Set(["buttons"]);
 
+/**
+ * Gatilhos que disparam por uma PALAVRA.
+ *
+ * ⚠️ O CAMPO NÃO EXISTIA, e o bloco prometia. "Comentou em post/Reel —
+ * palavra num comentário público" estava na paleta desde 08/08 sem
+ * lugar nenhum para digitar a palavra: o gatilho era decorativo. Sem
+ * ele o motor não tem como decidir se um comentário casa, e "qualquer
+ * comentário dispara" é o caminho mais curto para a conta ser
+ * restringida por responder o mundo inteiro.
+ *
+ * `story-reply` e `ad-click` ficam de fora: os dois são disparados pelo
+ * contexto (respondeu ao story, clicou no anúncio), não por texto.
+ */
+export const BLOCOS_COM_PALAVRA = new Set(["comment", "keyword"]);
+
 export const MAX_BOTOES = 3;
 
 /**
@@ -203,6 +218,15 @@ export interface DadosDoNo extends Record<string, unknown> {
   botoes: BotaoDoNo[];
   /** Cartões do carrossel. Cada um vira uma saída do nó. */
   cartoes: CartaoDoNo[];
+  /**
+   * A palavra que faz o gatilho disparar. Só em `BLOCOS_COM_PALAVRA`.
+   *
+   * Comparada sem acento e sem diferenciar maiúscula — ver
+   * `casaPalavra` em `src/lib/elochat/motor.ts`. Quem comenta "QUERO",
+   * "quero" e "Quero!" espera o mesmo resultado, e exigir grafia exata
+   * faz o fluxo parecer quebrado para o cliente.
+   */
+  palavraChave?: string;
 }
 
 export const MAX_CARTOES = 10;
@@ -215,6 +239,7 @@ export function dadosPadrao(bloco: BlockType): DadosDoNo {
     texto: "",
     botoes:
       bloco.id === "buttons" ? [{ id: `b-${Date.now()}`, label: "Botão" }] : [],
+    palavraChave: BLOCOS_COM_PALAVRA.has(bloco.id) ? "" : undefined,
     cartoes:
       bloco.id === "carousel"
         ? [

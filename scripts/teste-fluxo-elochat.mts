@@ -32,7 +32,8 @@ const ok = (nome: string, real: unknown, esperado: unknown) => {
   } else console.log(`✓ ${nome}`);
 };
 
-const gatilho = (id: string): NoDoFluxo => ({ id, data: { blockId: "comment" } });
+const gatilho = (id: string): NoDoFluxo =>
+  ({ id, data: { blockId: "comment", palavraChave: "quero" } });
 const msg = (id: string, texto = "Oi!"): NoDoFluxo => ({ id, data: { blockId: "message", texto } });
 const liga = (source: string, target: string): ArestaDoFluxo => ({ id: `${source}-${target}`, source, target });
 
@@ -146,10 +147,29 @@ ok(
   ["Há cartão sem título ou sem rótulo de botão."],
 );
 
+/* --- ⚠️ gatilho sem palavra ------------------------------------------ */
+
+ok(
+  "⚠️ gatilho sem palavra é impedido: nunca dispararia",
+  impedem(
+    [{ id: "g", data: { blockId: "comment", palavraChave: "" } }, msg("m")],
+    [liga("g", "m")],
+  ),
+  ["Este gatilho não tem palavra: ele nunca dispararia."],
+);
+ok(
+  "resposta a story não precisa de palavra",
+  impedem(
+    [{ id: "g", data: { blockId: "story-reply" } }, msg("m")],
+    [liga("g", "m")],
+  ),
+  [],
+);
+
 /* --- avisos que NÃO impedem ------------------------------------------ */
 
 const doisGatilhos = {
-  n: [gatilho("g1"), { id: "g2", data: { blockId: "keyword" } } as NoDoFluxo, msg("m")],
+  n: [gatilho("g1"), { id: "g2", data: { blockId: "keyword", palavraChave: "cupom" } } as NoDoFluxo, msg("m")],
   a: [liga("g1", "m"), liga("g2", "m")],
 };
 ok("dois gatilhos não impedem", impedem(doisGatilhos.n, doisGatilhos.a), []);
