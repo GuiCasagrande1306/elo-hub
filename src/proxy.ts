@@ -143,9 +143,23 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
+  /* Quem já entrou não vê a porta de novo — e vai para o PAINEL, não
+     para a raiz.
+
+     ⚠️ ESTA LINHA DIZIA `/` E ISSO MATAVA OS BOTÕES "ENTRAR" DA
+     VITRINE. A regra nasceu quando `/` era o painel; o commit c26d698
+     moveu o painel para `/painel` e deixou este desvio para trás. Para
+     quem estava logado, clicar em Entrar ia a `/login`, voltava a `/` e
+     terminava na mesma tela — um botão que parecia morto, sem erro
+     nenhum no console para denunciar.
+
+     `login/page.tsx` já faz o desvio certo, para `/painel`. Ele nunca
+     chegava a rodar: o middleware responde primeiro. */
   if (user && pathname.startsWith("/login")) {
     const homeUrl = request.nextUrl.clone();
-    homeUrl.pathname = "/";
+    homeUrl.pathname = "/painel";
+    /* Limpa a busca: `?next=` só existe para quem foi barrado ANTES de
+       entrar, e reaproveitá-lo aqui levaria um destino vindo da URL. */
     homeUrl.search = "";
     return NextResponse.redirect(homeUrl);
   }
