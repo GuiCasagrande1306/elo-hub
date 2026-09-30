@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Background,
   BackgroundVariant,
@@ -13,12 +14,25 @@ import {
   type Edge,
   type OnConnect,
 } from "@xyflow/react";
-import { Blocks, Play, Rocket, Trash2, X } from "lucide-react";
+import { Blocks, Play, Rocket, Save, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import "@xyflow/react/dist/style.css";
 
 import { NODE_TYPES, type NoDoFluxo } from "./flow-nodes";
+import {
+  problemasDoFluxo,
+  podePublicar,
+  type Problema,
+} from "@/lib/elochat/validacao";
+import { salvarFluxo, publicarFluxo } from "@/app/(app)/elochat/actions";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   BLOCK_BY_ID,
   BLOCK_TYPES,
@@ -127,9 +141,49 @@ const ARESTAS_INICIAIS: Edge[] = [
   },
 ];
 
-export function FlowBuilder() {
-  const [nodes, setNodes, onNodesChange] = useNodesState(POSICAO_INICIAL);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(ARESTAS_INICIAIS);
+export interface FluxoSalvo {
+  id: string;
+  name: string;
+  nodes: NoDoFluxo[];
+  edges: Edge[];
+  status: "rascunho" | "publicado";
+}
+
+export interface ClienteDoFluxo {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+export function FlowBuilder({
+  clientes,
+  cliente,
+  fluxo,
+}: {
+  clientes: ClienteDoFluxo[];
+  /** `null` até alguém escolher. Sem cliente não há o que salvar. */
+  cliente: ClienteDoFluxo | null;
+  /** `null` quando o cliente ainda não tem fluxo — começa no exemplo. */
+  fluxo: FluxoSalvo | null;
+}) {
+  /* ⚠️ O EXEMPLO SÓ APARECE PARA CLIENTE SEM FLUXO. Carregar o exemplo
+     por cima de um fluxo salvo faria a pessoa achar que perdeu o
+     trabalho — e, pior, salvar por cima do que estava lá. Quem tem
+     fluxo abre no fluxo dele.
+
+     A página passa `key={cliente?.id}` no componente, então trocar de
+     cliente remonta e este estado inicial é lido de novo. Sem a key, o
+     React preservaria os nós do cliente anterior. */
+  const [nodes, setNodes, onNodesChange] = useNodesState(
+    fluxo?.nodes ?? (cliente ? [] : POSICAO_INICIAL),
+  );
+  const [edges, setEdges, onEdgesChange] = useEdgesState(
+    fluxo?.edges ?? (cliente ? [] : ARESTAS_INICIAIS),
+  );
+  const [nome, setNome] = useState(fluxo?.name ?? "Fluxo sem nome");
+  const [fluxoId, setFluxoId] = useState<string | null>(fluxo?.id ?? null);
+  const [status, setStatus] = useState(fluxo?.status ?? "rascunho");
+  const [salvando, setSalvando] = useState(false);
   const [selecionado, setSelecionado] = useState<string | null>(null);
   const [paletaAberta, setPaletaAberta] = useState(false);
   const desktop = useMediaQuery(CONSULTA_DESKTOP);
@@ -196,7 +250,66 @@ export function FlowBuilder() {
 
   return (
     <div className="flex h-[calc(100dvh-4rem-56px-env(safe-area-inset-bottom))] flex-col md:h-[calc(100dvh-4rem)]">
-      <Cabecalho nos={nodes.length} />
+      <Cabecalho
+        nos={nodes.length}
+        clientes={clientes}
+        cliente={cliente}
+        nome={nome}
+        onNome={setNome}
+        status={status}
+        salvando={salvando}
+        problemas={problemasDoFluxo(
+          nodes as never,
+          edges as never,
+        )}
+        onSalvar={async () => {
+          if (!cliente) {
+            toast.error("Escolha um cliente antes de salvar.");
+            return;
+          }
+          setSalvando(true);
+          const r = await salvarFluxo({
+            clientId: cliente.id,
+            flowId: fluxoId,
+            name: nome,
+            nodes: nodes as never,
+            edges: edges as never,
+          });
+          setSalvando(false);
+          if (!r.ok) {
+            toast.error(r.error);
+            return;
+          }
+          setFluxoId(r.flowId);
+          toast.success("Fluxo salvo.");
+        }}
+        onPublicar={async () => {
+          if (!fluxoId) {
+            toast.error("Salve o fluxo antes de publicar.");
+            return;
+          }
+          setSalvando(true);
+          const r = await publicarFluxo({
+            flowId: fluxoId,
+            nodes: nodes as never,
+            edges: edges as never,
+          });
+          setSalvando(false);
+          if (!r.ok) {
+            toast.error(r.error);
+            return;
+          }
+          setStatus("publicado");
+          /* ⚠️ O AVISO É PARTE DA AÇÃO, não decoração. Publicar parece
+             ligar a automação, e não liga: o motor não existe. Sem esta
+             linha alguém fecha a aba achando que o fluxo está
+             respondendo no direct. */
+          toast.success("Fluxo publicado.", {
+            description:
+              "Ele ainda NÃO dispara: o motor de execução é a próxima etapa.",
+          });
+        }}
+      />
 
       <div className="flex min-h-0 flex-1">
         {/* --------------------- Paleta (desktop) ------------------- */}
@@ -316,29 +429,94 @@ export function FlowBuilder() {
 /* Cabeçalho                                                           */
 /* ------------------------------------------------------------------ */
 
-function Cabecalho({ nos }: { nos: number }) {
+function Cabecalho({
+  nos,
+  clientes,
+  cliente,
+  nome,
+  onNome,
+  status,
+  salvando,
+  problemas,
+  onSalvar,
+  onPublicar,
+}: {
+  nos: number;
+  clientes: ClienteDoFluxo[];
+  cliente: ClienteDoFluxo | null;
+  nome: string;
+  onNome: (v: string) => void;
+  status: "rascunho" | "publicado";
+  salvando: boolean;
+  problemas: Problema[];
+  onSalvar: () => void;
+  onPublicar: () => void;
+}) {
+  const router = useRouter();
+  const impedimentos = problemas.filter((p) => p.gravidade === "impede");
+  const liberado = podePublicar(problemas);
+
   return (
     <header className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-hairline px-4 py-2.5">
-      <div className="min-w-0">
-        <div className="flex items-center gap-2">
-          <h1 className="text-sm font-semibold tracking-[-0.01em]">EloChat</h1>
-          <span className="rounded-full bg-warning-muted px-2 py-0.5 text-[10px] font-medium text-warning">
-            Prévia
-          </span>
-        </div>
-        <p className="truncate text-2xs text-muted-foreground">
-          Cupom por comentário — Instagram · {nos}{" "}
-          {nos === 1 ? "bloco" : "blocos"}
-        </p>
+      <div className="flex min-w-0 items-center gap-2">
+        <h1 className="shrink-0 text-sm font-semibold tracking-[-0.01em]">
+          EloChat
+        </h1>
+
+        {/* O ESTADO FICA AO LADO DO NOME, e não num canto: é a diferença
+            entre um rascunho e o fluxo que vale para aquela conta. */}
+        <span
+          className={cn(
+            "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium",
+            status === "publicado"
+              ? "bg-positive-muted text-positive"
+              : "bg-warning-muted text-warning",
+          )}
+        >
+          {status === "publicado" ? "Publicado" : "Rascunho"}
+        </span>
       </div>
 
+      {/* ⚠️ O CLIENTE É OBRIGATÓRIO PORQUE A CONEXÃO É. O token do
+          Instagram vive em `instagram_connections`, com `client_id`
+          como chave: um fluxo sem cliente não teria por qual conta
+          responder. Navega por URL para o fluxo escolhido ser
+          compartilhável e vir pronto do servidor. */}
+      <Select
+        value={cliente?.slug ?? ""}
+        onValueChange={(v) => router.push(`/elochat?cliente=${v}`)}
+      >
+        <SelectTrigger className="h-8 w-[200px] shrink-0 text-xs">
+          <SelectValue placeholder="Escolha o cliente">
+            {(v: string) =>
+              clientes.find((c) => c.slug === v)?.name ?? "Escolha o cliente"
+            }
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          {clientes.map((c) => (
+            <SelectItem key={c.id} value={c.slug}>
+              {c.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      {cliente && (
+        <input
+          value={nome}
+          onChange={(e) => onNome(e.target.value)}
+          aria-label="Nome do fluxo"
+          className="min-w-0 max-w-[220px] flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+          placeholder="Nome do fluxo"
+        />
+      )}
+
+      <span className="hidden shrink-0 text-2xs text-muted-foreground sm:inline">
+        {nos} {nos === 1 ? "bloco" : "blocos"}
+      </span>
+
       <div className="ml-auto flex items-center gap-2">
-        {/* O acesso à paleta no mobile é o botão flutuante sobre o
-            canvas, não mais um ícone aqui: dois caminhos para a mesma
-            gaveta empurravam o cabeçalho para duas linhas no celular e
-            comiam altura do canvas, que é o que a tela existe para
-            mostrar. O flutuante ainda ganha por ficar ao alcance do
-            polegar. */}
         <Button
           size="sm"
           variant="outline"
@@ -346,7 +524,7 @@ function Cabecalho({ nos }: { nos: number }) {
           onClick={() =>
             toast.info("Ainda não existe motor de execução.", {
               description:
-                "O construtor desenha o fluxo; publicar e disparar são a próxima etapa.",
+                "O construtor desenha e guarda o fluxo; disparar é a próxima etapa.",
             })
           }
         >
@@ -356,18 +534,36 @@ function Cabecalho({ nos }: { nos: number }) {
 
         <Button
           size="sm"
+          variant="outline"
           className="h-8"
-          onClick={() =>
-            toast.info("Publicação ainda não implementada.", {
-              description:
-                "O fluxo vive só nesta aba — recarregar a página devolve o exemplo inicial.",
-            })
-          }
+          disabled={!cliente || salvando}
+          onClick={onSalvar}
+        >
+          <Save className="size-3.5" />
+          Salvar
+        </Button>
+
+        {/* ⚠️ DESABILITADO COM O MOTIVO À VISTA. Um botão cinza sem
+            explicação faz a pessoa clicar três vezes e desistir; o
+            primeiro impedimento aparece no título e no aviso abaixo. */}
+        <Button
+          size="sm"
+          className="h-8"
+          disabled={!cliente || salvando || !liberado}
+          title={impedimentos[0]?.mensagem}
+          onClick={onPublicar}
         >
           <Rocket className="size-3.5" />
           Publicar
         </Button>
       </div>
+
+      {impedimentos.length > 0 && cliente && (
+        <p className="w-full text-2xs text-warning">
+          {impedimentos[0].mensagem}
+          {impedimentos.length > 1 && ` (+${impedimentos.length - 1})`}
+        </p>
+      )}
     </header>
   );
 }
