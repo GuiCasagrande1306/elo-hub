@@ -121,15 +121,24 @@ export interface LinkDoRelatorio {
  * Roda sob a sessão de quem pediu — a policy de INSERT exige
  * `can_write_client`, então quem não administra a conta não consegue
  * abrir uma porta para ela.
+ *
+ * Devolve o MOTIVO quando falha, nunca `null` seco: ver a nota no
+ * corpo. O erro do banco é a única informação que distingue "não tem
+ * permissão" de "a tabela não tem grant", e as duas pedem conserto em
+ * lugares opostos.
  */
+export type ResultadoDoLink =
+  | { ok: true; link: LinkDoRelatorio }
+  | { ok: false; motivo: string };
+
 export async function linkAtivoDoCliente(
   supabase: {
     from: ReturnType<typeof createSupabaseAdminClient>["from"];
   },
   clientId: string,
   profileId: string | null,
-): Promise<LinkDoRelatorio | null> {
-  const { data: existente } = await supabase
+): Promise<ResultadoDoLink> {
+  const { data: existente, error: erroLeitura } = await supabase
     .from("report_share_links")
     .select("token, created_at, view_count, last_viewed_at")
     .eq("client_id", clientId)
@@ -137,6 +146,13 @@ export async function linkAtivoDoCliente(
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+
+  /* ⚠️ O ERRO DE LEITURA TAMBÉM CONTA, e ignorá-lo foi metade do
+     problema. Sem o grant da tabela, o select falhava exatamente como
+     o insert — mas o `error` era descartado, então a função seguia
+     para a criação, falhava de novo, e devolvia um `null` que não
+     dizia se o cliente não tinha link ou se o banco recusou. */
+  if (erroLeitura) return { ok: false, motivo: erroLeitura.message };
 
   if (existente) {
     const e = existente as unknown as {
@@ -146,10 +162,13 @@ export async function linkAtivoDoCliente(
       last_viewed_at: string | null;
     };
     return {
-      token: e.token,
-      createdAt: e.created_at,
-      viewCount: e.view_count,
-      lastViewedAt: e.last_viewed_at,
+      ok: true,
+      link: {
+        token: e.token,
+        createdAt: e.created_at,
+        viewCount: e.view_count,
+        lastViewedAt: e.last_viewed_at,
+      },
     };
   }
 
@@ -163,7 +182,12 @@ export async function linkAtivoDoCliente(
     .select("token, created_at, view_count, last_viewed_at")
     .single();
 
-  if (error || !criado) return null;
+  /* O MOTIVO SOBE ATÉ A TELA. Um `null` seco aqui obrigou quem chama a
+     adivinhar, e a mensagem que ele adivinhou — "Você administra esta
+     conta?" — mandou procurar um problema de permissão de usuário
+     quando o que faltava era um GRANT no banco. */
+  if (error) return { ok: false, motivo: error.message };
+  if (!criado) return { ok: false, motivo: "O banco não devolveu o link criado." };
 
   const c = criado as unknown as {
     token: string;
@@ -173,9 +197,12 @@ export async function linkAtivoDoCliente(
   };
 
   return {
-    token: c.token,
-    createdAt: c.created_at,
-    viewCount: c.view_count,
-    lastViewedAt: c.last_viewed_at,
+    ok: true,
+    link: {
+      token: c.token,
+      createdAt: c.created_at,
+      viewCount: c.view_count,
+      lastViewedAt: c.last_viewed_at,
+    },
   };
 }

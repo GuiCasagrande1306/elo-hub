@@ -1011,24 +1011,31 @@ export async function gerarLinkDoRelatorio(clientId: string): Promise<
   const supabase = await createSupabaseServerClient();
   const { linkAtivoDoCliente } = await import("@/lib/reports/link-publico");
 
-  const link = await linkAtivoDoCliente(
+  const r = await linkAtivoDoCliente(
     supabase as never,
     clientId,
     user.id ?? null,
   );
 
-  if (!link) {
+  /* ⚠️ O MOTIVO DO BANCO VAI PARA A TELA, e não uma pergunta chutada.
+     A versão anterior devolvia "Você administra esta conta?" para
+     qualquer falha — inclusive para a que realmente aconteceu, que era
+     `permission denied for table report_share_links` por falta de
+     GRANT (migration 84). A mensagem mandou procurar permissão de
+     usuário enquanto o problema estava no privilégio da tabela. */
+  if (!r.ok) {
+    console.error("[link do relatório]", r.motivo);
     return {
       ok: false,
-      error: "Não foi possível gerar o link. Você administra esta conta?",
+      error: `Não foi possível gerar o link: ${r.motivo}`,
     };
   }
 
   return {
     ok: true,
-    token: link.token,
-    viewCount: link.viewCount,
-    lastViewedAt: link.lastViewedAt,
+    token: r.link.token,
+    viewCount: r.link.viewCount,
+    lastViewedAt: r.link.lastViewedAt,
   };
 }
 
