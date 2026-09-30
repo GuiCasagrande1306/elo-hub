@@ -6,7 +6,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { CalendarClock, CircleAlert, MessageSquare } from "lucide-react";
 
 import { PersonAvatar } from "@/components/team/person-avatar";
-import { ORIGEM_LABEL, valorDoNegocio } from "@/lib/crm/stages";
+import { ORIGEM_LABEL, SERVICO_LABEL, valorDoNegocio } from "@/lib/crm/stages";
 import { dataNoBrasil } from "@/lib/date-br";
 import { formatCurrency } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -77,7 +77,7 @@ export function DealCard({
       onKeyDown={handleKeyDown}
       role="button"
       tabIndex={0}
-      aria-label={`Abrir negócio: ${deal.title}`}
+      aria-label={`Abrir negócio: ${deal.company}`}
       className={cn(
         "cursor-grab touch-none rounded-xl outline-none active:cursor-grabbing",
         "focus-visible:ring-2 focus-visible:ring-ring",
@@ -107,11 +107,15 @@ export function DealCardShell({
         dragging && "rotate-1 shadow-2xl ring-signal/45",
       )}
     >
-      <h3 className="text-sm font-medium leading-snug">{deal.title}</h3>
+      <h3 className="text-sm font-medium leading-snug">{deal.company}</h3>
 
-      {deal.company && deal.company !== deal.title && (
+      {/* O SERVIÇO VEM DE LISTA, não de dentro do nome.
+          Até a migration 82 isto fazia parte de um título digitado à
+          mão — "Pizzaria Dom Léo — gestão de tráfego" — e por isso
+          "quantos negócios de tráfego perdemos" não tinha resposta. */}
+      {deal.service && (
         <p className="-mt-1.5 truncate text-2xs text-muted-foreground">
-          {deal.company}
+          {SERVICO_LABEL[deal.service]}
         </p>
       )}
 

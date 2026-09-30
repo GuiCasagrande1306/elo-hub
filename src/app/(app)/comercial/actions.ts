@@ -8,6 +8,7 @@ import {
   createSupabaseServerClient,
   getCurrentUser,
 } from "@/lib/supabase/server";
+import { oQueFalta, type DealParaPortao } from "@/lib/crm/portoes";
 import type { ActivityKind, DealStage } from "@/types/database";
 
 /**
@@ -43,6 +44,14 @@ const ORIGENS = [
   "outro",
 ] as const;
 
+const SERVICOS = [
+  "trafego",
+  "social",
+  "site",
+  "combo",
+  "outro",
+] as const;
+
 const MOTIVOS = [
   "preco",
   "timing",
@@ -61,16 +70,20 @@ const dataISO = z
 /* Criar                                                               */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Criar custa UM campo: a empresa.
+ *
+ * ⚠️ ESTA É A MUDANÇA QUE O MÓDULO INTEIRO EXISTE PARA FAZER. O schema
+ * anterior exigia um título composto à mão ("Pizzaria Dom Léo — gestão
+ * de tráfego") mais seis campos, e o resultado medido foram 44 dias no
+ * ar com zero negócios. Telefone e origem entram se quem digitou tiver
+ * à mão; o resto é cobrado adiante, pelos portões, na etapa em que
+ * aquilo importa.
+ */
 const criarSchema = z.object({
-  title: z.string().trim().min(1, "Dê um nome ao negócio.").max(200),
-  company: z.string().trim().max(200).nullable(),
-  contactName: z.string().trim().max(200).nullable(),
-  contactPhone: z.string().trim().max(60).nullable(),
-  contactEmail: z.string().trim().max(200).nullable(),
-  origem: z.enum(ORIGENS),
-  monthlyFeeCents: z.number().int().min(0),
-  setupFeeCents: z.number().int().min(0),
-  ownerId: z.string().min(1).nullable(),
+  company: z.string().trim().min(1, "Diga o nome da empresa.").max(200),
+  contactPhone: z.string().trim().max(60).nullable().optional(),
+  origem: z.enum(ORIGENS).optional(),
 });
 
 export async function criarNegocio(
@@ -85,26 +98,26 @@ export async function criarNegocio(
   if (!user) return { ok: false, error: "Sessão expirada. Entre novamente." };
 
   const v = parsed.data;
+  const origem = v.origem ?? "outro";
 
   if (isDemoMode) {
-    const { demoDeals, demoProfiles } = await import("@/lib/mock/data");
-    const dono = demoProfiles.find((p) => p.id === v.ownerId) ?? null;
+    const { demoDeals, demoStageEvents } = await import("@/lib/mock/data");
+    const id = `d-${Date.now()}`;
 
     demoDeals.unshift({
-      id: `d-${Date.now()}`,
-      title: v.title,
+      id,
       company: v.company,
-      contact_name: v.contactName,
-      contact_phone: v.contactPhone,
-      contact_email: v.contactEmail,
+      service: null,
+      referred_by: null,
+      contact_name: null,
+      contact_phone: v.contactPhone ?? null,
+      contact_email: null,
       stage: "novo",
-      origem: v.origem,
-      monthly_fee_cents: v.monthlyFeeCents,
-      setup_fee_cents: v.setupFeeCents,
-      owner_id: v.ownerId,
-      owner: dono
-        ? { id: dono.id, full_name: dono.full_name, avatar_url: dono.avatar_url }
-        : null,
+      origem,
+      monthly_fee_cents: 0,
+      setup_fee_cents: 0,
+      owner_id: null,
+      owner: null,
       expected_close_date: null,
       next_action: null,
       next_action_at: null,
@@ -120,8 +133,19 @@ export async function criarNegocio(
       activityCount: 0,
     });
 
+    /* Espelha o trigger `crm_registra_entrada`: sem o evento de
+       criação, o negócio não conta em "quantos entraram este mês". */
+    demoStageEvents.push({
+      id: `se-${id}-novo`,
+      deal_id: id,
+      from_stage: null,
+      to_stage: "novo",
+      changed_by: user.id,
+      changed_at: new Date().toISOString(),
+    });
+
     revalidatePath("/comercial");
-    return { ok: true, dealId: demoDeals[0].id };
+    return { ok: true, dealId: id };
   }
 
   const supabase = await createSupabaseServerClient();
@@ -129,15 +153,9 @@ export async function criarNegocio(
   const { data, error } = await supabase
     .from("crm_deals")
     .insert({
-      title: v.title,
       company: v.company,
-      contact_name: v.contactName,
-      contact_phone: v.contactPhone,
-      contact_email: v.contactEmail,
-      origem: v.origem,
-      monthly_fee_cents: v.monthlyFeeCents,
-      setup_fee_cents: v.setupFeeCents,
-      owner_id: v.ownerId,
+      contact_phone: v.contactPhone ?? null,
+      origem,
       // A policy de insert exige `created_by = auth.uid()`: a autoria
       // vem da sessão e não pode ser forjada pelo formulário.
       created_by: user.id,
@@ -158,8 +176,9 @@ export async function criarNegocio(
 
 const editarSchema = z.object({
   dealId: z.string().min(1),
-  title: z.string().trim().min(1).max(200).optional(),
-  company: z.string().trim().max(200).nullable().optional(),
+  company: z.string().trim().min(1, "A empresa não pode ficar sem nome.").max(200).optional(),
+  service: z.enum(SERVICOS).nullable().optional(),
+  referredBy: z.string().trim().max(200).nullable().optional(),
   contactName: z.string().trim().max(200).nullable().optional(),
   contactPhone: z.string().trim().max(60).nullable().optional(),
   contactEmail: z.string().trim().max(200).nullable().optional(),
@@ -202,8 +221,9 @@ export async function atualizarNegocio(
   }
 
   const patch = {
-    ...(v.title !== undefined ? { title: v.title } : {}),
     ...(v.company !== undefined ? { company: v.company } : {}),
+    ...(v.service !== undefined ? { service: v.service } : {}),
+    ...(v.referredBy !== undefined ? { referred_by: v.referredBy } : {}),
     ...(v.contactName !== undefined ? { contact_name: v.contactName } : {}),
     ...(v.contactPhone !== undefined ? { contact_phone: v.contactPhone } : {}),
     ...(v.contactEmail !== undefined ? { contact_email: v.contactEmail } : {}),
@@ -265,42 +285,107 @@ export async function atualizarNegocio(
 /* Mover no funil                                                      */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Mover é onde o atrito vive — e ele vem junto com o preenchimento.
+ *
+ * ⚠️ UMA CHAMADA SÓ, e isso não é economia de round-trip: é correção.
+ * Gravar os campos primeiro e mover depois deixaria o negócio num
+ * estado intermediário se a segunda chamada falhasse — valor de
+ * proposta preenchido num cartão que continua em "Reunião", que é
+ * exatamente o tipo de linha que faz alguém desconfiar do funil. Os
+ * campos que faltam e a etapa nova vão no MESMO update, e o banco
+ * avalia os `check` sobre a linha já completa.
+ */
 const moverSchema = z.object({
   dealId: z.string().min(1),
   stage: z.enum(ETAPAS),
   position: z.number().int(),
-  /* Só em 'perdido'. O banco tem `crm_deals_motivo_so_em_perdido`, e o
-     trigger limpa o motivo ao sair de perdido — aqui só se garante que
-     a tela não tente gravar motivo numa etapa que não aceita. */
-  lostReason: z.enum(MOTIVOS).nullable().optional(),
+  /** O que o portão pediu. Só o que veio é gravado. */
+  preencher: z
+    .object({
+      contactName: z.string().trim().max(200).nullable().optional(),
+      contactPhone: z.string().trim().max(60).nullable().optional(),
+      contactEmail: z.string().trim().max(200).nullable().optional(),
+      ownerId: z.string().min(1).nullable().optional(),
+      service: z.enum(SERVICOS).nullable().optional(),
+      referredBy: z.string().trim().max(200).nullable().optional(),
+      monthlyFeeCents: z.number().int().min(0).optional(),
+      setupFeeCents: z.number().int().min(0).optional(),
+      expectedCloseDate: dataISO.optional(),
+      nextAction: z.string().trim().max(300).nullable().optional(),
+      nextActionAt: dataISO.optional(),
+      lostReason: z.enum(MOTIVOS).nullable().optional(),
+    })
+    .optional(),
 });
+
+/** Só os campos que vieram, já no vocabulário do banco. */
+function colunasDoPreenchimento(
+  p: NonNullable<z.infer<typeof moverSchema>["preencher"]>,
+): Record<string, unknown> {
+  const mapa: [unknown, string][] = [
+    [p.contactName, "contact_name"],
+    [p.contactPhone, "contact_phone"],
+    [p.contactEmail, "contact_email"],
+    [p.ownerId, "owner_id"],
+    [p.service, "service"],
+    [p.referredBy, "referred_by"],
+    [p.monthlyFeeCents, "monthly_fee_cents"],
+    [p.setupFeeCents, "setup_fee_cents"],
+    [p.expectedCloseDate, "expected_close_date"],
+    [p.nextAction, "next_action"],
+    [p.nextActionAt, "next_action_at"],
+  ];
+
+  const saida: Record<string, unknown> = {};
+  for (const [valor, coluna] of mapa) {
+    if (valor !== undefined) saida[coluna] = valor;
+  }
+  return saida;
+}
 
 export async function moverNegocio(
   input: z.input<typeof moverSchema>,
 ): Promise<ActionResult> {
   const parsed = moverSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "Movimento inválido." };
-
-  const { dealId, stage, position, lostReason } = parsed.data;
-
-  if (stage === "perdido" && !lostReason) {
-    return { ok: false, error: "Diga por que o negócio foi perdido." };
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Movimento inválido." };
   }
 
+  const { dealId, stage, position, preencher } = parsed.data;
+  const p = preencher ?? {};
+
   if (isDemoMode) {
-    const { demoDeals } = await import("@/lib/mock/data");
+    const { demoDeals, demoStageEvents } = await import("@/lib/mock/data");
     const alvo = demoDeals.find((d) => d.id === dealId);
     if (!alvo) return { ok: false, error: "Negócio não encontrado." };
 
+    const depois = { ...alvo, ...paraDeal(alvo, p, stage) };
+    const falta = oQueFalta(depois, stage);
+    if (falta.length) return { ok: false, error: falta[0].pergunta };
+
+    const anterior = alvo.stage;
+    Object.assign(alvo, paraDeal(alvo, p, stage), {
+      stage,
+      position,
+      updated_at: new Date().toISOString(),
+    });
+
     // Espelha o trigger `stamp_crm_deal`.
-    if (alvo.stage !== stage) {
+    if (anterior !== stage) {
       alvo.won_at = stage === "ganho" ? new Date().toISOString() : null;
       alvo.lost_at = stage === "perdido" ? new Date().toISOString() : null;
+      if (stage !== "perdido") alvo.lost_reason = null;
+
+      demoStageEvents.push({
+        id: `se-${dealId}-${stage}-${Date.now()}`,
+        deal_id: dealId,
+        from_stage: anterior,
+        to_stage: stage,
+        changed_by: null,
+        changed_at: new Date().toISOString(),
+      });
     }
-    alvo.stage = stage;
-    alvo.position = position;
-    alvo.lost_reason = stage === "perdido" ? (lostReason ?? null) : null;
-    alvo.updated_at = new Date().toISOString();
 
     revalidatePath("/comercial");
     return { ok: true };
@@ -308,15 +393,41 @@ export async function moverNegocio(
 
   const supabase = await createSupabaseServerClient();
 
+  /* Lê antes de escrever para conferir o portão com a MESMA regra da
+     tela. O banco tem os `check` equivalentes e recusaria de qualquer
+     jeito — mas com uma mensagem que ninguém deve ver enquanto vende.
+     Ver `src/lib/crm/portoes.ts`. */
+  const { data: atual, error: erroLeitura } = await supabase
+    .from("crm_deals")
+    .select(
+      "contact_name, contact_phone, contact_email, owner_id, service, " +
+        "monthly_fee_cents, setup_fee_cents, expected_close_date, " +
+        "next_action, next_action_at, lost_reason, origem, referred_by",
+    )
+    .eq("id", dealId)
+    .maybeSingle();
+
+  if (erroLeitura) return { ok: false, error: traduzir(erroLeitura) };
+  if (!atual) {
+    return { ok: false, error: "Não foi possível mover: o negócio não existe mais." };
+  }
+
+  const base = atual as unknown as DealParaPortao;
+  const falta = oQueFalta({ ...base, ...paraDeal(base, p, stage) }, stage);
+  if (falta.length) return { ok: false, error: falta[0].pergunta };
+
   const { data, error } = await supabase
     .from("crm_deals")
     .update({
+      ...colunasDoPreenchimento(p),
       stage,
       position,
       /* Mandar o motivo só quando é perdido. Em qualquer outra etapa o
          trigger já limpa, mas enviar `null` explicitamente evita
          depender da ordem de avaliação para não bater no check. */
-      ...(stage === "perdido" ? { lost_reason: lostReason } : { lost_reason: null }),
+      ...(stage === "perdido"
+        ? { lost_reason: p.lostReason ?? base.lost_reason }
+        : { lost_reason: null }),
     })
     .eq("id", dealId)
     .select("id");
@@ -328,6 +439,38 @@ export async function moverNegocio(
 
   revalidatePath("/comercial");
   return { ok: true };
+}
+
+/**
+ * O preenchimento traduzido para o formato que o portão lê.
+ *
+ * Existe para a checagem rodar sobre a linha COMO ELA VAI FICAR, e não
+ * como está. Sem isso, preencher o valor e mover para "Proposta" na
+ * mesma ação seria recusado pelo próprio dado que a ação está gravando.
+ */
+function paraDeal(
+  base: DealParaPortao,
+  p: NonNullable<z.infer<typeof moverSchema>["preencher"]>,
+  stage: DealStage,
+): DealParaPortao {
+  return {
+    ...base,
+    contact_name: p.contactName ?? base.contact_name,
+    contact_phone: p.contactPhone ?? base.contact_phone,
+    contact_email: p.contactEmail ?? base.contact_email,
+    owner_id: p.ownerId ?? base.owner_id,
+    service: p.service ?? base.service,
+    referred_by: p.referredBy ?? base.referred_by,
+    monthly_fee_cents: p.monthlyFeeCents ?? base.monthly_fee_cents,
+    setup_fee_cents: p.setupFeeCents ?? base.setup_fee_cents,
+    expected_close_date: p.expectedCloseDate ?? base.expected_close_date,
+    next_action: p.nextAction ?? base.next_action,
+    next_action_at: p.nextActionAt ?? base.next_action_at,
+    /* Sair de 'perdido' limpa o motivo — é o que o trigger faz, e a
+       checagem precisa enxergar a linha do mesmo jeito que o banco. */
+    lost_reason:
+      stage === "perdido" ? (p.lostReason ?? base.lost_reason) : null,
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -436,7 +579,7 @@ export async function converterEmCliente(
 
   const { data: deal, error: erroLeitura } = await supabase
     .from("crm_deals")
-    .select("id, title, company, contact_name, contact_email, contact_phone, stage, client_id, monthly_fee_cents")
+    .select("id, company, contact_name, contact_email, contact_phone, stage, client_id, monthly_fee_cents")
     .eq("id", dealId)
     .maybeSingle();
 
@@ -444,8 +587,7 @@ export async function converterEmCliente(
   if (!deal) return { ok: false, error: "Negócio não encontrado." };
 
   const d = deal as {
-    title: string;
-    company: string | null;
+    company: string;
     contact_name: string | null;
     contact_email: string | null;
     contact_phone: string | null;
@@ -472,7 +614,7 @@ export async function converterEmCliente(
     ...newClientDefaults,
     // O nome da EMPRESA, com o título do negócio como reserva: o título
     // costuma ser "Empresa — serviço", que ficaria feio na carteira.
-    name: (d.company?.trim() || d.title).slice(0, 120),
+    name: d.company.trim().slice(0, 120),
     segment,
     agencyPartner,
     status: "onboarding",

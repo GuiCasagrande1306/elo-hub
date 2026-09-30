@@ -42,6 +42,7 @@ import type {
   ClientGoal,
   ClientSegment,
   CrmActivity,
+  CrmStageEvent,
   DailyMetric,
   DealWithRelations,
   FinancialTransaction,
@@ -2085,6 +2086,47 @@ export async function getDeals(): Promise<DealWithRelations[]> {
       activityCount: crm_activities?.[0]?.count ?? 0,
     };
   }) as unknown as DealWithRelations[];
+}
+
+/**
+ * Todas as passagens de etapa do funil — a base das contas.
+ *
+ * ⚠️ VEM DE `crm_stage_events`, NUNCA DE `crm_activities`. Até a
+ * migration 82 a mudança de etapa era gravada como a frase "Etapa mudou
+ * de novo para contato" num campo de texto; conversão e tempo de ciclo
+ * exigiriam parsing de prosa. Ver `src/lib/crm/metricas.ts`.
+ *
+ * SEM RECORTE DE PERÍODO, pelo mesmo motivo de `getSocialPosts` antes
+ * dela: as contas do funil comparam quem entrou com quem avançou, e
+ * cortar por data deixaria de fora justamente a entrada dos negócios
+ * que fecharam este mês. Um evento por movimentação de cartão, com
+ * dezenas de negócios por ano, é ordem de centenas de linhas.
+ *
+ * `[]` no erro, e não exceção: o quadro do funil é a tela, e as
+ * métricas são o topo dela. Uma consulta de métrica que falha não pode
+ * derrubar a lista de negócios — o painel aparece vazio, o quadro
+ * continua de pé.
+ */
+export async function getStageEvents(): Promise<CrmStageEvent[]> {
+  if (isDemoMode) {
+    const { demoStageEvents } = await import("@/lib/mock/data");
+    return demoStageEvents;
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  const { data, error } = await supabase
+    .from("crm_stage_events")
+    .select("id, deal_id, from_stage, to_stage, changed_by, changed_at")
+    .order("changed_at", { ascending: true })
+    .limit(5000);
+
+  if (error) {
+    console.error("[crm] eventos de etapa:", error.message);
+    return [];
+  }
+
+  return (data ?? []) as unknown as CrmStageEvent[];
 }
 
 /** Linha do tempo de um negócio, do mais recente para o mais antigo. */

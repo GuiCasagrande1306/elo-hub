@@ -33,6 +33,8 @@ import {
   MOTIVO_LABEL,
   ORIGEM_LABEL,
   ORIGENS,
+  SERVICOS,
+  SERVICO_LABEL,
   valorDoNegocio,
 } from "@/lib/crm/stages";
 import { formatCurrency, parseCurrencyToCents } from "@/lib/format";
@@ -42,6 +44,7 @@ import type {
   ActivityKind,
   CrmActivity,
   DealOrigem,
+  DealService,
   DealStage,
   DealWithRelations,
   Profile,
@@ -88,12 +91,21 @@ export function DealDialog({
   open,
   onOpenChange,
   onConverter,
+  onMoverEtapa,
 }: {
   deal: DealWithRelations | null;
   team: Profile[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onConverter: (deal: DealWithRelations) => void;
+  /**
+   * Trocar de etapa a partir da ficha.
+   *
+   * Sobe para quem desenha o quadro em vez de chamar a action daqui:
+   * é lá que o portão vive, e duplicar a checagem criaria a segunda
+   * cópia que mais cedo ou mais tarde diverge.
+   */
+  onMoverEtapa: (destino: DealStage) => void;
 }) {
   const [salvando, iniciarSalvamento] = useTransition();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -134,20 +146,20 @@ export function DealDialog({
               `render={<X/>}`. Para um título editável, porém, o caminho
               limpo é o `sr-only` com o input ao lado: o leitor de tela
               anuncia o nome do diálogo sem depender de composição. */}
-          <DialogTitle className="sr-only">{deal.title}</DialogTitle>
+          <DialogTitle className="sr-only">{deal.company}</DialogTitle>
 
           <input
-            defaultValue={deal.title}
-            onChange={(e) => agendar({ dealId: deal.id, title: e.target.value })}
+            defaultValue={deal.company}
+            onChange={(e) => agendar({ dealId: deal.id, company: e.target.value })}
             className="w-full bg-transparent text-lg font-semibold tracking-[-0.01em] outline-none"
-            aria-label="Nome do negócio"
+            aria-label="Empresa"
           />
 
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-            {deal.company && (
+            {deal.service && (
               <span className="flex items-center gap-1">
                 <Building2 className="size-3.5" />
-                {deal.company}
+                {SERVICO_LABEL[deal.service]}
               </span>
             )}
             {valor > 0 && (
@@ -171,23 +183,22 @@ export function DealDialog({
           {/* ---------------- O que o negócio é ---------------- */}
           <div className="flex flex-col gap-4 p-5">
             <div className="grid gap-4 sm:grid-cols-2">
+              {/* ⚠️ MUDAR ETAPA NÃO É EDITAR CAMPO, e por isso não passa
+                  por `patch`. Sai pelo MESMO caminho do arrastar, que é
+                  o único que conhece os portões — senão a ficha viraria
+                  a porta dos fundos para pôr um negócio em "Proposta"
+                  sem valor, e todo o padrão de dado valeria enquanto
+                  ninguém abrisse o cartão.
+
+                  ⚠️ E ESTE SELETOR ESTAVA INERTE. Ele chamava
+                  `patch({ stage })` com um `as never`; `editarSchema`
+                  não declara `stage` e o Zod descarta chave que não
+                  conhece, então a action respondia "ok" e não mudava
+                  nada. Falhava em silêncio desde a migration 44. */}
               <Campo label="Etapa">
                 <Select
                   value={deal.stage}
-                  onValueChange={(v) => {
-                    /* Perder pede motivo, e o motivo é escolhido no
-                       quadro (arrastando) ou aqui. Como este seletor não
-                       tem onde perguntar, mandar para 'perdido' daqui
-                       fica bloqueado — o banco recusaria de qualquer
-                       forma pelo check, e um erro cru seria pior. */
-                    if (v === "perdido") {
-                      toast.info(
-                        "Para marcar como perdido, arraste o cartão até a coluna Perdido — lá dá para registrar o motivo.",
-                      );
-                      return;
-                    }
-                    patch({ dealId: deal.id, stage: v } as never);
-                  }}
+                  onValueChange={(v) => onMoverEtapa(v as DealStage)}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue>
@@ -195,7 +206,7 @@ export function DealDialog({
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    {ETAPAS.filter((e) => e.id !== "perdido").map((e) => (
+                    {ETAPAS.map((e) => (
                       <SelectItem key={e.id} value={e.id}>
                         {e.label}
                       </SelectItem>
@@ -223,6 +234,58 @@ export function DealDialog({
                   </SelectContent>
                 </Select>
               </Campo>
+
+              {/* SERVIÇO É LISTA, e essa é a diferença entre um CRM e
+                  uma planilha. Enquanto isto morava dentro do título
+                  livre, "quantos negócios de tráfego perdemos no
+                  trimestre" não tinha resposta possível. */}
+              <Campo label="Serviço">
+                <Select
+                  value={deal.service ?? "__nenhum__"}
+                  onValueChange={(v) =>
+                    patch({
+                      dealId: deal.id,
+                      service: v === "__nenhum__" ? null : v,
+                    } as never)
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue>
+                      {(v: string) =>
+                        v === "__nenhum__"
+                          ? "A definir"
+                          : (SERVICO_LABEL[v as DealService] ?? "")
+                      }
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__nenhum__">A definir</SelectItem>
+                    {SERVICOS.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Campo>
+
+              {/* Só aparece quando a origem é indicação: perguntar quem
+                  indicou um lead de prospecção fria é ruído, e campo
+                  vazio permanente ensina a ignorar o formulário. */}
+              {deal.origem === "indicacao" && (
+                <Campo label="Quem indicou">
+                  <Input
+                    defaultValue={deal.referred_by ?? ""}
+                    placeholder="Cliente ou parceiro"
+                    onChange={(e) =>
+                      agendar({
+                        dealId: deal.id,
+                        referredBy: e.target.value.trim() || null,
+                      })
+                    }
+                  />
+                </Campo>
+              )}
 
               <Campo label="Mensalidade">
                 <Input

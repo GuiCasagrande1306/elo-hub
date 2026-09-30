@@ -2,7 +2,12 @@ import type { Metadata } from "next";
 
 import { PageContainer, PageHeader } from "@/components/layout/page-header";
 import { CrmWorkspace } from "@/components/crm/crm-workspace";
-import { getAgencyContracts, getDeals, getTeam } from "@/lib/data";
+import {
+  getAgencyContracts,
+  getDeals,
+  getStageEvents,
+  getTeam,
+} from "@/lib/data";
 import { AGENCY_PARTNERS } from "@/lib/validation/client";
 
 export const metadata: Metadata = { title: "Comercial" };
@@ -18,10 +23,15 @@ export const metadata: Metadata = { title: "Comercial" };
  * propósito — quem decide é o banco, não a página.
  */
 export default async function ComercialPage() {
-  const [deals, team, contratos] = await Promise.all([
+  const [deals, team, contratos, eventos] = await Promise.all([
     getDeals(),
     getTeam(),
     getAgencyContracts(),
+    /* As passagens de etapa, que são a base de toda conta do funil.
+       `getStageEvents` devolve `[]` no erro em vez de lançar: o quadro
+       é a tela, e uma consulta de métrica que falha não pode derrubar a
+       lista de negócios. */
+    getStageEvents(),
   ]);
 
   /* Agências vêm do CADASTRO, com a lista fixa como reserva. Um negócio
@@ -41,7 +51,12 @@ export default async function ComercialPage() {
         description="Quem está em negociação, quanto vale e qual é o próximo passo."
       />
 
-      <CrmWorkspace deals={deals} team={team} agencias={agencias} />
+      <CrmWorkspace
+        deals={deals}
+        team={team}
+        agencias={agencias}
+        eventos={eventos}
+      />
     </PageContainer>
   );
 }

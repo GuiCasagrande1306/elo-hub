@@ -80,7 +80,7 @@ export function ConvertDialog({
     });
   }
 
-  const nome = deal.company?.trim() || deal.title;
+  const nome = deal.company.trim();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

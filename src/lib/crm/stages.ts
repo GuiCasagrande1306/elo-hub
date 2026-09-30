@@ -1,4 +1,9 @@
-import type { DealOrigem, DealStage, LostReason } from "@/types/database";
+import type {
+  DealOrigem,
+  DealService,
+  DealStage,
+  LostReason,
+} from "@/types/database";
 
 /* =====================================================================
    Vocabulário do funil
@@ -89,6 +94,33 @@ export const MOTIVOS_PERDA: { id: LostReason; label: string }[] = [
 export const MOTIVO_LABEL: Record<LostReason, string> = Object.fromEntries(
   MOTIVOS_PERDA.map((m) => [m.id, m.label]),
 ) as Record<LostReason, string>;
+
+/* ------------------------------------------------------------------ */
+
+/**
+ * O que a Elo está vendendo no negócio.
+ *
+ * ⚠️ NASCEU PARA MATAR O TÍTULO LIVRE. Até a migration 82 a identidade
+ * do negócio era um texto composto à mão — "Pizzaria Dom Léo — gestão
+ * de tráfego" — e com ele "quantos negócios de tráfego perdemos" era
+ * impossível de responder: "tráfego", "gestão de tráfego" e "trafego
+ * pago" são três strings diferentes dentro de uma frase.
+ *
+ * Lista curta de propósito. `combo` existe porque a agência vende os
+ * dois juntos com frequência, e forçar a escolha de um só produziria
+ * dado errado de graça.
+ */
+export const SERVICOS: { id: DealService; label: string }[] = [
+  { id: "trafego", label: "Tráfego pago" },
+  { id: "social", label: "Social media" },
+  { id: "site", label: "Site / landing page" },
+  { id: "combo", label: "Tráfego + social" },
+  { id: "outro", label: "Outro" },
+];
+
+export const SERVICO_LABEL: Record<DealService, string> = Object.fromEntries(
+  SERVICOS.map((s) => [s.id, s.label]),
+) as Record<DealService, string>;
 
 /* ------------------------------------------------------------------ */
 /* Contas do funil                                                     */

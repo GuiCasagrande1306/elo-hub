@@ -63,6 +63,19 @@ export type LostReason =
   | "nao_qualificado"
   | "outro";
 
+/**
+ * O que a Elo vende no negócio.
+ *
+ * Substitui o título livre da migration 44 — ver `SERVICOS` em
+ * `src/lib/crm/stages.ts`, que é onde moram os rótulos.
+ */
+export type DealService =
+  | "trafego"
+  | "social"
+  | "site"
+  | "combo"
+  | "outro";
+
 export type ActivityKind =
   | "nota"
   | "ligacao"
@@ -73,8 +86,18 @@ export type ActivityKind =
 
 export interface CrmDeal {
   id: string;
-  title: string;
-  company: string | null;
+  /**
+   * A empresa. ÚNICO campo exigido para criar um negócio.
+   *
+   * ⚠️ SUBSTITUIU `title`, que era texto livre composto à mão. O módulo
+   * passou 44 dias no ar com zero negócios porque cadastrar custava
+   * sete campos; ver o cabeçalho da migration 82.
+   */
+  company: string;
+  /** O que estamos vendendo. Exigido a partir de "Proposta enviada". */
+  service: DealService | null;
+  /** Quem indicou. Exigido a partir de "Contato feito" se origem = indicacao. */
+  referred_by: string | null;
   contact_name: string | null;
   contact_phone: string | null;
   contact_email: string | null;
@@ -99,6 +122,28 @@ export interface CrmDeal {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/**
+ * Uma passagem de etapa, como dado.
+ *
+ * ⚠️ ESCRITA SÓ POR TRIGGER. A tabela não tem policy de insert, update
+ * ou delete — nenhum caminho da aplicação pode inventar, corrigir ou
+ * apagar um evento. É isso que faz conversão e tempo de ciclo serem
+ * confiáveis em vez de combinados.
+ *
+ * Antes da migration 82 este mesmo fato vivia em `CrmActivity.body`
+ * como a frase "Etapa mudou de novo para contato" — história que
+ * parecia completa e não era calculável.
+ */
+export interface CrmStageEvent {
+  id: string;
+  deal_id: string;
+  /** `null` só no evento de criação. */
+  from_stage: DealStage | null;
+  to_stage: DealStage;
+  changed_by: string | null;
+  changed_at: string;
 }
 
 export interface CrmActivity {

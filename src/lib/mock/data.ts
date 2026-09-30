@@ -19,6 +19,7 @@ import type {
   ClientFinancials,
   ClientGoal,
   CrmActivity,
+  CrmStageEvent,
   DailyMetric,
   DealWithRelations,
   Profile,
@@ -1340,8 +1341,9 @@ const diaEm = (n: number) =>
 export const demoDeals: DealWithRelations[] = [
   {
     id: "d-1",
-    title: "Hamburgueria do Porto — gestão de tráfego",
     company: "Hamburgueria do Porto",
+    service: "trafego",
+    referred_by: "Verdi Cosméticos",
     contact_name: "Ricardo Alves",
     contact_phone: "(48) 99812-4477",
     contact_email: "ricardo@hamburgueriadoporto.com.br",
@@ -1367,8 +1369,9 @@ export const demoDeals: DealWithRelations[] = [
   },
   {
     id: "d-2",
-    title: "Clínica Vitalis — social media + tráfego",
     company: "Clínica Vitalis",
+    service: "combo",
+    referred_by: null,
     contact_name: "Dra. Helena Prado",
     contact_phone: "(47) 99145-8820",
     contact_email: null,
@@ -1395,8 +1398,9 @@ export const demoDeals: DealWithRelations[] = [
   },
   {
     id: "d-3",
-    title: "Ótica Belavista — campanha de lançamento",
     company: "Ótica Belavista",
+    service: "trafego",
+    referred_by: null,
     contact_name: "Sandro Kunz",
     contact_phone: "(48) 98811-3390",
     contact_email: null,
@@ -1422,8 +1426,9 @@ export const demoDeals: DealWithRelations[] = [
   },
   {
     id: "d-4",
-    title: "Marcenaria Duarte",
     company: "Marcenaria Duarte",
+    service: "site",
+    referred_by: null,
     contact_name: "Jonas Duarte",
     contact_phone: "(48) 99677-2210",
     contact_email: null,
@@ -1452,8 +1457,9 @@ export const demoDeals: DealWithRelations[] = [
   },
   {
     id: "d-5",
-    title: "Studio Corpo & Movimento",
     company: "Studio Corpo & Movimento",
+    service: null,
+    referred_by: null,
     contact_name: "Paula Rech",
     contact_phone: null,
     contact_email: "contato@corpoemovimento.com",
@@ -1479,8 +1485,9 @@ export const demoDeals: DealWithRelations[] = [
   },
   {
     id: "d-6",
-    title: "Empório da Serra — tráfego + conteúdo",
     company: "Empório da Serra",
+    service: "combo",
+    referred_by: "Atlas Odontologia",
     contact_name: "Tiago Menezes",
     contact_phone: "(49) 99220-1187",
     contact_email: null,
@@ -1506,8 +1513,9 @@ export const demoDeals: DealWithRelations[] = [
   },
   {
     id: "d-7",
-    title: "Rede Tucano — 4 lojas",
     company: "Rede Tucano",
+    service: "trafego",
+    referred_by: null,
     contact_name: "Márcio Bonetti",
     contact_phone: null,
     contact_email: null,
@@ -1531,6 +1539,80 @@ export const demoDeals: DealWithRelations[] = [
     updated_at: daysAgo(12),
     activityCount: 7,
   },
+];
+
+/* =====================================================================
+   A história de etapa da demonstração
+   ---------------------------------------------------------------------
+   Sem estes eventos o painel de números aparece vazio em modo demo, e
+   quem está avaliando o CRM conclui que a parte de métrica não
+   funciona. Cada caminho abaixo é o de um dos sete negócios acima,
+   coerente com a etapa em que ele está hoje e com a data em que entrou.
+
+   ⚠️ SÓ OS SETE NEGÓCIOS REAIS DA DEMONSTRAÇÃO. Inventar eventos de
+   negócios que o quadro não mostra encheria o funil com números que não
+   batem com os cartões na tela — e "o topo diz 22, eu conto 7" é
+   exatamente o tipo de divergência que faz alguém parar de acreditar no
+   painel inteiro.
+
+   O funil que isto produz: 7 entraram, 6 contataram, 5 reuniram, 4
+   receberam proposta, 2 negociaram, 1 fechou. Um perdido, na proposta.
+   ===================================================================== */
+
+const passagem = (
+  deal_id: string,
+  from_stage: CrmStageEvent["from_stage"],
+  to_stage: CrmStageEvent["to_stage"],
+  diasAtras: number,
+): CrmStageEvent => ({
+  id: `se-${deal_id}-${to_stage}`,
+  deal_id,
+  from_stage,
+  to_stage,
+  changed_by: "u-admin",
+  changed_at: daysAgo(diasAtras),
+});
+
+export const demoStageEvents: CrmStageEvent[] = [
+  // d-1 — em negociação, entrou há 18 dias
+  passagem("d-1", null, "novo", 18),
+  passagem("d-1", "novo", "contato", 16),
+  passagem("d-1", "contato", "reuniao", 12),
+  passagem("d-1", "reuniao", "proposta", 7),
+  passagem("d-1", "proposta", "negociacao", 2),
+
+  // d-2 — proposta enviada
+  passagem("d-2", null, "novo", 24),
+  passagem("d-2", "novo", "contato", 21),
+  passagem("d-2", "contato", "reuniao", 15),
+  passagem("d-2", "reuniao", "proposta", 5),
+
+  // d-3 — reunião marcada
+  passagem("d-3", null, "novo", 11),
+  passagem("d-3", "novo", "contato", 9),
+  passagem("d-3", "contato", "reuniao", 3),
+
+  // d-4 — contato feito
+  passagem("d-4", null, "novo", 8),
+  passagem("d-4", "novo", "contato", 6),
+
+  // d-5 — acabou de entrar, nunca foi movido
+  passagem("d-5", null, "novo", 2),
+
+  // d-6 — ganho: 31 dias de ciclo
+  passagem("d-6", null, "novo", 44),
+  passagem("d-6", "novo", "contato", 41),
+  passagem("d-6", "contato", "reuniao", 34),
+  passagem("d-6", "reuniao", "proposta", 25),
+  passagem("d-6", "proposta", "negociacao", 18),
+  passagem("d-6", "negociacao", "ganho", 13),
+
+  // d-7 — morreu na proposta, que é onde mais se morre
+  passagem("d-7", null, "novo", 52),
+  passagem("d-7", "novo", "contato", 49),
+  passagem("d-7", "contato", "reuniao", 42),
+  passagem("d-7", "reuniao", "proposta", 33),
+  passagem("d-7", "proposta", "perdido", 20),
 ];
 
 export const demoActivities: (CrmActivity & {
