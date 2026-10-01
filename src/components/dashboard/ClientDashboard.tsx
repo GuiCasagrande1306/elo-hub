@@ -6,6 +6,8 @@ import { FileDown, Globe, Radio } from "lucide-react";
 
 import { KpiCard } from "./kpi-card";
 import type { TotaisDaLoja } from "@/lib/loja/leitura";
+import type { ResumoDeConversoes } from "@/lib/ads/categorias-google";
+import { ConversoesGoogle } from "@/components/clients/conversoes-google";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { TrendChart } from "./trend-chart";
 import { PlatformSplitList } from "./platform-split";
@@ -65,6 +67,14 @@ export interface ClientDashboardProps {
    * ATRIBUIU ao anúncio; este é a loja inteira, todos os canais.
    */
   loja: TotaisDaLoja | null;
+  /**
+   * As conversões do Google abertas por tipo.
+   *
+   * ⚠️ `null` quando a conta não tem linha coletada na janela, que é
+   * diferente de "teve zero". A seção não é desenhada no primeiro
+   * caso; no segundo ela aparece dizendo que não houve resultado.
+   */
+  conversoesGoogle: ResumoDeConversoes | null;
   /** Agências do cadastro, para o seletor do diálogo de configurações. */
   agencias: string[];
   /** Investimento, Resultados e Custo por Resultado — nesta ordem. */
@@ -109,6 +119,7 @@ export function ClientDashboard({
   agencias,
   client,
   loja,
+  conversoesGoogle,
   kpis,
   sparklines,
   trend,
@@ -305,6 +316,22 @@ export function ClientDashboard({
                   — cancelados ou aguardando pagamento.
                 </p>
               )}
+            </div>
+          )}
+
+          {/* ------------- CONVERSÕES DO GOOGLE -------------
+              Seção própria, e não um cartão no grid de cima, porque o
+              grid soma: ali um "Rota: 6" entraria no mesmo plano de
+              "Resultados", e pedido de rota não é lead. Aqui cada tipo
+              fica no nome dele, com micro-evento abaixo de uma linha.
+
+              ⚠️ Ação local do Perfil da Empresa não entra na coluna
+              "Conversões" do Google — é por isso que a ficha da Agenda
+              Contabilidade mostrava 0 com 1 ligação e 6 rotas no mês.
+              Ver a migration 85. */}
+          {conversoesGoogle && (
+            <div className="mt-4">
+              <ConversoesGoogle resumo={conversoesGoogle} />
             </div>
           )}
 

@@ -1615,6 +1615,27 @@ export const demoStageEvents: CrmStageEvent[] = [
   passagem("d-7", "proposta", "perdido", 20),
 ];
 
+/* =====================================================================
+   Conversões do Google na demonstração
+   ---------------------------------------------------------------------
+   Os números são os REAIS da Agenda Contabilidade em setembro/2026,
+   medidos na API: 1 ligação, 6 rotas, 3 interações. Ficam aqui porque
+   são o caso que o módulo existe para mostrar — a coluna "Conversões"
+   do Google dizia 0 para esses mesmos dez eventos.
+
+   O carrinho do Atacado de Pratas entra junto, em escala reduzida, só
+   para a demonstração exibir a divisória de micro-evento. Sem ele a
+   seção pareceria simples demais, e é a divisória que impede alguém
+   de somar 9.322 "adicionou ao carrinho" com 177 compras.
+   ===================================================================== */
+export const demoConversoesGoogle: { category: string; allConversions: number }[] = [
+  { category: "PHONE_CALL_LEAD", allConversions: 1 },
+  { category: "GET_DIRECTIONS", allConversions: 6 },
+  { category: "CONTACT", allConversions: 4 },
+  { category: "ENGAGEMENT", allConversions: 3 },
+  { category: "ADD_TO_CART", allConversions: 28 },
+];
+
 export const demoActivities: (CrmActivity & {
   author: { id: string; full_name: string } | null;
 })[] = [

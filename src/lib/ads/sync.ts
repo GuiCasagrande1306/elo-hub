@@ -4,6 +4,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { googleAdsProvider } from "./google-ads";
 import { fetchActiveAds, fetchAdInsights, metaAdsProvider } from "./meta-ads";
 import { guardarMiniaturasPendentes } from "./miniaturas";
+import { coletarConversoesGoogle } from "./conversoes-google";
 import { currentMonthRange, lookbackRange } from "./normalize";
 import { conversionActionFor } from "./conversion-action";
 import type {
@@ -220,6 +221,28 @@ async function syncIntegration(
        não pode fazer a sincronização de gasto e conversão contar como
        falha. É por isso que não está dentro do mesmo `try` de negócio. */
     await syncCreatives(admin, integration, rows);
+
+    /* As conversões POR AÇÃO, só no Google e pelo mesmo princípio dos
+       criativos: engole o próprio erro para não derrubar o gasto.
+
+       ⚠️ EXISTE PORQUE A COLUNA PRINCIPAL MENTE POR OMISSÃO. Ação
+       local do Perfil da Empresa não entra em `metrics.conversions`, e
+       a ficha da Agenda Contabilidade mostrava "0 leads" com 1 ligação
+       e 6 rotas no mês. Ver a migration 85 e
+       `src/lib/ads/categorias-google.ts`. */
+    if (integration.platform === "google_ads") {
+      const conv = await coletarConversoesGoogle(
+        admin,
+        integration.client_id,
+        integration.external_account_id,
+        integration.integration_secrets?.refresh_token ?? null,
+        period.since,
+        period.until,
+      );
+      if (!conv.ok) {
+        console.error("[sync] conversões do Google:", conv.motivo);
+      }
+    }
 
     await admin
       .from("client_integrations")
