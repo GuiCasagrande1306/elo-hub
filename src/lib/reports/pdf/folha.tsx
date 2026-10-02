@@ -165,7 +165,6 @@ function Desenho({
   acento: string;
 }) {
   if (bloco.tipo === "capa") return <Capa payload={payload} />;
-  if (bloco.tipo === "rodape") return <Rodape payload={payload} />;
   if (bloco.tipo === "anuncios")
     return <CartaoDeAnuncios bloco={bloco} acento={acento} />;
   return <CartaoDePlataforma bloco={bloco} payload={payload} acento={acento} />;
@@ -405,29 +404,6 @@ function CartaoDeAnuncios({
           </View>
         ))}
       </View>
-    </View>
-  );
-}
-
-/* =========================== RODAPÉ =============================== */
-
-function Rodape({ payload }: { payload: ReportPayload }) {
-  const agencia = payload.agency;
-  return (
-    <View style={{ height: ALTURA.rodape, alignItems: "center", justifyContent: "center" }}>
-      {agencia?.logoUrl ? (
-        // eslint-disable-next-line jsx-a11y/alt-text
-        <Image src={agencia.logoUrl} style={{ width: 72, height: 72, borderRadius: 36, objectFit: "contain" }} />
-      ) : (
-        <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: TINTA, alignItems: "center", justifyContent: "center" }}>
-          <Text style={{ color: BRANCO, fontSize: 11, fontWeight: 700 }}>
-            {(agencia?.name ?? "Elo").slice(0, 3)}
-          </Text>
-        </View>
-      )}
-      <Text style={{ fontSize: 9, color: TINTA_FRACA, marginTop: 12 }}>
-        {agencia?.name ?? "Elo Marketing"}
-      </Text>
     </View>
   );
 }

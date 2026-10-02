@@ -58,12 +58,8 @@ ok(
 /* --- a folha mais simples possível ------------------------------------ */
 
 const vazio = planoDoRelatorio(payload({}));
-ok("sem plataforma, sobram capa e rodapé", vazio.blocos.map((b) => b.tipo), ["capa", "rodape"]);
-ok(
-  "e a altura é capa + rodapé + um respiro",
-  vazio.altura,
-  ALTURA.capa + ALTURA.rodape + ALTURA.respiro,
-);
+ok("sem plataforma, sobra só a capa", vazio.blocos.map((b) => b.tipo), ["capa"]);
+ok("e a altura é a da capa, sem respiro sobrando", vazio.altura, ALTURA.capa);
 
 /* --- uma plataforma --------------------------------------------------- */
 
@@ -175,9 +171,18 @@ ok(
   soma + respiros,
 );
 ok("nenhum bloco tem altura zero ou negativa", completo.blocos.every((b) => b.altura > 0), true);
-ok("a ordem é capa → plataformas → anúncios → rodapé", completo.blocos.map((b) => b.tipo), [
-  "capa", "plataforma", "plataforma", "anuncios", "rodape",
+ok("a ordem é capa → plataformas → anúncios", completo.blocos.map((b) => b.tipo), [
+  "capa", "plataforma", "plataforma", "anuncios",
 ]);
+/* ⚠️ A folha TERMINA no último cartão. O rodapé com o logo da agência
+   saiu em 02/10/2026 — e saiu do PLANO, não só do desenho: deixá-lo na
+   soma devolveria 176pt de branco no fim, que é o defeito que este
+   arquivo existe para pegar. */
+ok(
+  "⚠️ o último bloco é conteúdo, não assinatura",
+  completo.blocos[completo.blocos.length - 1].tipo,
+  "anuncios",
+);
 ok("a largura é a do Reportei", LARGURA_DA_FOLHA, 1080);
 
 console.log(falhas === 0 ? "\nTUDO PASSOU" : `\n${falhas} FALHA(S)`);

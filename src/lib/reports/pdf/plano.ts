@@ -59,7 +59,6 @@ export const ALTURA = {
   linhaDeTabela: 48,
   /** Linha da tabela de anúncios, que carrega miniatura. */
   linhaDeTabelaComFoto: 92,
-  rodape: 176,
 } as const;
 
 /** Quantos KPIs cabem numa fileira. */
@@ -94,12 +93,16 @@ export interface BlocoAnuncios {
   anuncios: ReportPayload["creatives"];
 }
 
-export interface BlocoRodape {
-  tipo: "rodape";
-  altura: number;
-}
+/* ⚠️ NÃO EXISTE BLOCO DE RODAPÉ, e a ausência é decisão de 02/10/2026.
+   A folha fechava com o logo da agência num círculo escuro, como a do
+   Reportei. Saiu a pedido do Guilherme: o relatório é entregue por
+   quem já se identificou, e a assinatura no fim só adiciona altura.
 
-export type Bloco = BlocoCapa | BlocoPlataforma | BlocoAnuncios | BlocoRodape;
+   Removido do PLANO, não só do desenho — e é essa a parte que importa.
+   Apagar só o componente deixaria os 176pt do rodapé dentro da soma, e
+   a folha voltaria a terminar com um palmo de branco, que é
+   exatamente o defeito que este módulo existe para impedir. */
+export type Bloco = BlocoCapa | BlocoPlataforma | BlocoAnuncios;
 
 export interface PlanoDaFolha {
   blocos: Bloco[];
@@ -144,8 +147,9 @@ function alturaDaPlataforma(b: Omit<BlocoPlataforma, "altura" | "tipo">): number
 /**
  * O plano completo da folha.
  *
- * Ordem fixa, que é a do Reportei: capa, um cartão por plataforma,
- * anúncios em destaque, rodapé. A ordem não é configurável de
+ * Ordem fixa: capa, um cartão por plataforma e anúncios em destaque.
+ * A folha acaba no último cartão — sem assinatura no fim, ver a nota
+ * em `Bloco`. A ordem não é configurável de
  * propósito — relatório que muda de forma a cada cliente deixa de ser
  * reconhecível, e o cliente perde a referência de onde olhar.
  */
@@ -185,8 +189,6 @@ export function planoDoRelatorio(payload: ReportPayload): PlanoDaFolha {
         anuncios.length * ALTURA.linhaDeTabelaComFoto,
     });
   }
-
-  blocos.push({ tipo: "rodape", altura: ALTURA.rodape });
 
   /* O respiro entre blocos entra na soma, e não como margem do bloco:
      margem de CSS colapsa e a conta erraria por um respiro inteiro. */
