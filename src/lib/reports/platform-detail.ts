@@ -22,7 +22,7 @@ import {
 
    ⚠️ MÓDULO COMPARTILHADO, e essa é a razão de ele existir separado.
    Dois renderizadores desenham este relatório: o `react-pdf`
-   (`pdf/document.tsx`, o motor padrão) e a página A4 em HTML
+   (`pdf/folha.tsx`, o motor padrão) e a folha em HTML
    (`/reports/render/[clientId]`, fotografada pelo Puppeteer e agora
    também aberta pela equipe para revisar). Se cada um calculasse o
    próprio quadro, a folha revisada na tela e o arquivo enviado ao

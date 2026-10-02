@@ -164,7 +164,7 @@ export interface ReportCreative {
   headline: string | null;
   primaryText: string | null;
   imageUrl: string | null;
-  /** false quando a origem não é raster — ver nota em `pdf/document.tsx`. */
+  /** false quando a origem não é raster — ver nota em `pdf/folha.tsx`. */
   imageIsRaster: boolean;
   spendCents: number;
   results: number;

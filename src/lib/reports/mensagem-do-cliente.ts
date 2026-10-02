@@ -154,7 +154,7 @@ export function janelaEmPalavras(r: {
  * O selo do recorte, na MESMA frase que o PDF imprime.
  *
  * Copiar a formatação seria o começo da próxima divergência, então
- * quando mudar uma, mude as duas: `SeloDeOrigem` em `pdf/document.tsx`.
+ * quando mudar uma, mude as duas: o selo de variação em `pdf/folha.tsx`.
  *
  * ⚠️ TESTA POR `typeof`, E NÃO POR `=== null`. O tipo promete
  * `number | null`, mas metade da entrada vem de `report_history.snapshot`

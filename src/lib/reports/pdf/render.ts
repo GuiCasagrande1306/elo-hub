@@ -88,10 +88,10 @@ async function renderWithReactPdf(
   // Import dinâmico: o react-pdf carrega fontes e o motor de layout no
   // topo do módulo. Estático, isso entraria no bundle de toda rota que
   // importar este arquivo, mesmo quem nunca gera PDF.
-  const [{ renderToBuffer }, { ReportDocument }, { createElement }] =
+  const [{ renderToBuffer }, { FolhaDoRelatorio }, { createElement }] =
     await Promise.all([
       import("@react-pdf/renderer"),
-      import("./document"),
+      import("./folha"),
       import("react"),
     ]);
 
@@ -101,8 +101,8 @@ async function renderWithReactPdf(
   // O cast existe porque `renderToBuffer` declara receber
   // ReactElement<DocumentProps>, enquanto o nosso componente recebe
   // `payload` e devolve <Document>. A checagem real acontece dentro de
-  // `ReportDocument`, que é tipado.
-  const element = createElement(ReportDocument, { payload });
+  // `FolhaDoRelatorio`, que é tipado.
+  const element = createElement(FolhaDoRelatorio, { payload });
   const buffer = await renderToBuffer(
     element as unknown as Parameters<typeof renderToBuffer>[0],
   );
