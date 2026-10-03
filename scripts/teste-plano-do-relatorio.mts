@@ -35,7 +35,16 @@ const kpi = (key: string, label = key) =>
   ({ key, label, formatted: "1", indefinido: false }) as never;
 
 const payload = (p: Partial<ReportPayload>): ReportPayload =>
-  ({ platformDetail: [], creatives: [], trend: [], ...p }) as ReportPayload;
+  ({
+    platformDetail: [],
+    creatives: [],
+    trend: [],
+    kpis: [],
+    highlight: null,
+    fonteDoFaturamento: null,
+    retornoDoPeriodo: null,
+    ...p,
+  }) as ReportPayload;
 
 /* --- fatiar em fileiras ---------------------------------------------- */
 
@@ -140,6 +149,96 @@ ok(
   ["Investido", "Impressões", "Cliques"],
 );
 
+/* --- o compilado de abertura ------------------------------------------ */
+
+const compiladoDe = (p: Partial<ReportPayload>) => {
+  const b = planoDoRelatorio(payload(p)).blocos.find((x) => x.tipo === "compilado");
+  return b?.tipo === "compilado" ? b : null;
+};
+
+const loja = compiladoDe({
+  kpis: [kpi("spend", "Investimento"), kpi("revenue", "Faturamento da loja"), kpi("roas", "Retorno sobre a loja")],
+  fonteDoFaturamento: "loja",
+})!;
+ok(
+  "loja: investimento, faturamento e retorno, nesta ordem",
+  loja.itens.map((i) => i.kpi.key),
+  ["spend", "revenue", "roas"],
+);
+ok(
+  "⚠️ o faturamento da loja diz que foi apurado na plataforma",
+  loja.itens.map((i) => i.fonte),
+  [null, "apurado na plataforma de vendas", "sobre o faturamento total da loja"],
+);
+
+const pixel = compiladoDe({
+  kpis: [kpi("spend"), kpi("revenue"), kpi("roas")],
+  fonteDoFaturamento: "gerenciador",
+})!;
+ok(
+  "⚠️ receita do pixel é declarada como atribuída, não apurada",
+  pixel.itens[1].fonte,
+  "atribuído pelo gerenciador de anúncios",
+);
+ok("sem loja, o retorno não ganha ressalva", pixel.itens[2].fonte, null);
+
+const captacao = compiladoDe({
+  kpis: [kpi("spend", "Investimento"), kpi("leads", "Leads"), kpi("cpl", "Custo por lead")],
+})!;
+ok(
+  "⚠️ conta sem faturamento troca as colunas, não imprime traço",
+  captacao.itens.map((i) => i.kpi.key),
+  ["spend", "leads", "cpl"],
+);
+ok("e nenhuma origem a declarar", captacao.itens.every((i) => i.fonte === null), true);
+
+const comIndefinido = compiladoDe({
+  kpis: [
+    kpi("spend"),
+    kpi("results"),
+    { key: "roas", label: "ROAS", formatted: "—", indefinido: true } as never,
+    kpi("cpa", "Custo por venda"),
+  ],
+})!;
+ok(
+  "⚠️ razão indefinida perde a vaga para a próxima candidata",
+  comIndefinido.itens[2].kpi.key,
+  "cpa",
+);
+
+/* ⚠️ TEMPLATE DE E-COMMERCE SEM `roas` NA LISTA. Acontece: alguns
+   trazem faturamento e custo por venda. Sem o cálculo de reserva, a
+   terceira coluna respondia "quanto custou cada venda" onde a pergunta
+   do topo é "quanto rendeu". */
+const semRoasNoTemplate = compiladoDe({
+  kpis: [kpi("spend"), kpi("revenue"), kpi("cpa", "Custo por venda")],
+  fonteDoFaturamento: "gerenciador",
+  retornoDoPeriodo: kpi("roas", "ROAS"),
+})!;
+ok(
+  "⚠️ com faturamento e sem ROAS no template, o retorno é calculado",
+  semRoasNoTemplate.itens.map((i) => i.kpi.key),
+  ["spend", "revenue", "roas"],
+);
+ok(
+  "e o ROAS do template ainda tem precedência quando existe",
+  compiladoDe({
+    kpis: [kpi("spend"), kpi("revenue"), kpi("roas", "Retorno")],
+    retornoDoPeriodo: kpi("roas", "NÃO USAR"),
+  })!.itens[2].kpi.label,
+  "Retorno",
+);
+
+ok(
+  "a altura do compilado é filete + recheio + cabeçalho + fileira",
+  loja.altura,
+  ALTURA.filete +
+    ALTURA.recheioDoCartao +
+    ALTURA.cabecalhoDoCompilado +
+    ALTURA.fileiraDoCompilado,
+);
+ok("sem KPI nenhum, não existe compilado", compiladoDe({}), null);
+
 /* --- tabelas têm teto -------------------------------------------------- */
 
 const muitosAnuncios = planoDoRelatorio(
@@ -161,6 +260,8 @@ const completo = planoDoRelatorio(
       { platform: "google_ads", label: "Google", spendShare: 0.3, kpis: [kpi("spend")], campaigns: [] },
     ] as never,
     creatives: [{ id: "1" }, { id: "2" }] as never,
+    kpis: [kpi("spend"), kpi("revenue"), kpi("roas")],
+    fonteDoFaturamento: "loja",
   }),
 );
 const soma = completo.blocos.reduce((a, b) => a + b.altura, 0);
@@ -171,9 +272,13 @@ ok(
   soma + respiros,
 );
 ok("nenhum bloco tem altura zero ou negativa", completo.blocos.every((b) => b.altura > 0), true);
-ok("a ordem é capa → plataformas → anúncios", completo.blocos.map((b) => b.tipo), [
-  "capa", "plataforma", "plataforma", "anuncios",
+ok("a ordem é capa → compilado → plataformas → anúncios", completo.blocos.map((b) => b.tipo), [
+  "capa", "compilado", "plataforma", "plataforma", "anuncios",
 ]);
+/* ⚠️ O COMPILADO É A PRIMEIRA INFORMAÇÃO, logo depois da capa — foi o
+   pedido, e é o que o torna útil. Empurrado para baixo do primeiro
+   cartão de plataforma, ele deixa de ser compilado e vira repetição. */
+ok("⚠️ o compilado vem antes de qualquer plataforma", completo.blocos[1].tipo, "compilado");
 /* ⚠️ A folha TERMINA no último cartão. O rodapé com o logo da agência
    saiu em 02/10/2026 — e saiu do PLANO, não só do desenho: deixá-lo na
    soma devolveria 176pt de branco no fim, que é o defeito que este

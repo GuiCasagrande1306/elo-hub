@@ -18,6 +18,7 @@ import {
   planoDoRelatorio,
   truncar,
   type Bloco,
+  type BlocoCompilado,
   type BlocoPlataforma,
 } from "./plano";
 import { escalaDoGrafico } from "../escala-do-grafico";
@@ -104,6 +105,16 @@ const s = StyleSheet.create({
     paddingTop: 18,
   },
 
+  compiladoRotulo: {
+    fontSize: 10,
+    fontWeight: 700,
+    color: TINTA_FRACA,
+    textTransform: "uppercase",
+    letterSpacing: 0.7,
+  },
+  compiladoValor: { fontSize: 29, fontWeight: 700 },
+  compiladoApoio: { fontSize: 8.5, color: TINTA_FRACA, marginTop: 6 },
+
   kpiRotulo: { fontSize: 10, color: TINTA, textAlign: "center", fontWeight: 700 },
   kpiValor: { fontSize: 22, fontWeight: 700, textAlign: "center" },
   kpiAnterior: { fontSize: 8.5, color: TINTA_FRACA, textAlign: "center", marginTop: 4 },
@@ -165,6 +176,8 @@ function Desenho({
   acento: string;
 }) {
   if (bloco.tipo === "capa") return <Capa payload={payload} />;
+  if (bloco.tipo === "compilado")
+    return <CartaoDoCompilado bloco={bloco} acento={acento} />;
   if (bloco.tipo === "anuncios")
     return <CartaoDeAnuncios bloco={bloco} acento={acento} />;
   return <CartaoDePlataforma bloco={bloco} payload={payload} acento={acento} />;
@@ -219,6 +232,70 @@ function Capa({ payload }: { payload: ReportPayload }) {
         Relatório gerado dos dados analisados em {periodo}
         {meta.days > 0 && `, comparado com os ${meta.days} dias imediatamente anteriores`}.
       </Text>
+    </View>
+  );
+}
+
+/* ========================== COMPILADO ============================= */
+
+/**
+ * O primeiro cartão: três números e a origem de cada um.
+ *
+ * ⚠️ ALINHADO À ESQUERDA, ao contrário dos KPIs do cartão de
+ * plataforma, que são centrados. Não é inconsistência: aqui cada
+ * coluna tem um terço da folha e carrega uma linha de procedência
+ * embaixo do valor. Centrado, o texto miúdo flutua longe do número a
+ * que pertence e a coluna deixa de ler como uma coisa só.
+ */
+function CartaoDoCompilado({
+  bloco,
+  acento,
+}: {
+  bloco: BlocoCompilado;
+  acento: string;
+}) {
+  const colunas = bloco.itens.length;
+
+  return (
+    <View style={[s.cartao, { height: bloco.altura }]}>
+      <View style={[s.filete, { backgroundColor: acento }]} />
+
+      <View style={s.recheio}>
+        <View style={{ height: ALTURA.cabecalhoDoCompilado }}>
+          <Text style={{ fontSize: 15, fontWeight: 700 }}>Resumo do período</Text>
+        </View>
+
+        <View
+          style={{
+            height: ALTURA.fileiraDoCompilado,
+            flexDirection: "row",
+            alignItems: "flex-start",
+          }}
+        >
+          {bloco.itens.map(({ kpi, fonte }) => (
+            <View key={kpi.key} style={{ width: LARGURA_UTIL / colunas - 12 }}>
+              <Text style={s.compiladoRotulo}>{kpi.label}</Text>
+
+              <View style={{ flexDirection: "row", alignItems: "center", marginTop: 11 }}>
+                <Text style={s.compiladoValor}>{kpi.formatted}</Text>
+                <Selo kpi={kpi} />
+              </View>
+
+              {kpi.previousFormatted !== "" && (
+                <Text style={s.compiladoApoio}>
+                  {kpi.previousFormatted} no período anterior
+                </Text>
+              )}
+
+              {/* A PROCEDÊNCIA DO NÚMERO, quando existe mais de uma
+                  resposta possível. Ver `ItemDoCompilado.fonte`. */}
+              {fonte !== null && (
+                <Text style={[s.compiladoApoio, { color: acento }]}>{fonte}</Text>
+              )}
+            </View>
+          ))}
+        </View>
+      </View>
     </View>
   );
 }

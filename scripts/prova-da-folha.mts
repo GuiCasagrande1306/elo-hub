@@ -24,7 +24,15 @@ const payload = {
   agency: { name: "Elo Marketing", brandPrimary: "#1877F2", logoUrl: null },
   client: { id: "c1", name: "Flora Natural", segment: "food", brandPrimary: "#8DC63F", logoUrl: null, website: null },
   creativesDoPeriodo: true,
-  kpis: [],
+  /* ⚠️ COM KPI, para o compilado de abertura entrar na medição. Vazio,
+     o bloco nem é criado e a prova passava sem nunca tê-lo desenhado. */
+  fonteDoFaturamento: "loja",
+  retornoDoPeriodo: null,
+  kpis: [
+    kpi("spend", "Investimento", "R$4.028,53", "R$3.102,80", 29.83),
+    kpi("revenue", "Faturamento da loja", "R$21.451,85", "R$18.090,12", 18.58),
+    kpi("roas", "Retorno sobre a loja", "5,33x", "5,83x", -8.58, "negative"),
+  ],
   highlight: null,
   trend: Array.from({ length: 30 }, (_, i) => ({ date: `2026-09-${String(i + 1).padStart(2, "0")}`, spend: 60 + Math.round(Math.sin(i / 3) * 30 + i) })),
   platforms: [],

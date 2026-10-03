@@ -120,24 +120,32 @@ export const serverEnv = {
    */
   evolutionWebhookSecret: process.env.EVOLUTION_WEBHOOK_SECRET ?? "",
 
-  /* Renderizador de PDF: "puppeteer" (padrão) ou "react-pdf".
+  /* Renderizador de PDF: "react-pdf" (padrão) ou "puppeteer".
      ------------------------------------------------------------------
-     ⚠️ O PADRÃO MUDOU EM 27/09/2026, e a troca não é de gosto: o
-     relatório em FOLHA CONTÍNUA só existe na rota HTML
-     (`/reports/render/[clientId]`), que é o que o Puppeteer fotografa.
-     O `react-pdf` continua desenhando as três folhas A4 antigas — deixá-lo
-     como padrão faria todo este trabalho não chegar ao cliente, em
-     silêncio, porque os dois motores geram um PDF válido.
+     ⚠️ O PADRÃO VOLTOU PARA `react-pdf` EM 02/10/2026, e o motivo é o
+     inverso do que esta nota dizia antes.
 
-     O PREÇO é real e vale saber: o Chromium tem cold start e consome
-     memória, então cada relatório leva alguns segundos a mais. No cron,
-     onde o orçamento é de toda a fila do dia, isso reduz quantos cabem
-     numa rodada — o que sobra entra na do dia seguinte, que é o
-     comportamento já previsto em `dispatchScheduledReports`.
+     Em 27/09 o padrão virou Puppeteer porque só a rota HTML desenhava a
+     folha contínua; o `react-pdf` ainda produzia as três páginas A4
+     antigas. Isso deixou de valer: `pdf/folha.tsx` desenha a folha
+     contínua direto, sem navegador, e é ELA que o Guilherme aprovou —
+     capa sem CTR, fundo creme, sem rodapé, e agora o compilado de
+     abertura. O desenho A4 nem existe mais (`document.tsx` apagado).
 
-     PARA VOLTAR ATRÁS sem deploy: `PDF_ENGINE=react-pdf` no painel da
-     Vercel. O documento volta a sair em A4, com o desenho antigo. */
-  pdfEngine: (process.env.PDF_ENGINE ?? "puppeteer") as "react-pdf" | "puppeteer",
+     Com o padrão em Puppeteer, quem rodasse localmente via a folha
+     ANTIGA enquanto produção servia a nova: medido em 02/10/2026, o
+     mesmo cliente saiu 810 × 1788 no dev (HTML, 1080 px = 810 pt) e
+     1080 × 1206 em produção (react-pdf). Dois documentos diferentes com
+     o mesmo nome — e o novo compilado só aparecia num deles.
+
+     Em produção o Chromium já não vinha funcionando: o fallback de
+     `renderReportPdf` vinha carregando os relatórios desde 29/09. O
+     padrão agora diz a verdade sobre o que de fato é gerado.
+
+     PARA VOLTAR AO NAVEGADOR: `PDF_ENGINE=puppeteer` no painel da
+     Vercel. A rota HTML continua existindo e desenha a versão dela,
+     que NÃO tem o compilado de abertura. */
+  pdfEngine: (process.env.PDF_ENGINE ?? "react-pdf") as "react-pdf" | "puppeteer",
 
   // Módulo carregado quando pdfEngine = "puppeteer". Fica aqui, e não
   // inline no require, para que o bundler não consiga dobrar o valor

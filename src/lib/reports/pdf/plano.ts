@@ -41,6 +41,10 @@ export const LARGURA_UTIL = LARGURA_DA_FOLHA - MARGEM_LATERAL * 2;
  */
 export const ALTURA = {
   capa: 392,
+  /** Cabeçalho do cartão do compilado — só o título. */
+  cabecalhoDoCompilado: 44,
+  /** A fileira de três números grandes do compilado. */
+  fileiraDoCompilado: 100,
   /** Respiro entre cartões de plataforma. */
   respiro: 32,
   /** Padding vertical somado (topo + base) dentro do cartão. */
@@ -75,6 +79,37 @@ export interface BlocoCapa {
   altura: number;
 }
 
+/**
+ * O compilado que abre a folha: três números e nada mais.
+ *
+ * ⚠️ NÃO É A GRADE DE KPI DA CAPA QUE SAIU EM 02/10. Aquela trazia o
+ * CTR na abertura — diagnóstico interno apresentado ao cliente como se
+ * fosse resultado. Este bloco é o oposto: investimento, o que entrou e
+ * a razão entre os dois. Três colunas fixas, sempre as mesmas, para
+ * quem abre o arquivo não ter que procurar.
+ *
+ * OS NÚMEROS SÃO ESCOLHIDOS DE `payload.kpis`, NUNCA RECALCULADOS. É
+ * essa escolha que garante que o topo não discorde do cartão da
+ * plataforma logo abaixo: é o mesmo objeto, com o rótulo do template.
+ */
+export interface BlocoCompilado {
+  tipo: "compilado";
+  altura: number;
+  itens: ItemDoCompilado[];
+}
+
+export interface ItemDoCompilado {
+  kpi: ReportPayload["kpis"][number];
+  /**
+   * A linha miúda sob o valor, dizendo DE ONDE ele vem.
+   *
+   * Existe por causa do faturamento: a mesma conta tem dois números
+   * legítimos e muito diferentes — o que a loja vendeu e o que o pixel
+   * reivindica. Sem esta linha o cliente lê um e pensa no outro.
+   */
+  fonte: string | null;
+}
+
 export interface BlocoPlataforma {
   tipo: "plataforma";
   altura: number;
@@ -102,7 +137,11 @@ export interface BlocoAnuncios {
    Apagar só o componente deixaria os 176pt do rodapé dentro da soma, e
    a folha voltaria a terminar com um palmo de branco, que é
    exatamente o defeito que este módulo existe para impedir. */
-export type Bloco = BlocoCapa | BlocoPlataforma | BlocoAnuncios;
+export type Bloco =
+  | BlocoCapa
+  | BlocoCompilado
+  | BlocoPlataforma
+  | BlocoAnuncios;
 
 export interface PlanoDaFolha {
   blocos: Bloco[];
@@ -117,6 +156,72 @@ export function fatiarEmFileiras<T>(itens: T[], porFileira = KPIS_POR_FILEIRA): 
     saida.push(itens.slice(i, i + porFileira));
   }
   return saida;
+}
+
+/**
+ * Os três do compilado, escolhidos entre os KPIs que o template traz.
+ *
+ * A ORDEM DAS COLUNAS É FIXA — quanto saiu, quanto entrou, a razão —
+ * e o que muda é QUAL métrica ocupa cada uma, porque a carteira não é
+ * toda de e-commerce:
+ *
+ *  • loja        → Investimento · Faturamento · Retorno
+ *  • captação    → Investimento · Leads       · Custo por lead
+ *  • local       → Investimento · Resultados  · Custo por resultado
+ *
+ * Decisão do Guilherme em 02/10/2026, quando pediu o compilado: a
+ * alternativa era imprimir "Faturamento —" e "ROAS —" na maioria das
+ * contas, que é dizer ao cliente que falta dado onde a métrica nem se
+ * aplica ao negócio dele.
+ *
+ * ⚠️ MÉTRICA INDEFINIDA PERDE A VAGA para a próxima candidata: razão
+ * sem denominador imprime "—", e um traço no número de abertura é o
+ * pior lugar possível para ele. Só quando nenhuma candidata está
+ * definida é que o traço aparece — aí ele é a verdade.
+ */
+function compiladoDoRelatorio(payload: ReportPayload): ItemDoCompilado[] {
+  const por = (chave: string) =>
+    payload.kpis.find((k) => k.key === chave) ?? null;
+
+  type Kpi = ReportPayload["kpis"][number];
+  const primeiro = (...candidatos: (Kpi | null)[]): Kpi | null =>
+    candidatos.find((k) => k !== null && !k.indefinido) ??
+    candidatos.find((k) => k !== null) ??
+    null;
+
+  const investimento = por("spend");
+  const entrada = primeiro(por("revenue"), por("results"), por("leads"), payload.highlight);
+  /* `retornoDoPeriodo` entra DEPOIS do `roas` do template e ANTES do
+     custo: ele só existe quando o template tem faturamento e não tem
+     ROAS. Ver o campo no payload. */
+  const razao = primeiro(
+    por("roas"),
+    payload.retornoDoPeriodo,
+    por("cpa"),
+    por("cpl"),
+  );
+
+  /* A origem só é dita onde ela muda o significado do número. Em
+     "Leads" ou "Custo por lead" não há dúvida de procedência; em
+     faturamento há duas respostas possíveis para a mesma pergunta. */
+  const fonteDoValor = (kpi: Kpi): string | null => {
+    if (kpi.key === "revenue") {
+      if (payload.fonteDoFaturamento === "loja") {
+        return "apurado na plataforma de vendas";
+      }
+      if (payload.fonteDoFaturamento === "gerenciador") {
+        return "atribuído pelo gerenciador de anúncios";
+      }
+    }
+    if (kpi.key === "roas" && payload.fonteDoFaturamento === "loja") {
+      return "sobre o faturamento total da loja";
+    }
+    return null;
+  };
+
+  return [investimento, entrada, razao]
+    .filter((k): k is Kpi => k !== null)
+    .map((kpi) => ({ kpi, fonte: fonteDoValor(kpi) }));
 }
 
 function alturaDaPlataforma(b: Omit<BlocoPlataforma, "altura" | "tipo">): number {
@@ -147,7 +252,8 @@ function alturaDaPlataforma(b: Omit<BlocoPlataforma, "altura" | "tipo">): number
 /**
  * O plano completo da folha.
  *
- * Ordem fixa: capa, um cartão por plataforma e anúncios em destaque.
+ * Ordem fixa: capa, o compilado de três números, um cartão por
+ * plataforma e anúncios em destaque.
  * A folha acaba no último cartão — sem assinatura no fim, ver a nota
  * em `Bloco`. A ordem não é configurável de
  * propósito — relatório que muda de forma a cada cliente deixa de ser
@@ -155,6 +261,23 @@ function alturaDaPlataforma(b: Omit<BlocoPlataforma, "altura" | "tipo">): number
  */
 export function planoDoRelatorio(payload: ReportPayload): PlanoDaFolha {
   const blocos: Bloco[] = [{ tipo: "capa", altura: ALTURA.capa }];
+
+  /* O COMPILADO VEM ANTES DE TUDO QUE É DETALHE. Pedido do Guilherme
+     em 02/10/2026: "um compilado logo na primeira info". Quem abre o
+     arquivo responde as três perguntas — quanto gastei, quanto entrou,
+     quanto rendeu — sem rolar até o cartão da plataforma. */
+  const itens = compiladoDoRelatorio(payload);
+  if (itens.length > 0) {
+    blocos.push({
+      tipo: "compilado",
+      itens,
+      altura:
+        ALTURA.filete +
+        ALTURA.recheioDoCartao +
+        ALTURA.cabecalhoDoCompilado +
+        ALTURA.fileiraDoCompilado,
+    });
+  }
 
   payload.platformDetail.forEach((p, indice) => {
     const parcial = {

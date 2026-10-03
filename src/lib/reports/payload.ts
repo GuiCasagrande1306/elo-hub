@@ -3,8 +3,10 @@ import "server-only";
 import {
   PLATFORM_LABELS,
   buildTrend,
+  computeKpi,
   kpisDoTemplate,
   deriveMetric,
+  previousPeriod,
   splitByPlatform,
   EMPTY_TOTALS,
   type KpiResult,
@@ -12,6 +14,7 @@ import {
   type PlatformSplit,
   type TrendPoint,
 } from "@/lib/metrics/kpi";
+import { receitaDaLoja } from "@/lib/loja/leitura";
 import { sessionSource, type ReportSource } from "./source";
 import { metricasDeCriativosNoPeriodo } from "./creative-insights";
 import { aplicarMetricas } from "./print-data";
@@ -121,6 +124,43 @@ export interface ReportPayload {
    * período como se fosse dele.
    */
   creativesDoPeriodo: boolean;
+  /**
+   * De onde saiu o faturamento deste relatório.
+   *
+   * `"loja"`  — apurado na plataforma de vendas (Magazord/BW), que é a
+   *             receita de verdade: inclui orgânico, direto e
+   *             recorrente, e NÃO é atribuível ao anúncio.
+   * `"gerenciador"` — atribuído pelo pixel do Meta/Google. Conta só o
+   *             que a plataforma reivindica, e reivindica a mais.
+   * `null`    — a conta não tem faturamento (captação, negócio local).
+   *
+   * ⚠️ A DIFERENÇA É GRANDE E JÁ FOI MEDIDA: na mesma conta e na mesma
+   * semana (22–28/09/2026) o pixel reportou R$ 52.368,04 e a loja
+   * R$ 21.451,85 — 2,4 vezes. Imprimir um sob o rótulo do outro é
+   * mandar ao cliente um número que não existe, e é por isso que o
+   * compilado da folha escreve a origem embaixo do valor.
+   *
+   * Não há GA4 nesta base: as duas origens acima são as que existem.
+   */
+  fonteDoFaturamento: "loja" | "gerenciador" | null;
+  /**
+   * O retorno do período quando o TEMPLATE não lista `roas`.
+   *
+   * Existe só para o compilado de abertura. Quem abre um relatório que
+   * mostra faturamento espera ver quanto aquilo rendeu sobre o
+   * investimento, e alguns templates de e-commerce listam faturamento
+   * sem listar ROAS — aí a terceira coluna caía no custo por venda, que
+   * responde outra pergunta.
+   *
+   * `null` quando a conta não tem faturamento OU quando o template já
+   * traz `roas` — nesse caso vale o do template, com o rótulo dele.
+   *
+   * ⚠️ FORA DE `kpis` DE PROPÓSITO. `linhasDaLegenda` monta a mensagem
+   * do WhatsApp a partir de `kpis`, e `roas` está na lista que ela
+   * imprime: acrescentá-lo ali mudaria o texto que vai ao cliente, que
+   * não é o que foi pedido.
+   */
+  retornoDoPeriodo: KpiResult | null;
   kpis: KpiResult[];
   /**
    * A métrica que abre a capa em tamanho grande.
@@ -233,11 +273,21 @@ export async function buildReportPayload(options: {
      galeria mostrava "os 6 que mais gastaram" segundo outra janela: os
      números errados vinham em cards errados. Buscando um conjunto maior
      dá para reordenar aqui, depois de aplicar as métricas certas. */
-  const [metrics, candidatos, metricasDoPeriodo] = await Promise.all([
-    source.metrics(client.id, periodStart, periodEnd),
-    source.creatives(client.id, Math.max(creativeLimit * 8, 48)),
-    metricasDeCriativosNoPeriodo(client.id, periodStart, periodEnd),
-  ]);
+  /* A janela anterior, para a receita da loja ter com o que comparar.
+     Mesma função que `source.metrics` usa internamente — o compilado
+     não pode comparar com um período diferente do resto da folha. */
+  const anterior = previousPeriod(periodStart, periodEnd);
+
+  const [metrics, candidatos, metricasDoPeriodo, lojaAgora, lojaAntes] =
+    await Promise.all([
+      source.metrics(client.id, periodStart, periodEnd),
+      source.creatives(client.id, Math.max(creativeLimit * 8, 48)),
+      metricasDeCriativosNoPeriodo(client.id, periodStart, periodEnd),
+      /* `null` quando a conta não tem loja OU não há linha na janela —
+         nos dois casos vale o número do pixel. Ver `receitaDaLoja`. */
+      receitaDaLoja(client.id, periodStart, periodEnd),
+      receitaDaLoja(client.id, anterior.start, anterior.end),
+    ]);
 
   /* `null` = não deu para apurar (conta sem Meta, token vencido, rede).
      Nesse caso NÃO zeramos nada: ficam os números do banco, e o
@@ -255,12 +305,71 @@ export async function buildReportPayload(options: {
      dependendo do negócio do cliente. */
   const rotulos = template.metric_labels ?? {};
 
+  /* COM LOJA INTEGRADA, FATURAMENTO E RETORNO SAEM DA LOJA.
+     -------------------------------------------------------------------
+     ⚠️ ESTA TROCA EXISTE EM TRÊS LUGARES E TEM QUE EXISTIR NOS TRÊS:
+     `data.ts` (página do cliente), `relatorios/actions.ts` (prévia da
+     mensagem) e aqui (o PDF). Enquanto faltava aqui, o documento
+     entregue ao cliente era o ÚNICO que ainda mostrava o número do
+     pixel: 2,4 vezes o faturamento real, no arquivo que o cliente
+     guarda. Os outros dois já trocavam desde agosto.
+
+     `origem` recebe o mesmo valor com o gasto TOTAL: faturamento de
+     loja não tem campanha de origem — inclui orgânico, direto e
+     recorrente —, então a razão passa a ser sobre a conta inteira. É a
+     mesma regra das outras duas telas, pelo mesmo motivo. */
+  const comLoja = (base: MetricTotals, receita: number): MetricTotals => ({
+    ...base,
+    revenueCents: receita,
+    origem: { ...base.origem, spendCents: base.spendCents, revenueCents: receita },
+  });
+
+  const totaisAgora =
+    lojaAgora === null
+      ? metrics.currentTotals
+      : comLoja(metrics.currentTotals, lojaAgora);
+
+  const totaisAntes =
+    lojaAgora === null
+      ? metrics.previousTotals
+      : comLoja(metrics.previousTotals, lojaAntes ?? 0);
+
   const kpis: KpiResult[] = kpisDoTemplate(
     template.metrics as MetricKey[],
     rotulos,
-    metrics.currentTotals,
-    metrics.previousTotals,
-  );
+    totaisAgora,
+    totaisAntes,
+  ).map((k) => {
+    if (lojaAgora === null) return k;
+
+    /* O rótulo precisa dizer o que o número virou. "ROAS" sobre o
+       faturamento da loja inteira faria o cliente ler retorno de
+       anúncio onde o número mede orgânico e recorrente junto — a mesma
+       classe de erro do alcance calculado como `impressões × 0,62`.
+       Vence o rótulo do template, de propósito. */
+    if (k.key === "roas") return { ...k, label: "Retorno sobre a loja" };
+    if (k.key === "revenue") return { ...k, label: "Faturamento da loja" };
+    return k;
+  });
+
+  /* `revenue` no template é o que diz se esta conta TEM faturamento:
+     captação e negócio local não carregam a métrica, e aí não há fonte
+     nenhuma a declarar. */
+  const metricasDoTemplate = template.metrics as MetricKey[];
+  const temFaturamento = metricasDoTemplate.includes("revenue");
+  const fonteDoFaturamento: ReportPayload["fonteDoFaturamento"] =
+    !temFaturamento ? null : lojaAgora === null ? "gerenciador" : "loja";
+
+  /* MESMA função e MESMOS totais dos outros KPIs — ver o campo
+     `retornoDoPeriodo`. Recalcular por fora seria a porta para o topo
+     da folha discordar do cartão logo abaixo. */
+  const retornoDoPeriodo =
+    temFaturamento && !metricasDoTemplate.includes("roas")
+      ? (() => {
+          const k = computeKpi("roas", totaisAgora, totaisAntes);
+          return lojaAgora === null ? k : { ...k, label: "Retorno sobre a loja" };
+        })()
+      : null;
 
   /* O destaque é UM DOS `kpis`, não um cálculo à parte: o número da capa
      e o da grade têm que ser o mesmo objeto, senão um dia divergem —
@@ -292,6 +401,8 @@ export async function buildReportPayload(options: {
       website: client.website,
     },
     creativesDoPeriodo: metricasDoPeriodo !== null,
+    fonteDoFaturamento,
+    retornoDoPeriodo,
     kpis,
     highlight,
     /* Os tipos de conversão passam nos TRÊS: o gráfico diário, a divisão
