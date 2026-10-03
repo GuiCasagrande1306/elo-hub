@@ -435,20 +435,6 @@ export interface ClientWithGoal {
   computedResults: number;
   computedRevenueCents: number;
   /**
-   * Os mesmos totais, contados só nas CAMPANHAS DE ORIGEM.
-   *
-   * Existe para custo por resultado e ROAS: são as duas razões que o
-   * relatório divide pelo gasto da campanha que compra o resultado, e
-   * não pelo da conta inteira. Sem isto a estação de comando mostrava
-   * "Retorno 8,11x" no cartão enquanto o PDF que ela gera imprimia
-   * 12,35x — medido na Satö, 18–24/08/2026.
-   *
-   * O VOLUME NÃO USA. `computedResults` e `computedRevenueCents`
-   * continuam sendo da conta inteira: a venda que veio da campanha de
-   * alcance é venda de verdade.
-   */
-  computedOrigem: { spendCents: number; conversions: number; revenueCents: number };
-  /**
    * Os MESMOS totais, inteiros, no formato que `computeKpi` come.
    *
    * A estação monta a prévia da mensagem do cliente com
@@ -692,11 +678,6 @@ export async function getClientsWithGoals(
         computedSpendCents: totals.spendCents,
         computedResults: totals.conversions,
         computedRevenueCents: totals.revenueCents,
-        computedOrigem: {
-          spendCents: totals.origem.spendCents,
-          conversions: totals.origem.conversions,
-          revenueCents: totals.origem.revenueCents,
-        },
         /* Inteiro, com `campanhas` e `isolado`: é o que carrega o selo
            "(de 1 campanha)" para a prévia da mensagem. */
         computedTotais: totals,

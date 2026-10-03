@@ -13,7 +13,6 @@ import {
   getReportSetup,
   getReportTemplates,
 } from "@/lib/data";
-import { goalExecutedFrom } from "@/lib/metrics/goal-metric";
 import { getMensagemDoCliente } from "@/lib/reports/mensagem-settings";
 import { resolverTemplate } from "@/lib/reports/template-resolver";
 import type { ClientSegment, MetricKey } from "@/types/database";
@@ -99,13 +98,6 @@ export default async function ReportsPage() {
        isso — escrever "Resultados: 4.820" onde são R$ 48,20 de receita
        mandaria o erro direto para o cliente final. */
     resultValue: linha.computedGoalValue,
-    /* O denominador de custo e retorno, na mesma unidade. O cartão da
-       estação divide por ele para não discordar do PDF que ela gera. */
-    origemSpendCents: linha.computedOrigem.spendCents,
-    origemResultValue: goalExecutedFrom(linha.metric, {
-      conversions: linha.computedOrigem.conversions,
-      revenueCents: linha.computedOrigem.revenueCents,
-    }),
     metric: linha.metric,
     /* A janela que o servidor de fato somou. Vai junto porque é ela que
        rotula a mensagem enviada ao cliente — antes a tela escolhia um

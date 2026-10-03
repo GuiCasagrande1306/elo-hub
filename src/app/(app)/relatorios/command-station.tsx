@@ -3,8 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
-  AlertTriangle, BarChart3, Check, Copy, FileDown, Image as ImageIcon,
-  MessageCircle, Pencil, RotateCcw, Target, TrendingUp,
+  AlertTriangle, Check, Copy, FileDown, MessageCircle, Pencil, RotateCcw,
 } from "lucide-react";
 
 
@@ -14,19 +13,10 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import {
-  formatCurrency,
-  formatDate,
-  formatMultiplier,
-  formatPeriod,
-} from "@/lib/format";
+import { formatDate, formatPeriod } from "@/lib/format";
 import { dataNoBrasil } from "@/lib/date-br";
 import { estadoDaJanela } from "@/lib/reports/janela-coberta";
-import {
-  formatGoalValue,
-  goalExecutedFrom,
-  type GoalMetric,
-} from "@/lib/metrics/goal-metric";
+import { goalExecutedFrom, type GoalMetric } from "@/lib/metrics/goal-metric";
 import {
   DateRangePicker,
   type Intervalo,
@@ -42,8 +32,8 @@ import { resumoDoPeriodo } from "./actions";
 /* =====================================================================
    Estação de comando
    ---------------------------------------------------------------------
-   Uma tela para a pergunta "mandar o resultado desta conta agora".
-   Filtros e mensagem à esquerda, o que o cliente vai receber à direita.
+   Uma tela para a pergunta "mandar o resultado desta conta agora":
+   escolher a conta e a janela, conferir o texto, despachar.
 
    OS NÚMEROS SÃO REAIS e o PERÍODO É O DELES. Vêm somados de
    `daily_metrics` no servidor, na janela da meta vigente de cada conta,
@@ -76,17 +66,6 @@ export interface ClientSummary {
   spendCents: number;
   /** Já na unidade de `metric` — resolvido no servidor. */
   resultValue: number;
-  /**
-   * Gasto e resultado contados só nas CAMPANHAS DE ORIGEM.
-   *
-   * Custo e retorno do cartão saem daqui, porque é daqui que o PDF os
-   * tira. Enquanto o cartão dividia pelo gasto da conta inteira, a
-   * pessoa conferia "Retorno 8,11x" e mandava um arquivo dizendo
-   * 12,35x — medido na Satö, 18–24/08/2026.
-   */
-  origemSpendCents: number;
-  /** Já na unidade de `metric`, como `resultValue`. */
-  origemResultValue: number;
   metric: GoalMetric;
   /** A janela que o servidor somou. É ela que rotula a mensagem. */
   period: { start: string; end: string };
@@ -124,13 +103,6 @@ export interface ClientSummary {
 
 /** Corte do WhatsApp para legenda de documento. */
 const LIMITE_DA_LEGENDA = 1024;
-
-const SECOES = [
-  { icon: BarChart3, titulo: "Resumo executivo", sub: "Investimento, resultados e custo" },
-  { icon: TrendingUp, titulo: "Evolução no período", sub: "Série diária de gasto e retorno" },
-  { icon: Target, titulo: "Meta do mês", sub: "Planejado contra realizado" },
-  { icon: ImageIcon, titulo: "Criativos em destaque", sub: "O que mais performou" },
-];
 
 export function CommandStation({
   clients,
@@ -193,11 +165,9 @@ export function CommandStation({
   const [override, setOverride] = useState<{
     spendCents: number;
     resultValue: number;
-    origemSpendCents: number;
-    origemResultValue: number;
-    /* Inteiros, para a mensagem. Os achatados acima servem aos cartões;
-       o texto que vai ao cliente sai destes, pela mesma função que o
-       PDF usa. */
+    /* Inteiros, para a mensagem. Os achatados acima travam o envio
+       quando não há número conferido; o texto que vai ao cliente sai
+       destes, pela mesma função que o PDF usa. */
     totais: MetricTotals;
     /** Último dia COM DADO da janela buscada. */
     ultimoDia: string | null;
@@ -208,8 +178,8 @@ export function CommandStation({
      -----------------------------------------------------------------
      `resumoDoPeriodo` é server action — centenas de milissegundos — e
      trocar o Select é instantâneo. Sem isto, a resposta da conta A
-     chegava depois da troca para B e sobrescrevia o estado de B: o
-     cartão mostrava o nome da Leotex com os números da Brazzo, e o
+     chegava depois da troca para B e sobrescrevia o estado de B: a
+     tela mostrou o nome da Leotex com os números da Brazzo, e o
      texto pronto para copiar era montado com eles. `buscando` já tinha
      voltado a false, então nada na tela denunciava.
 
@@ -248,7 +218,7 @@ export function CommandStation({
      `override` nulo significava duas coisas diferentes — "ainda é a
      janela da meta, valem os números do servidor" e "acabei de trocar o
      período e ainda não sei" —, e o `??` tratava as duas igual. O
-     resultado: ao aplicar uma janela nova, o cartão voltava a mostrar o
+     resultado: ao aplicar uma janela nova, a prévia voltava a mostrar o
      total do MÊS INTEIRO sob o rótulo da semana, e ficava assim durante
      toda a busca. Se ela falhasse, ficava para sempre.
 
@@ -264,19 +234,13 @@ export function CommandStation({
   const spendCents = override?.spendCents ?? doServidor?.spendCents ?? null;
   const resultValue = override?.resultValue ?? doServidor?.resultValue ?? null;
 
-  /* O denominador de custo e retorno. Volume continua sendo o de cima. */
-  const origemSpendCents =
-    override?.origemSpendCents ?? doServidor?.origemSpendCents ?? null;
-  const origemResultValue =
-    override?.origemResultValue ?? doServidor?.origemResultValue ?? null;
-
   /* Os totais inteiros da janela vigente — a fonte dos números da
      mensagem. Segue exatamente a regra do `janelaDaMeta` acima: durante
      uma busca que ainda não voltou é `null`, e a mensagem sai sem o
      bloco em vez de sair com os números da janela anterior. */
   const totais = override?.totais ?? doServidor?.totais ?? null;
 
-  /** Nenhum número conferido para esta janela — o cartão mostra "—". */
+  /** Nenhum número conferido para esta janela — o envio fica travado. */
   const semNumero = spendCents === null || resultValue === null;
 
   /* ⚠️ DERIVADO, NÃO GUARDADO EM ESTADO INICIAL.
@@ -285,7 +249,7 @@ export function CommandStation({
      montagem. A prop `clients` é substituída sem remontagem toda vez
      que alguém chama `revalidatePath("/relatorios")` — e três ações da
      MESMA página fazem isso. Então a trava ficava congelada no valor de
-     06h enquanto o cartão ao lado já mostrava os números que o sync
+     06h enquanto a prévia da mensagem já trazia os números que o sync
      trouxe às 06h20, ou o contrário.
 
      Na janela da meta vale o que o servidor contou; fora dela, o que a
@@ -348,14 +312,14 @@ export function CommandStation({
     /* O NÚMERO VELHO SAI JUNTO COM O RÓTULO VELHO.
        ---------------------------------------------------------------
        `setPeriodo` acima já trocou a frase da tela. Se a busca falhar,
-       o cartão ficaria mostrando o total da janela ANTERIOR sob o
+       a prévia ficaria mostrando o total da janela ANTERIOR sob o
        rótulo da nova — e o texto pronto para copiar diria "Período: 1 a
        31 de julho · Investimento: R$ 4.201,55" com o gasto de agosto.
        É exatamente o defeito que derrubou o primeiro seletor desta
        tela, e ele tinha voltado pela porta do erro.
 
-       Limpar antes de buscar troca um número errado por um traço: o
-       cartão mostra "—" enquanto carrega, e continua "—" se falhar. */
+       Limpar antes de buscar tira o número errado da prévia: ela sai
+       sem o bloco enquanto carrega, e continua sem ele se falhar. */
     setOverride(null);
     setSemDadoDaBusca(null);
 
@@ -374,13 +338,13 @@ export function CommandStation({
         if (!r.ok) {
           toast.error(r.error);
           /* Trava o botão: uma busca que falhou deixava "Gerar e
-             enviar" liberado sobre um cartão vazio. */
+             enviar" liberado sobre uma prévia sem número. */
           setSemDadoDaBusca(true);
           return;
         }
         /* A UNIDADE VEM DE `cliente.metric`, não do servidor. É a mesma
-           que formatou os números iniciais, então o cartão e a mensagem
-           não têm como discordar dela. Deixar o servidor escolher já
+           que formatou os números iniciais, então a prévia e o PDF não
+           têm como discordar dela. Deixar o servidor escolher já
            produziu R$ 0,64 onde eram R$ 12.170,81 — ele resolveu
            contagem e a tela formatou como dinheiro. */
         setSemDadoDaBusca(r.resumo.linhas === 0);
@@ -389,11 +353,6 @@ export function CommandStation({
           resultValue: goalExecutedFrom(cliente.metric, {
             conversions: r.resumo.conversions,
             revenueCents: r.resumo.revenueCents,
-          }),
-          origemSpendCents: r.resumo.origem.spendCents,
-          origemResultValue: goalExecutedFrom(cliente.metric, {
-            conversions: r.resumo.origem.conversions,
-            revenueCents: r.resumo.origem.revenueCents,
           }),
           totais: r.resumo.totais,
           ultimoDia: r.resumo.ultimoDia,
@@ -408,29 +367,6 @@ export function CommandStation({
         if (meuTurno === buscaAtual.current) setBuscando(false);
       });
   }
-
-  /* Custo por resultado calculado aqui e não guardado: dividir na hora
-     garante que ele nunca discorde do gasto e do resultado ao lado.
-
-     `costLabel` nulo = a meta já é em dinheiro, e "custo por
-     faturamento" não é uma grandeza. Ali a razão que interessa é ROAS. */
-  const cpl =
-    cliente &&
-    cliente.metric.costLabel &&
-    origemResultValue !== null &&
-    origemSpendCents !== null &&
-    origemResultValue > 0
-      ? origemSpendCents / origemResultValue
-      : null;
-
-  const roas =
-    cliente &&
-    cliente.metric.isCurrency &&
-    origemSpendCents !== null &&
-    origemResultValue !== null &&
-    origemSpendCents > 0
-      ? origemResultValue / origemSpendCents
-      : null;
 
   /* O TEXTO NÃO É MONTADO AQUI — ver `lib/reports/mensagem-do-cliente`.
      Esta tela e o envio pelo WhatsApp chamam a mesma função; enquanto
@@ -606,360 +542,284 @@ export function CommandStation({
   }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-3">
-      {/* ---------------- Coluna esquerda ---------------- */}
-      <div className="flex flex-col gap-4 lg:col-span-2">
-        <section className="surface-card p-4">
-          {/* `min-w-0` nos três: item de grid tem `min-width: auto` e não
-              encolhe abaixo do próprio conteúdo. Sem isso o select de
-              template — cujo nome é longo, "E-commerce — Performance &
-              ROAS" — vazava 69px para fora do card em vez de truncar. */}
-          <div className="grid gap-3 sm:grid-cols-3">
-            <label className="flex min-w-0 flex-col gap-1.5">
-              <span className="eyebrow">Cliente</span>
-              <Select value={clientId} onValueChange={(v) => trocarCliente(v ?? clientId)}>
-                <SelectTrigger size="sm" className="w-full min-w-0">
-                  <SelectValue>
-                    {(v: string) =>
-                      clients.find((c) => c.id === v)?.name ?? "Selecione"
-                    }
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {clients.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </label>
+    <div className="flex flex-col gap-4">
+      <section className="surface-card p-4">
+        {/* `min-w-0` nos três: item de grid tem `min-width: auto` e não
+            encolhe abaixo do próprio conteúdo. Sem isso o select de
+            template — cujo nome é longo, "E-commerce — Performance &
+            ROAS" — vazava 69px para fora do card em vez de truncar. */}
+        <div className="grid gap-3 sm:grid-cols-3">
+          <label className="flex min-w-0 flex-col gap-1.5">
+            <span className="eyebrow">Cliente</span>
+            <Select value={clientId} onValueChange={(v) => trocarCliente(v ?? clientId)}>
+              <SelectTrigger size="sm" className="w-full min-w-0">
+                <SelectValue>
+                  {(v: string) =>
+                    clients.find((c) => c.id === v)?.name ?? "Selecione"
+                  }
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {clients.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
 
-            {/* PERÍODO É CAMPO DE NOVO, e desta vez trocar ele troca o
-                número: `trocarPeriodo` rebusca as métricas da janela.
-                Abre na meta da conta, que é o que o servidor já somou. */}
-            <label className="flex min-w-0 flex-col gap-1.5">
-              <span className="eyebrow">
-                Período
-                {buscando && (
-                  <span className="ml-1.5 font-normal normal-case tracking-normal text-muted-foreground">
-                    somando…
-                  </span>
-                )}
-              </span>
-              <DateRangePicker value={periodo} onChange={trocarPeriodo} />
-            </label>
-
-            {/* Template é CONSEQUÊNCIA, não escolha: o segmento da conta
-                decide, e é o mesmo `resolverTemplate` que o gerador usa.
-                Trocar aqui só criaria a chance de mandar ao cliente um
-                layout que não é o dele. Para mudar o que entra no PDF,
-                o lugar é o botão Templates, no topo da página. */}
-            <div className="flex min-w-0 flex-col gap-1.5">
-              <span className="eyebrow">Template</span>
-              {/* `title` porque o nome trunca nesta largura e, sendo
-                  texto e não select, não há outro jeito de ler inteiro. */}
-              <p
-                className="flex h-8 items-center truncate text-sm"
-                title={cliente?.templateName}
-              >
-                {cliente?.templateName ?? "—"}
-              </p>
-            </div>
-          </div>
-        </section>
-
-        <section className="surface-card relative p-4">
-          {/* `flex-wrap`: com "Voltar ao automático" os três elementos
-              não cabem numa linha de 375px, e sem quebra o Copiar era
-              empurrado para fora do cartão. */}
-          <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+          {/* PERÍODO É CAMPO DE NOVO, e desta vez trocar ele troca o
+              número: `trocarPeriodo` rebusca as métricas da janela.
+              Abre na meta da conta, que é o que o servidor já somou. */}
+          <label className="flex min-w-0 flex-col gap-1.5">
             <span className="eyebrow">
-              Texto para o cliente
-              {editando && (
-                <span className="ml-1.5 font-normal normal-case tracking-normal text-warning">
-                  · editado
+              Período
+              {buscando && (
+                <span className="ml-1.5 font-normal normal-case tracking-normal text-muted-foreground">
+                  somando…
                 </span>
               )}
             </span>
-            <div className="flex items-center gap-1">
-              {editando ? (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setEdicao(null)}
-                >
-                  <RotateCcw className="size-3.5" />
-                  Voltar ao automático
-                </Button>
-              ) : (
-                /* Travado durante a busca: editar ali capturaria o texto
-                   SEM o bloco de números, que só chega quando a busca
-                   do período volta. */
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={editar}
-                  disabled={!cliente || buscando || !mensagem}
-                >
-                  <Pencil className="size-3.5" />
-                  Editar
-                </Button>
-              )}
-              <Button size="sm" variant="ghost" onClick={copiar} disabled={!cliente}>
-                {copiado ? <Check className="size-3.5 text-positive" /> : <Copy className="size-3.5" />}
-                Copiar
-              </Button>
-            </div>
-          </div>
-          <Textarea
-            ref={campoDoTexto}
-            value={textoFinal}
-            readOnly={!editando}
-            onChange={(e) =>
-              setEdicao({ chave: chaveDoEnvio, texto: e.target.value })
-            }
-            aria-invalid={legendaInvalida || undefined}
-            rows={9}
-            className={cn(
-              "mt-2 resize-y font-mono text-xs",
-              editando && "border-warning/50",
-            )}
-          />
-          {editando && (
-            <p
-              className={cn(
-                "mt-1 text-right text-2xs tabular-nums",
-                legendaInvalida ? "text-negative" : "text-muted-foreground",
-              )}
-            >
-              {textoEditado.trim().length === 0
-                ? "O texto não pode ficar vazio."
-                : `${textoEditado.length} / ${LIMITE_DA_LEGENDA}`}
-            </p>
-          )}
-          {/* ZERO POR FALTA DE DADO NÃO PODE PARECER ZERO DE VERDADE.
-              Sem este aviso a tela mostra R$ 0,00 nos dois casos, e o
-              texto pronto para copiar sai afirmando ao cliente que ele
-              não investiu nada no mês. Foi o que aconteceu com julho de
-              2026: o sync de rotina só cobre o mês corrente, o mês
-              fechado nunca tinha sido buscado, e a tela não tinha como
-              dizer isso. */}
-          {semDado && (
-            <p className="mt-2 flex items-start gap-2 rounded-lg bg-warning-muted px-3 py-2 text-2xs text-warning">
-              <AlertTriangle className="mt-px size-3.5 shrink-0" />
-              <span>
-                <strong>Nenhum dado sincronizado neste período.</strong> Os
-                zeros acima são ausência de dado, não desempenho —{" "}
-                <strong>não envie</strong> esta mensagem. O robô busca o
-                período na madrugada do dia agendado; para conferir antes,
-                peça uma sincronização deste intervalo.
-              </span>
-            </p>
-          )}
-          {/* JANELA QUE ACABA ANTES DO PERÍODO. Dois textos, porque são
-              dois problemas: coleta quebrada (barra o envio) e conta
-              que simplesmente não veiculou (só informa). */}
-          {janelaIncompleta && (
-            <p
-              className={cn(
-                "mt-2 flex items-start gap-2 rounded-lg px-3 py-2 text-2xs",
-                janelaNaoApurada
-                  ? "bg-negative-muted/50 text-negative"
-                  : "bg-surface-2/70 text-muted-foreground",
-              )}
-            >
-              <AlertTriangle className="mt-px size-3.5 shrink-0" />
-              <span>
-                {/* As datas ficam no MEIO da frase: `formatDate` devolve
-                    "17 de set." com o ponto da abreviação, e terminar a
-                    oração nela imprimia "set..". */}
-                {janelaNaoApurada ? (
-                  <>
-                    <strong>
-                      Os números param em{" "}
-                      {formatDate(`${ultimoDiaComDado}T12:00:00`)} e o período
-                      vai até {formatDate(`${periodo.fim}T12:00:00`)}
-                    </strong>{" "}
-                    — a coleta desta conta está atrasada, então os dias que
-                    faltam não foram apurados. <strong>Não envie</strong>:
-                    reconecte a plataforma em Configurações e peça a
-                    sincronização deste intervalo.
-                  </>
-                ) : (
-                  <>
-                    Os números param em{" "}
-                    {formatDate(`${ultimoDiaComDado}T12:00:00`)} — a coleta
-                    está em dia, então os dias sem linha são dias sem
-                    veiculação.
-                  </>
-                )}
-              </span>
-            </p>
-          )}
+            <DateRangePicker value={periodo} onChange={trocarPeriodo} />
+          </label>
 
-          {/* A promessa do texto automático — "nunca diz um prazo e
-              mostra outro" — deixa de valer quando alguém edita. A nota
-              muda junto, para ninguém confiar numa garantia que o texto
-              manual não tem. */}
-          <p className="mt-1.5 text-2xs text-muted-foreground">
+          {/* Template é CONSEQUÊNCIA, não escolha: o segmento da conta
+              decide, e é o mesmo `resolverTemplate` que o gerador usa.
+              Trocar aqui só criaria a chance de mandar ao cliente um
+              layout que não é o dele. Para mudar o que entra no PDF,
+              o lugar é o botão Templates, no topo da página. */}
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <span className="eyebrow">Template</span>
+            {/* `title` porque o nome trunca nesta largura e, sendo
+                texto e não select, não há outro jeito de ler inteiro. */}
+            <p
+              className="flex h-8 items-center truncate text-sm"
+              title={cliente?.templateName}
+            >
+              {cliente?.templateName ?? "—"}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section className="surface-card relative p-4">
+        {/* `flex-wrap`: com "Voltar ao automático" os três elementos
+            não cabem numa linha de 375px, e sem quebra o Copiar era
+            empurrado para fora do cartão. */}
+        <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+          <span className="eyebrow">
+            Texto para o cliente
+            {editando && (
+              <span className="ml-1.5 font-normal normal-case tracking-normal text-warning">
+                · editado
+              </span>
+            )}
+          </span>
+          <div className="flex items-center gap-1">
             {editando ? (
-              <>
-                <strong className="text-foreground">
-                  Este é o texto que vai no envio.
-                </strong>{" "}
-                Editado à mão, ele não acompanha mais os dados: trocar de
-                cliente ou de período descarta a edição e volta ao
-                automático.
-              </>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setEdicao(null)}
+              >
+                <RotateCcw className="size-3.5" />
+                Voltar ao automático
+              </Button>
             ) : (
-              <>
-                Números somados das métricas sincronizadas na janela acima.
-                Trocar o período rebusca no banco — o texto nunca fica
-                dizendo um prazo e mostrando outro. Use{" "}
-                <strong>Editar</strong> para acrescentar ou tirar algo
-                antes de enviar.
-              </>
+              /* Travado durante a busca: editar ali capturaria o texto
+                 SEM o bloco de números, que só chega quando a busca
+                 do período volta. */
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={editar}
+                disabled={!cliente || buscando || !mensagem}
+              >
+                <Pencil className="size-3.5" />
+                Editar
+              </Button>
             )}
-          </p>
-        </section>
-
-        {/* HAVIA UM "Tipo de relatório" AQUI — dois cartões, "completo"
-            e "simples" — e ele só pintava a própria borda. Nada lia a
-            escolha: não mudava a mensagem, não ia para o PDF, não ia
-            para lugar nenhum.
-
-            E era redundante por construção: os dois botões abaixo JÁ
-            são essa escolha. "Copiar" (no card da mensagem) é o simples;
-            "Gerar PDF" é o completo. Um seletor de modo acima de dois
-            botões que fazem os dois modos oferece a mesma decisão duas
-            vezes — e a de cima não valia nada. */}
-        <section className="surface-card p-4">
-          <span className="eyebrow">O que fazer com isto</span>
-          <div className="mt-2 grid gap-2 sm:grid-cols-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!cliente || busy !== null}
-              onClick={visualizar}
-            >
-              <FileDown className="size-4" />
-              {busy === "pdf" ? "Abrindo…" : "Visualizar PDF"}
-            </Button>
-            <Button
-              size="sm"
-              className="bg-signal text-white hover:bg-signal/90"
-              /* `semDado` TRAVA o botão, não só avisa. O aviso amarelo
-                 logo acima já dizia "não envie" — e o botão continuava
-                 clicável ao lado dele. Numa tarde de sete envios
-                 seguidos, um aviso que não impede nada é um aviso que se
-                 lê depois. Trocar o período limpa o estado. */
-              disabled={
-                busy !== null || jaEnviado || naoPodeEnviar || legendaInvalida
-              }
-              onClick={gerarEEnviar}
-              title={
-                jaEnviado
-                  ? "Já enviado nesta janela. Troque o período ou a conta para enviar de novo."
-                  : semDado
-                    ? "Sem dado sincronizado neste período — o PDF sairia zerado."
-                    : "Gera o PDF e despacha pelo SEU WhatsApp"
-              }
-            >
-              {jaEnviado ? (
-                <Check className="size-4" />
-              ) : (
-                <MessageCircle className="size-4" />
-              )}
-              {busy === "envio"
-                ? "Enviando…"
-                : jaEnviado
-                  ? "Enviado ✓"
-                  : "Gerar e enviar"}
+            <Button size="sm" variant="ghost" onClick={copiar} disabled={!cliente}>
+              {copiado ? <Check className="size-3.5 text-positive" /> : <Copy className="size-3.5" />}
+              Copiar
             </Button>
           </div>
-          <p className="mt-2 text-2xs text-muted-foreground">
-            <strong>Visualizar</strong> abre o PDF numa aba sem gravar
-            nada — serve para conferir antes. <strong>Gerar e enviar</strong>
-            arquiva e dispara pelo seu WhatsApp, com o documento em anexo.
-            Só a mensagem, sem PDF? Use o <strong>Copiar</strong> acima.
+        </div>
+        <Textarea
+          ref={campoDoTexto}
+          value={textoFinal}
+          readOnly={!editando}
+          onChange={(e) =>
+            setEdicao({ chave: chaveDoEnvio, texto: e.target.value })
+          }
+          aria-invalid={legendaInvalida || undefined}
+          rows={9}
+          className={cn(
+            "mt-2 resize-y font-mono text-xs",
+            editando && "border-warning/50",
+          )}
+        />
+        {editando && (
+          <p
+            className={cn(
+              "mt-1 text-right text-2xs tabular-nums",
+              legendaInvalida ? "text-negative" : "text-muted-foreground",
+            )}
+          >
+            {textoEditado.trim().length === 0
+              ? "O texto não pode ficar vazio."
+              : `${textoEditado.length} / ${LIMITE_DA_LEGENDA}`}
           </p>
-        </section>
-      </div>
-
-      {/* ---------------- Coluna direita ---------------- */}
-      <div className="flex flex-col gap-4">
-        <section className="overflow-hidden rounded-xl bg-gradient-to-br from-signal to-[color-mix(in_oklab,var(--signal)_55%,black)] p-4 text-white">
-          <p className="text-xs opacity-80">{periodoLabel}</p>
-          <h3 className="mt-0.5 truncate text-lg font-semibold">
-            {cliente?.name ?? "Nenhum cliente"}
-          </h3>
-
-          {/* EMPILHADO, não em três colunas. Com faturamento de seis
-              dígitos — "R$ 835.070,52" — as três colunas colidiam num
-              card desta largura, e o valor ficava colado no vizinho. Uma
-              linha por número não tem esse limite. */}
-          <dl className="mt-4 flex flex-col gap-2 border-t border-white/20 pt-3">
-            {[
-              /* ⚠️ `spendCents`/`resultValue` DERIVADOS, nunca
-                 `cliente.spendCents`. Este cartão é o que a pessoa olha
-                 enquanto decide, e ler direto da prop o deixava preso na
-                 janela da meta enquanto a mensagem ao lado já mostrava a
-                 janela escolhida. Visto na tela: período trocado para 7
-                 dias, o Retorno virou 0,00x e o Investimento continuou o
-                 do mês — dois números do mesmo card falando de períodos
-                 diferentes. É o mesmo defeito que derrubou o seletor
-                 antigo, só que uma camada acima. */
-              /* "—" quando não há número CONFERIDO para esta janela —
-                 não só quando não há cliente. Ver `janelaDaMeta`. */
-              [
-                "Investimento",
-                spendCents === null ? "—" : formatCurrency(spendCents),
-              ],
-              [
-                cliente?.metric.label ?? "Resultados",
-                cliente && resultValue !== null
-                  ? formatGoalValue(cliente.metric, resultValue)
-                  : "—",
-              ],
-              /* Terceira coluna: custo unitário onde ele existe, ROAS
-                 onde a meta é dinheiro. */
-              cliente?.metric.isCurrency
-                ? ["Retorno", roas ? formatMultiplier(roas) : "—"]
-                : ["Custo", cpl ? formatCurrency(Math.round(cpl)) : "—"],
-            ].map(([label, valor]) => (
-              <div
-                key={label}
-                className="flex items-baseline justify-between gap-3"
-              >
-                <dt className="text-[10px] uppercase tracking-wide opacity-75">
-                  {label}
-                </dt>
-                <dd className="text-sm font-semibold tabular-nums">{valor}</dd>
-              </div>
-            ))}
-          </dl>
-        </section>
-
-        <section className="surface-card p-4">
-          <span className="eyebrow">Seções do relatório</span>
-          <ul className="mt-3 flex flex-col gap-3">
-            {SECOES.map(({ icon: Icon, titulo, sub }) => (
-              <li key={titulo} className="flex items-start gap-2.5">
-                <span className="grid size-7 shrink-0 place-items-center rounded-full bg-surface-2">
-                  <Icon className="size-3.5 text-muted-foreground" />
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-sm font-medium">{titulo}</span>
-                  <span className="block text-2xs text-muted-foreground">{sub}</span>
-                </span>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-3 border-t border-hairline pt-3 text-2xs text-muted-foreground">
-            As seções variam por segmento — o template do cliente decide
-            quais entram no PDF.
+        )}
+        {/* ZERO POR FALTA DE DADO NÃO PODE PARECER ZERO DE VERDADE.
+            Sem este aviso a tela mostra R$ 0,00 nos dois casos, e o
+            texto pronto para copiar sai afirmando ao cliente que ele
+            não investiu nada no mês. Foi o que aconteceu com julho de
+            2026: o sync de rotina só cobre o mês corrente, o mês
+            fechado nunca tinha sido buscado, e a tela não tinha como
+            dizer isso. */}
+        {semDado && (
+          <p className="mt-2 flex items-start gap-2 rounded-lg bg-warning-muted px-3 py-2 text-2xs text-warning">
+            <AlertTriangle className="mt-px size-3.5 shrink-0" />
+            <span>
+              <strong>Nenhum dado sincronizado neste período.</strong> Os
+              zeros acima são ausência de dado, não desempenho —{" "}
+              <strong>não envie</strong> esta mensagem. O robô busca o
+              período na madrugada do dia agendado; para conferir antes,
+              peça uma sincronização deste intervalo.
+            </span>
           </p>
-        </section>
-      </div>
+        )}
+        {/* JANELA QUE ACABA ANTES DO PERÍODO. Dois textos, porque são
+            dois problemas: coleta quebrada (barra o envio) e conta
+            que simplesmente não veiculou (só informa). */}
+        {janelaIncompleta && (
+          <p
+            className={cn(
+              "mt-2 flex items-start gap-2 rounded-lg px-3 py-2 text-2xs",
+              janelaNaoApurada
+                ? "bg-negative-muted/50 text-negative"
+                : "bg-surface-2/70 text-muted-foreground",
+            )}
+          >
+            <AlertTriangle className="mt-px size-3.5 shrink-0" />
+            <span>
+              {/* As datas ficam no MEIO da frase: `formatDate` devolve
+                  "17 de set." com o ponto da abreviação, e terminar a
+                  oração nela imprimia "set..". */}
+              {janelaNaoApurada ? (
+                <>
+                  <strong>
+                    Os números param em{" "}
+                    {formatDate(`${ultimoDiaComDado}T12:00:00`)} e o período
+                    vai até {formatDate(`${periodo.fim}T12:00:00`)}
+                  </strong>{" "}
+                  — a coleta desta conta está atrasada, então os dias que
+                  faltam não foram apurados. <strong>Não envie</strong>:
+                  reconecte a plataforma em Configurações e peça a
+                  sincronização deste intervalo.
+                </>
+              ) : (
+                <>
+                  Os números param em{" "}
+                  {formatDate(`${ultimoDiaComDado}T12:00:00`)} — a coleta
+                  está em dia, então os dias sem linha são dias sem
+                  veiculação.
+                </>
+              )}
+            </span>
+          </p>
+        )}
+
+        {/* A promessa do texto automático — "nunca diz um prazo e
+            mostra outro" — deixa de valer quando alguém edita. A nota
+            muda junto, para ninguém confiar numa garantia que o texto
+            manual não tem. */}
+        <p className="mt-1.5 text-2xs text-muted-foreground">
+          {editando ? (
+            <>
+              <strong className="text-foreground">
+                Este é o texto que vai no envio.
+              </strong>{" "}
+              Editado à mão, ele não acompanha mais os dados: trocar de
+              cliente ou de período descarta a edição e volta ao
+              automático.
+            </>
+          ) : (
+            <>
+              Números somados das métricas sincronizadas na janela acima.
+              Trocar o período rebusca no banco — o texto nunca fica
+              dizendo um prazo e mostrando outro. Use{" "}
+              <strong>Editar</strong> para acrescentar ou tirar algo
+              antes de enviar.
+            </>
+          )}
+        </p>
+      </section>
+
+      {/* HAVIA UM "Tipo de relatório" AQUI — dois cartões, "completo"
+          e "simples" — e ele só pintava a própria borda. Nada lia a
+          escolha: não mudava a mensagem, não ia para o PDF, não ia
+          para lugar nenhum.
+
+          E era redundante por construção: os dois botões abaixo JÁ
+          são essa escolha. "Copiar" (no card da mensagem) é o simples;
+          "Gerar PDF" é o completo. Um seletor de modo acima de dois
+          botões que fazem os dois modos oferece a mesma decisão duas
+          vezes — e a de cima não valia nada. */}
+      <section className="surface-card p-4">
+        <span className="eyebrow">O que fazer com isto</span>
+        {/* `max-w-lg`: sem a coluna da direita a seção ocupa a largura
+            da página, e dois botões esticados a 600px cada liam como
+            faixa, não como botão. */}
+        <div className="mt-2 grid max-w-lg gap-2 sm:grid-cols-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!cliente || busy !== null}
+            onClick={visualizar}
+          >
+            <FileDown className="size-4" />
+            {busy === "pdf" ? "Abrindo…" : "Visualizar PDF"}
+          </Button>
+          <Button
+            size="sm"
+            className="bg-signal text-white hover:bg-signal/90"
+            /* `semDado` TRAVA o botão, não só avisa. O aviso amarelo
+               logo acima já dizia "não envie" — e o botão continuava
+               clicável ao lado dele. Numa tarde de sete envios
+               seguidos, um aviso que não impede nada é um aviso que se
+               lê depois. Trocar o período limpa o estado. */
+            disabled={
+              busy !== null || jaEnviado || naoPodeEnviar || legendaInvalida
+            }
+            onClick={gerarEEnviar}
+            title={
+              jaEnviado
+                ? "Já enviado nesta janela. Troque o período ou a conta para enviar de novo."
+                : semDado
+                  ? "Sem dado sincronizado neste período — o PDF sairia zerado."
+                  : "Gera o PDF e despacha pelo SEU WhatsApp"
+            }
+          >
+            {jaEnviado ? (
+              <Check className="size-4" />
+            ) : (
+              <MessageCircle className="size-4" />
+            )}
+            {busy === "envio"
+              ? "Enviando…"
+              : jaEnviado
+                ? "Enviado ✓"
+                : "Gerar e enviar"}
+          </Button>
+        </div>
+        <p className="mt-2 text-2xs text-muted-foreground">
+          <strong>Visualizar</strong> abre o PDF numa aba sem gravar
+          nada — serve para conferir antes. <strong>Gerar e enviar</strong>
+          arquiva e dispara pelo seu WhatsApp, com o documento em anexo.
+          Só a mensagem, sem PDF? Use o <strong>Copiar</strong> acima.
+        </p>
+      </section>
     </div>
   );
 }
