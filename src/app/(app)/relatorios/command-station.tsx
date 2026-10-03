@@ -441,39 +441,46 @@ export function CommandStation({
   /**
    * Abre o PDF numa aba, sem gravar nada.
    *
-   * POST por formulário e não `window.open` com query: o período e a
-   * conta cabem numa URL, mas o caminho ficou POST porque a rota já
-   * espera assim desde que a análise (agora removida) precisava viajar
-   * no corpo. Manter um só formato evita duas rotas de preview.
+   * ⚠️ GET COM QUERY, NUNCA FORMULÁRIO POST.
+   *
+   * A aba que nasce de um POST MOSTRA o PDF — e não deixa salvar. O
+   * botão de baixar do leitor do Chrome não guarda os bytes que já
+   * recebeu: ele REFAZ a requisição, e refaz como GET, sem corpo. Com o
+   * POST, esse refazer chegava em `/api/reports/preview` pelado,
+   * levava 400 "Informe o cliente", e o download morria em "O site não
+   * está disponível". Medido em 02/10/2026: três tentativas seguidas no
+   * relatório da Brazzo, todas falhadas, e o arquivo nem nome ganhava
+   * — virava "preview", tirado do caminho da URL.
+   *
+   * `Cache-Control: no-store` na rota torna o refazer OBRIGATÓRIO: não
+   * existe cópia em cache para o Chrome salvar. Então a URL desta aba
+   * precisa ser, sozinha, uma requisição que funciona.
    */
   function visualizar() {
     if (!cliente) return;
     setBusy("pdf");
 
-    const form = document.createElement("form");
-    form.method = "POST";
-    form.action = "/api/reports/preview";
-    form.target = "_blank";
-    form.rel = "noopener";
-    form.style.display = "none";
-
-    for (const [nome, valor] of Object.entries({
+    /* `template` fica de fora de propósito: ausente ou vazio, a rota
+       resolve pelo segmento da conta — o mesmo caminho de antes. */
+    const query = new URLSearchParams({
       cliente: cliente.slug,
       inicio: periodo.inicio,
       fim: periodo.fim,
-      // Vazio: o servidor resolve o template pelo segmento da conta.
-      template: "",
-    })) {
-      const campo = document.createElement("input");
-      campo.type = "hidden";
-      campo.name = nome;
-      campo.value = valor;
-      form.appendChild(campo);
-    }
+    });
 
-    document.body.appendChild(form);
-    form.submit();
-    form.remove();
+    /* Âncora e não `window.open`: com uma string de features o Chrome
+       pode abrir JANELA em vez de aba, e sem gesto reconhecido o
+       bloqueador de pop-up engole a chamada. Um clique em <a
+       target="_blank"> é navegação comum — sempre aba, nunca bloqueada. */
+    const link = document.createElement("a");
+    link.href = `/api/reports/preview?${query}`;
+    link.target = "_blank";
+    link.rel = "noopener";
+    link.style.display = "none";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
     setTimeout(() => setBusy(null), 800);
   }
 

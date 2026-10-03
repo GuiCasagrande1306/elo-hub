@@ -15,17 +15,29 @@ import type { ReportTemplate } from "@/types/database";
  * `report_history`, sem upload, sem envio. Serve para conferir antes de
  * mandar para o cliente — o erro caro é o relatório errado já entregue.
  *
- * DOIS MÉTODOS, de propósito:
+ * ⚠️ SÓ GET, E ISSO É REQUISITO, NÃO PREFERÊNCIA.
  *
- *  • GET  `?cliente=&inicio=&fim=` — atalho, links compartilháveis, e a
- *    forma antiga `?periodo=<dias>` que ainda circula por aí.
- *  • POST — o que a tela usa. A análise do time tem centenas de
- *    caracteres e não cabe em query; sem ela, o preview mostrava um PDF
- *    sem a seção de análise e a pessoa aprovava um documento diferente
- *    do que seria enviado.
+ * Esta resposta ocupa uma aba inteira, e o leitor de PDF do Chrome
+ * REFAZ a requisição quando a pessoa clica em baixar — sempre como GET,
+ * sem corpo. Enquanto a tela abria a aba por formulário POST, o PDF
+ * aparecia e o download falhava: o refazer chegava aqui sem parâmetro
+ * nenhum, levava o 400 "Informe o cliente" logo abaixo, e o Chrome
+ * registrava "O site não está disponível". Medido em 02/10/2026, três
+ * tentativas no relatório da Brazzo.
  *
- * A autorização é a mesma dos dois lados: `getClientBySlug` passa pelo
- * RLS, então um colaborador não pré-visualiza conta alheia.
+ * O `Cache-Control: no-store` da resposta torna esse refazer
+ * OBRIGATÓRIO — não há cópia em cache para o navegador salvar. Logo,
+ * tudo que o preview precisa tem que caber na URL.
+ *
+ * Havia um POST aqui para a análise escrita pelo time viajar no corpo.
+ * A análise saiu da tela e o POST foi junto: parâmetro que não cabe em
+ * query é parâmetro que impede o download.
+ *
+ * `?periodo=<dias>` continua aceito — é a forma antiga, que ainda
+ * circula em links salvos.
+ *
+ * A autorização é a do `getClientBySlug`, que passa pelo RLS: um
+ * colaborador não pré-visualiza conta alheia.
  */
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -44,28 +56,6 @@ export async function GET(request: NextRequest) {
     templateId: searchParams.get("template"),
     insights: searchParams.get("insights"),
     nextSteps: searchParams.get("nextSteps"),
-  });
-}
-
-export async function POST(request: NextRequest) {
-  const form = await request.formData();
-  const texto = (campo: string) => {
-    const v = form.get(campo);
-    return typeof v === "string" ? v : null;
-  };
-
-  const janela = resolverJanela(
-    texto("inicio"),
-    texto("fim"),
-    texto("periodo"),
-  );
-
-  return gerar({
-    slug: texto("cliente"),
-    ...janela,
-    templateId: texto("template"),
-    insights: texto("insights"),
-    nextSteps: texto("nextSteps"),
   });
 }
 
@@ -153,7 +143,10 @@ async function gerar(entrada: {
   return new NextResponse(new Uint8Array(buffer), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `inline; filename="preview-${slug}.pdf"`,
+      /* O nome vai junto com a janela: a pessoa baixa vários numa
+         sessão, e "preview-brazzo-pizza.pdf" três vezes na pasta de
+         Downloads vira "(1)" e "(2)". */
+      "Content-Disposition": `inline; filename="relatorio-${slug}-${start}-a-${end}.pdf"`,
       // Nunca cachear: o preview precisa refletir o dado sincronizado agora.
       "Cache-Control": "no-store",
     },
