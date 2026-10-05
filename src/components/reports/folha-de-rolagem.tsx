@@ -661,10 +661,17 @@ function Cartao({
       ? null
       : (sentimento === "positive") === subiu || delta === 0;
 
-  const cor =
-    bom === null ? "#64707d" : bom ? "#1f7a4d" : "#b03a2e";
-  const fundo =
-    bom === null ? "#f1f3f5" : bom ? "#e8f5ee" : "#fdecea";
+  /* ⚠️ QUEDA É CINZA, igual ao PDF — ver `Selo` em `pdf/folha.tsx`, que
+     carrega o porquê. Esta folha é a que o CLIENTE abre pelo link
+     público, então aqui o vermelho fazia ainda mais estrago: ninguém
+     da agência está junto para explicar. Queda e estabilidade dividem
+     o mesmo cinza; a seta e o número é que as separam.
+
+     As duas superfícies mudam no mesmo commit de propósito. Pintar
+     diferente o mesmo relatório em dois lugares é como nasce o "mas no
+     PDF estava vermelho". */
+  const cor = bom === true ? "#1f7a4d" : "#64707d";
+  const fundo = bom === true ? "#e8f5ee" : "#f1f3f5";
 
   return (
     <div className="rounded-xl border border-[#e6e8ec] bg-white p-4">

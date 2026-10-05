@@ -80,8 +80,9 @@ const FUNDO = "#F6F5F2";
 const BRANCO = "#FFFFFF";
 const POSITIVO = "#15803D";
 const POSITIVO_FUNDO = "#DCFCE7";
-const NEGATIVO = "#9F1239";
-const NEGATIVO_FUNDO = "#FFE4E6";
+/* ⚠️ NÃO EXISTE COR DE NEGATIVO AQUI, e a ausência é decisão de
+   05/10/2026 — ver `Selo`. Havia um vinho `#9F1239` sobre `#FFE4E6`.
+   Acrescentar um vermelho de volta devolve o problema inteiro. */
 
 const s = StyleSheet.create({
   pagina: { backgroundColor: FUNDO, fontFamily: "Geist", color: TINTA },
@@ -487,13 +488,36 @@ function CartaoDeAnuncios({
 
 /* ========================== AUXILIARES ============================= */
 
+/**
+ * O selo de variação.
+ *
+ * ⚠️ QUEDA É CINZA, NÃO VERMELHA. Decisão do Guilherme em 05/10/2026,
+ * para o relatório de todas as contas.
+ *
+ * O vermelho não informava: ele julgava. Numa folha que o cliente abre
+ * sozinho, sem ninguém do lado para contextualizar, uma pílula vinho
+ * sobre rosa é a primeira coisa que o olho encontra — e ela grita
+ * "problema" antes que a pessoa leia de qual métrica se trata. Mês com
+ * investimento menor de propósito virava alarme.
+ *
+ * A INFORMAÇÃO NÃO SE PERDE: continuam o ▼ e o número. O que sai é o
+ * peso visual, não o dado. Quem procura a queda acha; quem está
+ * passando o olho não é parado por ela.
+ *
+ * O verde FICA, e a assimetria é o ponto. Vitória se comemora; queda se
+ * informa e se explica na conversa, não num aviso vermelho dentro de um
+ * PDF que a agência não está presente para acompanhar.
+ *
+ * CUSTO ACEITO: queda e estabilidade passam a ter o mesmo cinza. O que
+ * as separa é a seta e o valor — ▼ 8,58% não se confunde com • 0,00%.
+ */
 function Selo({ kpi }: { kpi: ReportPayload["kpis"][number] }) {
   if (kpi.indefinido || kpi.deltaPercent === null) return null;
 
   const sobe = kpi.deltaPercent >= 0;
   const bom = kpi.sentiment === "positive";
-  const cor = bom ? POSITIVO : kpi.sentiment === "negative" ? NEGATIVO : TINTA_FRACA;
-  const fundo = bom ? POSITIVO_FUNDO : kpi.sentiment === "negative" ? NEGATIVO_FUNDO : FUNDO;
+  const cor = bom ? POSITIVO : TINTA_FRACA;
+  const fundo = bom ? POSITIVO_FUNDO : FUNDO;
 
   return (
     <Text style={[s.selo, { color: cor, backgroundColor: fundo, marginLeft: 6 }]}>
