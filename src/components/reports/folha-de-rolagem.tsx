@@ -128,7 +128,7 @@ export function FolhaDeRolagem({
               <img
                 src={client.logo_url}
                 alt=""
-                className="size-[68px] shrink-0 rounded-2xl bg-white object-contain p-1.5"
+                className="size-[68px] shrink-0 rounded-2xl bg-white object-contain"
               />
             ) : (
               <span

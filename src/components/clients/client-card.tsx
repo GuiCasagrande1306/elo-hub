@@ -283,9 +283,26 @@ function ClientMark({ client }: { client: Client }) {
      cor da marca — que é o que existia antes e continua sendo o estado
      normal enquanto ninguém subiu arquivo.
 
-     `object-contain` sobre fundo branco: logo de cliente costuma vir
-     com margem própria e fundo transparente, e `cover` cortaria o
-     símbolo. Branco porque a maioria é desenhada para papel. */
+     ⚠️ SEM RECUO, e a correção de 06/10/2026 é sobre a premissa deste
+     comentário, não sobre o CSS. Ele dizia que "logo de cliente costuma
+     vir com margem própria e fundo transparente" e, em cima disso,
+     punha um `p-1`. MEDIDO nas 60 logos cadastradas: 59 são quadradas,
+     ZERO tem canal alfa, e a da Agenda é 1080×1080 laranja até os
+     quatro cantos. São fotos de perfil de rede social, não logotipos
+     para papel — a mesma conclusão que `client-avatar.tsx` já havia
+     registrado em 19/08.
+
+     A moldura branca que o Guilherme viu não era borda do arquivo: era
+     esta chapa escapando por baixo do recuo.
+
+     A CHAPA FICA, o recuo é que sai. Sob JPEG opaco ela nunca aparece,
+     e é o que salva a legibilidade no dia em que entrar um logo de
+     verdade com transparência — símbolo escuro sobre cartão escuro
+     some sem ela.
+
+     `object-contain` e não `cover`: para quadrado os dois são
+     idênticos, e se um dia entrar um logo deitado, `contain` o mostra
+     inteiro enquanto `cover` o decepa no meio. */
   if (client.logo_url) {
     return (
       <span className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white ring-1 ring-inset ring-black/10">
@@ -293,7 +310,7 @@ function ClientMark({ client }: { client: Client }) {
         <img
           src={client.logo_url}
           alt={client.name}
-          className="size-full object-contain p-1"
+          className="size-full object-contain"
         />
       </span>
     );

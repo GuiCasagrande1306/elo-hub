@@ -186,7 +186,7 @@ export function ClientSettingsCard({
         <span className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white ring-1 ring-inset ring-black/10">
           {logo ? (
             // eslint-disable-next-line @next/next/no-img-element -- URL do Storage é externa e variável.
-            <img src={logo} alt="" className="size-full object-contain p-1.5" />
+            <img src={logo} alt="" className="size-full object-contain" />
           ) : (
             <ImagePlus className="size-5 text-muted-foreground/50" />
           )}

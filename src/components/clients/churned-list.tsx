@@ -139,7 +139,7 @@ function Marca({ row }: { row: ChurnedRow }) {
         <img
           src={row.logoUrl}
           alt=""
-          className="size-full object-contain p-0.5"
+          className="size-full object-contain"
         />
       </span>
     );

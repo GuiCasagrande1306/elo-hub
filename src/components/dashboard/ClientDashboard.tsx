@@ -454,7 +454,7 @@ function ClientMark({ client }: { client: Client }) {
         <img
           src={client.logo_url}
           alt={client.name}
-          className="size-full object-contain p-1.5"
+          className="size-full object-contain"
         />
       </span>
     );
