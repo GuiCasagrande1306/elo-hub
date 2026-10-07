@@ -5,10 +5,6 @@ import { motion } from "motion/react";
 import { FileDown, Globe, Radio } from "lucide-react";
 
 import { KpiCard } from "./kpi-card";
-import type { TotaisDaLoja } from "@/lib/loja/leitura";
-import type { ResumoDeConversoes } from "@/lib/ads/categorias-google";
-import { ConversoesGoogle } from "@/components/clients/conversoes-google";
-import { formatCurrency, formatNumber } from "@/lib/format";
 import { TrendChart } from "./trend-chart";
 import { PlatformSplitList } from "./platform-split";
 import { AdGallery } from "./ad-gallery";
@@ -56,25 +52,6 @@ import type { AdCreative, Client } from "@/types/database";
 
 export interface ClientDashboardProps {
   client: Client;
-  /**
-   * Faturamento da LOJA no período — só para quem tem integração.
-   *
-   * ⚠️ `null` para a maioria da carteira, e a seção some inteira. É o
-   * que faz este trabalho existir só no Atacado de Pratas sem alterar
-   * a tela de nenhum outro cliente.
-   *
-   * Não confundir com o KPI de receita acima: aquele é o que o pixel
-   * ATRIBUIU ao anúncio; este é a loja inteira, todos os canais.
-   */
-  loja: TotaisDaLoja | null;
-  /**
-   * As conversões do Google abertas por tipo.
-   *
-   * ⚠️ `null` quando a conta não tem linha coletada na janela, que é
-   * diferente de "teve zero". A seção não é desenhada no primeiro
-   * caso; no segundo ela aparece dizendo que não houve resultado.
-   */
-  conversoesGoogle: ResumoDeConversoes | null;
   /** Agências do cadastro, para o seletor do diálogo de configurações. */
   agencias: string[];
   /** Investimento, Resultados e Custo por Resultado — nesta ordem. */
@@ -118,8 +95,6 @@ export interface ClientDashboardProps {
 export function ClientDashboard({
   agencias,
   client,
-  loja,
-  conversoesGoogle,
   kpis,
   sparklines,
   trend,
@@ -264,76 +239,6 @@ export function ClientDashboard({
             Google Ads + Meta Ads unificados · comparação com os{" "}
             {period.days} dias anteriores
           </p>
-
-          {/* ---------------- A LOJA ----------------
-              DEPOIS dos KPIs e separado, porque mede OUTRA COISA: os
-              cards acima são o que o anúncio atribuiu; este bloco é a
-              loja inteira, incluindo orgânico, direto e recorrente.
-              Juntar os dois no mesmo grid faria somar o que não soma. */}
-          {loja && (
-            <div className="surface-card mt-6 p-5">
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h2 className="text-sm font-semibold">A loja no período</h2>
-                <span className="text-2xs text-muted-foreground">
-                  todos os canais, não só o anúncio
-                </span>
-              </div>
-
-              <div className="mt-4 grid gap-4 sm:grid-cols-3">
-                <div>
-                  <p className="text-2xs uppercase tracking-[0.08em] text-muted-foreground">
-                    Faturamento
-                  </p>
-                  <p className="mt-1 text-2xl font-bold tabular-nums">
-                    {formatCurrency(loja.receitaCents)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-2xs uppercase tracking-[0.08em] text-muted-foreground">
-                    Pedidos pagos
-                  </p>
-                  <p className="mt-1 text-2xl font-bold tabular-nums">
-                    {formatNumber(loja.pedidosPagos)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-2xs uppercase tracking-[0.08em] text-muted-foreground">
-                    Ticket médio
-                  </p>
-                  {/* Traço sem pedido — "R$ 0,00" diria que a venda
-                      saiu de graça. */}
-                  <p className="mt-1 text-2xl font-bold tabular-nums">
-                    {loja.ticketMedioCents === null
-                      ? "—"
-                      : formatCurrency(loja.ticketMedioCents)}
-                  </p>
-                </div>
-              </div>
-
-              {loja.pedidosDescartados > 0 && (
-                <p className="mt-3 text-2xs text-muted-foreground">
-                  {formatNumber(loja.pedidosDescartados)} pedidos fora da conta
-                  — cancelados ou aguardando pagamento.
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* ------------- CONVERSÕES DO GOOGLE -------------
-              Seção própria, e não um cartão no grid de cima, porque o
-              grid soma: ali um "Rota: 6" entraria no mesmo plano de
-              "Resultados", e pedido de rota não é lead. Aqui cada tipo
-              fica no nome dele, com micro-evento abaixo de uma linha.
-
-              ⚠️ Ação local do Perfil da Empresa não entra na coluna
-              "Conversões" do Google — é por isso que a ficha da Agenda
-              Contabilidade mostrava 0 com 1 ligação e 6 rotas no mês.
-              Ver a migration 85. */}
-          {conversoesGoogle && (
-            <div className="mt-4">
-              <ConversoesGoogle resumo={conversoesGoogle} />
-            </div>
-          )}
 
           {/* ---------------- META DO MÊS ----------------
               DEPOIS dos KPIs e visualmente separado, porque responde

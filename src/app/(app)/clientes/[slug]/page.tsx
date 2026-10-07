@@ -1,6 +1,5 @@
 import { notFound } from "next/navigation";
 import { totaisDaLoja } from "@/lib/loja/leitura";
-import { conversoesDoGoogle } from "@/lib/ads/leitura-conversoes";
 import type { Metadata } from "next";
 
 import { ClientDashboard } from "@/components/dashboard/ClientDashboard";
@@ -146,10 +145,6 @@ export default async function ClientPage({
      menos o Atacado de Pratas. Sem loja, nada abaixo muda. */
   const loja = await totaisDaLoja(client.id, start, end);
 
-  /* As conversões do Google abertas por tipo — ver a migration 85.
-     `null` para quem não tem linha na janela, e a seção não aparece. */
-  const conversoesGoogle = await conversoesDoGoogle(client.id, start, end);
-
   /* A janela ANTERIOR da loja, para a variação dos cartões.
      Sem ela, o faturamento da loja seria comparado com o do pixel —
      duas medidas diferentes numa seta só, que é o tipo de número que
@@ -239,8 +234,6 @@ export default async function ClientPage({
 
   return (
     <ClientDashboard
-      loja={loja}
-      conversoesGoogle={conversoesGoogle}
       client={client}
       agencias={nomesDeAgencia}
       kpis={kpisFinais}
