@@ -166,14 +166,7 @@ export default async function ReportsPage() {
         }
       />
 
-      {/* AGENDA ANTES DA ESTAÇÃO. A página inteira pressupunha um fluxo
-          configurado; medido em 08/08/2026, nenhuma das 47 contas ativas
-          tinha envio ligado. Enquanto houver pendência, o primeiro
-          bloco tem de ser o que a resolve — e ele se recolhe sozinho
-          quando não houver mais. */}
-      <ReportSetupTable linhas={agenda} />
-
-      <div className="mt-8">
+      <div>
         <CommandStation clients={resumos} modeloDaMensagem={modeloDaMensagem} />
       </div>
 
@@ -203,6 +196,22 @@ export default async function ReportsPage() {
             : "Seus envios e os relatórios que o robô preparou."
         }
       />
+
+      {/* A AGENDA DESCEU PARA O FIM, EM GAVETA FECHADA — pedido do
+          Guilherme em 08/10/2026.
+
+          Ela nasceu no TOPO e aberta, e havia razão: medido em
+          08/08/2026, nenhuma das 47 contas ativas tinha envio ligado, e
+          o primeiro bloco precisava ser o que resolvia isso. Dois meses
+          depois a configuração está feita, e a lista virou um cadastro
+          de 63 linhas empurrando para baixo justamente o que se usa
+          todo dia — escolher a conta, conferir o texto, despachar.
+
+          ⚠️ O SINAL DE PENDÊNCIA NÃO SE PERDE. O contador de pendentes
+          e o aviso de dia lotado ficam no cabeçalho da gaveta, visíveis
+          com ela fechada. Era o que justificava a agenda estar em cima;
+          continua à vista, só que sem a tabela junto. */}
+      <ReportSetupTable linhas={agenda} />
 
     </PageContainer>
   );

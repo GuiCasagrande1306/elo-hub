@@ -90,10 +90,6 @@ export function ReportSetupTable({ linhas }: { linhas: ReportSetupRow[] }) {
   const [salvando, setSalvando] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
-  /* Fechada por padrão QUANDO JÁ ESTÁ TUDO PRONTO. Uma tabela de 47
-     linhas no topo da página seria ruído permanente depois de
-     configurada — mas enquanto houver pendência ela precisa estar
-     aberta, senão vira mais uma gaveta que ninguém abre. */
   const prontos = linhas.filter(estaPronto).length;
   const pendentes = linhas.length - prontos;
 
@@ -140,7 +136,19 @@ export function ReportSetupTable({ linhas }: { linhas: ReportSetupRow[] }) {
       })
       .sort((a, b) => b.n - a.n);
   }, [linhas]);
-  const [aberta, setAberta] = useState(pendentes > 0);
+  /* ⚠️ NASCE FECHADA, SEMPRE — inclusive com pendência. Decisão do
+     Guilherme em 08/10/2026, junto com a descida para o fim da página.
+
+     Antes ela abria sozinha quando havia conta por configurar, e isso
+     fazia sentido quando a agenda era o primeiro bloco e NENHUMA conta
+     estava ligada. Hoje são 63 linhas: aberta, ela é a página inteira,
+     e o trabalho do dia — escolher a conta, conferir o texto, despachar
+     — fica abaixo de uma tabela de cadastro.
+
+     O QUE PRECISAVA SOBREVIVER sobreviveu: o selo de pendentes e o de
+     dia lotado ficam no cabeçalho, que é visível com a gaveta fechada.
+     Quem precisa agir continua vendo que precisa agir. */
+  const [aberta, setAberta] = useState(false);
 
   const filtradas = useMemo(() => {
     const termo = busca.trim().toLowerCase();
@@ -224,11 +232,14 @@ export function ReportSetupTable({ linhas }: { linhas: ReportSetupRow[] }) {
   }
 
   return (
-    <section className="mt-6">
+    <section className="mt-8">
+      {/* A BARRA É O PUXADOR DA GAVETA. Fechada, ela precisa parecer
+          algo que se abre — um título solto no fim da página lê como
+          seção vazia, e ninguém clica. */}
       <button
         type="button"
         onClick={() => setAberta((v) => !v)}
-        className="flex w-full items-center gap-2 text-left"
+        className="surface-card flex w-full items-center gap-2 p-4 text-left transition-colors hover:bg-surface-2/60"
       >
         <div className="min-w-0 flex-1">
           <h2 className="flex items-center gap-2 text-lg font-semibold tracking-[-0.015em]">
