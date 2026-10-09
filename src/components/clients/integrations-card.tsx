@@ -6,8 +6,8 @@ import { Check, ExternalLink, Loader2, TriangleAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Gaveta } from "@/components/ui/gaveta";
 import { GoogleAccountPicker } from "./google-account-picker";
-import { InstagramAutomationStatus } from "./instagram-automation-status";
 import { MetaAccountPicker } from "./meta-account-picker";
 import {
   Select,
@@ -380,160 +380,169 @@ function LinhaIntegracao({
             </Button>
           </div>
 
+          {/* ⚠️ ESTES TRÊS VOLTARAM PARA DENTRO DE UMA GAVETA, e não
+              foram apagados. Em 09/10/2026 eles saíram do diálogo
+              inteiro, espelhando o Acelera Ads — e o Acelera é um
+              clone que nunca os usou. Aqui o backend usa: `is_active`
+              governa sync, miniaturas e aviso de saldo;
+              `billing_type`/`funds_cents` alimentam os Alertas de
+              saldo; `conversion_action_type` decide o que o Meta conta
+              como conversão.
 
-          {/* PLATAFORMA EM USO. Vem primeiro porque governa o resto:
-              desligada, nada abaixo tem efeito.
+              E este diálogo era a ÚNICA tela de cada um dos três.
+              Apagados, as colunas continuavam sendo lidas e ninguém
+              mais conseguia mudá-las — com o agravante de que errar o
+              evento do pixel zera conversão e receita no relatório, em
+              silêncio, parecendo mês ruim.
 
-              Existia como coluna e nunca teve tela — e o preço apareceu
-              no aviso diário de saldo, com quinze contas "R$ 0,00, acaba
-              hoje" que a agência não roda de propósito. Um aviso com
-              quinze linhas de ruído esconde as três que importam. */}
-          <label className="mt-3 flex items-start gap-2 border-t border-hairline pt-3">
-            <input
-              type="checkbox"
-              checked={ativa}
-              onChange={(e) => alternarAtiva(e.target.checked)}
-              disabled={salvando}
-              className="mt-0.5 size-3.5 accent-[var(--primary)]"
-            />
-            <span>
-              <span className="text-xs font-medium">
-                Plataforma em uso por este cliente
+              Fechada, a gaveta entrega o alívio visual que motivou a
+              remoção; aberta, devolve o controle. */}
+          <Gaveta titulo="Avançado" compacta>
+
+
+            {/* PLATAFORMA EM USO. Vem primeiro porque governa o resto:
+                desligada, nada abaixo tem efeito.
+
+                Existia como coluna e nunca teve tela — e o preço apareceu
+                no aviso diário de saldo, com quinze contas "R$ 0,00, acaba
+                hoje" que a agência não roda de propósito. Um aviso com
+                quinze linhas de ruído esconde as três que importam. */}
+            <label className="mt-3 flex items-start gap-2 border-t border-hairline pt-3">
+              <input
+                type="checkbox"
+                checked={ativa}
+                onChange={(e) => alternarAtiva(e.target.checked)}
+                disabled={salvando}
+                className="mt-0.5 size-3.5 accent-[var(--primary)]"
+              />
+              <span>
+                <span className="text-xs font-medium">
+                  Plataforma em uso por este cliente
+                </span>
+                <span className="mt-0.5 block text-2xs text-muted-foreground">
+                  Desmarque quando a conta não roda aqui. Ela sai da
+                  sincronização e do aviso de saldo; o histórico já coletado
+                  continua nos relatórios.
+                </span>
               </span>
-              <span className="mt-0.5 block text-2xs text-muted-foreground">
-                Desmarque quando a conta não roda aqui. Ela sai da
-                sincronização e do aviso de saldo; o histórico já coletado
-                continua nos relatórios.
-              </span>
-            </span>
-          </label>
+            </label>
 
-          {/* O alerta de saldo só se aplica a conta pré-paga: em
-              pós-paga não há crédito a esgotar, e o `balance` da Meta
-              significa dívida, não folga. */}
-          <label className="mt-3 flex items-start gap-2 border-t border-hairline pt-3">
-            <input
-              type="checkbox"
-              checked={prePaga}
-              onChange={(e) => alternarFaturamento(e.target.checked)}
-              disabled={salvando}
-              className="mt-0.5 size-3.5 accent-[var(--primary)]"
-            />
-            <span>
-              <span className="text-xs font-medium">Conta pré-paga</span>
-              <span className="mt-0.5 block text-2xs text-muted-foreground">
-                Monitora o saldo e avisa quando faltarem 3 dias de verba.
+            {/* O alerta de saldo só se aplica a conta pré-paga: em
+                pós-paga não há crédito a esgotar, e o `balance` da Meta
+                significa dívida, não folga. */}
+            <label className="mt-3 flex items-start gap-2 border-t border-hairline pt-3">
+              <input
+                type="checkbox"
+                checked={prePaga}
+                onChange={(e) => alternarFaturamento(e.target.checked)}
+                disabled={salvando}
+                className="mt-0.5 size-3.5 accent-[var(--primary)]"
+              />
+              <span>
+                <span className="text-xs font-medium">Conta pré-paga</span>
+                <span className="mt-0.5 block text-2xs text-muted-foreground">
+                  Monitora o saldo e avisa quando faltarem 3 dias de verba.
+                </span>
               </span>
-            </span>
-          </label>
+            </label>
 
-          {/* Só aparece em conta pré-paga: em pós-paga não há carteira
-              a esgotar, e o campo só confundiria. */}
-          {prePaga && (
-            <div className="mt-3 border-t border-hairline pt-3">
-              <label className="text-2xs text-muted-foreground">
-                Saldo disponível hoje (do painel da plataforma)
-              </label>
-              <div className="mt-1 flex flex-wrap items-center gap-2">
-                <Input
-                  value={fundos}
-                  onChange={(e) => setFundos(e.target.value)}
-                  placeholder="341,77"
-                  inputMode="decimal"
-                  className="max-w-[140px] tabular-nums"
-                />
-                <Button size="sm" variant="outline" onClick={salvarFundos} disabled={salvando}>
-                  {salvando ? (
-                    <Loader2 className="size-3.5 animate-spin" />
-                  ) : (
-                    <Check className="size-3.5" />
+            {/* Só aparece em conta pré-paga: em pós-paga não há carteira
+                a esgotar, e o campo só confundiria. */}
+            {prePaga && (
+              <div className="mt-3 border-t border-hairline pt-3">
+                <label className="text-2xs text-muted-foreground">
+                  Saldo disponível hoje (do painel da plataforma)
+                </label>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <Input
+                    value={fundos}
+                    onChange={(e) => setFundos(e.target.value)}
+                    placeholder="341,77"
+                    inputMode="decimal"
+                    className="max-w-[140px] tabular-nums"
+                  />
+                  <Button size="sm" variant="outline" onClick={salvarFundos} disabled={salvando}>
+                    {salvando ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <Check className="size-3.5" />
+                    )}
+                    Registrar
+                  </Button>
+                </div>
+                <p className="mt-1.5 text-2xs text-muted-foreground">
+                  A Meta não expõe a carteira pela API. Informe o valor ao
+                  recarregar — o gasto diário é descontado sozinho a partir
+                  daí, então não precisa reanotar todo dia.
+                  {status.fundsRecordedAt && (
+                    <> Última leitura: {formatarData(status.fundsRecordedAt)}.</>
                   )}
-                  Registrar
-                </Button>
+                </p>
               </div>
-              <p className="mt-1.5 text-2xs text-muted-foreground">
-                A Meta não expõe a carteira pela API. Informe o valor ao
-                recarregar — o gasto diário é descontado sozinho a partir
-                daí, então não precisa reanotar todo dia.
-                {status.fundsRecordedAt && (
-                  <> Última leitura: {formatarData(status.fundsRecordedAt)}.</>
-                )}
-              </p>
-            </div>
-          )}
+            )}
 
-          {/* Só Meta: no Google a conversão é definida na própria conta,
-              e o provider lê o que vier de lá. */}
-          {status.platform === "meta_ads" && (
-            <div className="mt-3 border-t border-hairline pt-3">
-              <label className="text-2xs text-muted-foreground">
-                O que conta como conversão
-              </label>
-              <Select
-                value={conversao}
-                onValueChange={(v) => salvarConversao(v ?? PADRAO)}
-              >
-                <SelectTrigger size="sm" className="mt-1 w-full">
-                  <SelectValue>
-                    {(v: string) =>
-                      v === PADRAO
-                        ? "Padrão do segmento"
-                        : (CONVERSION_ACTION_OPTIONS.find((o) => o.value === v)
-                            ?.label ?? v)
-                    }
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={PADRAO}>Padrão do segmento</SelectItem>
-                  {CONVERSION_ACTION_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
-                      <span className="ml-1.5 text-2xs text-muted-foreground">
-                        {o.hint}
-                      </span>
-                    </SelectItem>
+            {/* Só Meta: no Google a conversão é definida na própria conta,
+                e o provider lê o que vier de lá. */}
+            {status.platform === "meta_ads" && (
+              <div className="mt-3 border-t border-hairline pt-3">
+                <label className="text-2xs text-muted-foreground">
+                  O que conta como conversão
+                </label>
+                <Select
+                  value={conversao}
+                  onValueChange={(v) => salvarConversao(v ?? PADRAO)}
+                >
+                  <SelectTrigger size="sm" className="mt-1 w-full">
+                    <SelectValue>
+                      {(v: string) =>
+                        v === PADRAO
+                          ? "Padrão do segmento"
+                          : (CONVERSION_ACTION_OPTIONS.find((o) => o.value === v)
+                              ?.label ?? v)
+                      }
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={PADRAO}>Padrão do segmento</SelectItem>
+                    {CONVERSION_ACTION_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.label}
+                        <span className="ml-1.5 text-2xs text-muted-foreground">
+                          {o.hint}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {/* UM POR LINHA, e não `{efetivo}` solto.
+                    `conversionActionFor` devolve um ARRAY, e array em JSX
+                    é renderizado concatenado, sem separador. Na tela isso
+                    virava uma palavra só —
+                    "…fb_pixel_leadonsite_conversion.lead_grouped…" — que
+                    além de ilegível parece um valor errado gravado no
+                    banco. E como não tem espaço para quebrar, a linha
+                    empurrava o diálogo inteiro na horizontal.
+
+                    `break-all` porque o que estoura é UM token sem espaço:
+                    `break-words` só quebra entre palavras e não teria onde
+                    agir. */}
+                <ul className="mt-1.5 flex flex-col gap-0.5">
+                  {efetivo.map((tipo) => (
+                    <li
+                      key={tipo}
+                      className="break-all font-mono text-2xs text-muted-foreground"
+                    >
+                      {tipo}
+                    </li>
                   ))}
-                </SelectContent>
-              </Select>
-              {/* UM POR LINHA, e não `{efetivo}` solto.
-                  `conversionActionFor` devolve um ARRAY, e array em JSX
-                  é renderizado concatenado, sem separador. Na tela isso
-                  virava uma palavra só —
-                  "…fb_pixel_leadonsite_conversion.lead_grouped…" — que
-                  além de ilegível parece um valor errado gravado no
-                  banco. E como não tem espaço para quebrar, a linha
-                  empurrava o diálogo inteiro na horizontal.
-
-                  `break-all` porque o que estoura é UM token sem espaço:
-                  `break-words` só quebra entre palavras e não teria onde
-                  agir. */}
-              <ul className="mt-1.5 flex flex-col gap-0.5">
-                {efetivo.map((tipo) => (
-                  <li
-                    key={tipo}
-                    className="break-all font-mono text-2xs text-muted-foreground"
-                  >
-                    {tipo}
-                  </li>
-                ))}
-              </ul>
-              <p className="mt-1 text-2xs text-muted-foreground">
-                A Meta devolve todos os eventos do pixel juntos. Escolher o
-                errado zera conversão e receita no relatório.
-              </p>
-            </div>
-          )}
-
-          {/* O EloChat usa o MESMO token do Meta Ads, com permissões
-              diferentes — por isso mora aqui dentro e não num card
-              próprio: quem reautoriza para o direct mexe no token que a
-              sincronização de anúncios usa. */}
-          {status.platform === "meta_ads" && (
-            <InstagramAutomationStatus
-              clientId={clientId}
-              clientSlug={clientSlug}
-            />
-          )}
+                </ul>
+                <p className="mt-1 text-2xs text-muted-foreground">
+                  A Meta devolve todos os eventos do pixel juntos. Escolher o
+                  errado zera conversão e receita no relatório.
+                </p>
+              </div>
+            )}
+          </Gaveta>
         </div>
       )}
 

@@ -19,6 +19,17 @@ import {
   type PermissoesInstagram,
 } from "@/lib/instagram/elochat-scopes";
 
+/* ⚠️ NÃO ESTÁ RENDERIZADO EM LUGAR NENHUM desde 09/10/2026. O bloco
+   saiu do cartão de integrações a pedido do Guilherme, junto com a
+   limpeza que espelhou o Acelera Ads.
+
+   O arquivo fica porque o EloChat está em STANDBY desde 08/08/2026
+   esperando quatro coisas que não são código — app da Meta com o
+   produto Instagram Login, as duas variáveis na Vercel, o callback
+   registrado e a conta-piloto como testadora. Enquanto nada disso
+   existe, o botão não teria o que fazer; quando existir, ele volta
+   com um import. Apagar agora seria reescrevê-lo depois. */
+
 /* =====================================================================
    Conexão Instagram (EloChat)
    ---------------------------------------------------------------------

@@ -215,6 +215,12 @@ export const newClientSchema = z.object({
 
   /* --- Integrações (opcionais) --------------------------------------- */
   // "act_123456789" ou só os dígitos — o provider normaliza o prefixo.
+  /* ⚠️ SEM CAMPO NO FORMULÁRIO desde 09/10/2026 — ficam sempre vazios
+     e viram `null` no RPC. O ID da conta passou a ser preenchido no
+     cartão de integrações, depois de conectar: antes do token ele não
+     serve para nada, e pedi-lo no cadastro só adiantava uma informação
+     que ainda não existe. O schema mantém os dois porque a assinatura
+     do RPC os espera. */
   metaAccountId: optionalText(40, "ID Meta"),
   // "123-456-7890" ou "1234567890" — o provider remove os hífens.
   googleCustomerId: optionalText(30, "ID Google"),

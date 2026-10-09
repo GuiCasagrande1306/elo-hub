@@ -38,13 +38,14 @@ import type { IntegrationStatus } from "@/lib/data";
 
 export function ClientSettingsDialog({
   client,
-  integrations,
   segment,
+  integrations,
   agencias,
 }: {
   client: Client;
-  integrations: IntegrationStatus[];
+  /** Define qual evento do pixel conta como conversão por padrão. */
   segment: ClientSegment;
+  integrations: IntegrationStatus[];
   /** Vem do cadastro de agências, não de lista fixa. */
   agencias: string[];
 }) {

@@ -664,60 +664,6 @@ export function NewClientSheet({ agencias }: { agencias: string[] }) {
                   }}
                 />
               </div>
-
-              {/* ============ INTEGRAÇÕES ============ */}
-              <Separator className="my-7" />
-              <SectionTitle
-                title="Integrações"
-                hint="Opcional. Sem elas o cliente é cadastrado, mas o sync não traz métricas."
-              />
-
-              <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                <FormField
-                  control={form.control}
-                  name="metaAccountId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>ID da conta Meta Ads</FormLabel>
-                      <FormControl
-                        render={
-                          <Input
-                            placeholder="act_123456789"
-                            className="font-mono text-xs"
-                          />
-                        }
-                        {...field}
-                      />
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="googleCustomerId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>ID do cliente Google Ads</FormLabel>
-                      <FormControl
-                        render={
-                          <Input
-                            placeholder="123-456-7890"
-                            className="font-mono text-xs"
-                          />
-                        }
-                        {...field}
-                      />
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-                Os tokens de acesso são configurados à parte, em
-                Configurações — eles nunca passam por este formulário.
-              </p>
             </div>
 
             {/* ============ RODAPÉ ============ */}
