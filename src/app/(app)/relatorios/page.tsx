@@ -5,6 +5,7 @@ import { TemplateSettingsDialog } from "@/components/reports/template-settings-d
 import { ReportHistoryList } from "@/components/reports/report-history";
 import { MessageSettingsDialog } from "@/components/reports/message-settings-dialog";
 import { ReportSetupTable } from "@/components/reports/report-setup-table";
+import { Gaveta } from "@/components/ui/gaveta";
 import { getCurrentUser } from "@/lib/supabase/server";
 import {
   getClients,
@@ -170,21 +171,33 @@ export default async function ReportsPage() {
         <CommandStation clients={resumos} modeloDaMensagem={modeloDaMensagem} />
       </div>
 
-      {/* Fila de envio ---------------------------------------------
-          Primeiro na página porque é a única seção com trabalho a
-          fazer hoje; templates e histórico são consulta. */}
-      <section className="mt-8">
-        <h2 className="text-lg font-semibold tracking-[-0.015em]">
-          Aguardando envio
-        </h2>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          O robô gera o PDF na madrugada; você confere e dispara. A mensagem
-          sai do <strong>seu</strong> WhatsApp — conecte-o em Configurações.
-        </p>
-
-        <span id="fila-de-envio" className="scroll-mt-20" />
-      <SendQueue itens={pendentes} />
-      </section>
+      {/* ⚠️ A FILA ABRE SOZINHA QUANDO TEM TRABALHO, e é a única das três
+          gavetas que faz isso. Agenda e histórico são cadastro e
+          consulta; esta é o que precisa sair HOJE. Fechada por padrão,
+          um dia com relatório pronto pareceria um dia sem nada a fazer
+          — e o PDF que o robô preparou de madrugada morre na fila sem
+          ninguém saber que existia. Vazia, ela se recolhe. */}
+      <span id="fila-de-envio" className="scroll-mt-20" />
+      <Gaveta
+        titulo="Aguardando envio"
+        descricao={
+          <>
+            O robô gera o PDF na madrugada; você confere e dispara. A
+            mensagem sai do <strong>seu</strong> WhatsApp — conecte-o em
+            Configurações.
+          </>
+        }
+        selo={
+          pendentes.length > 0 ? (
+            <span className="rounded-full bg-signal/15 px-2 py-0.5 text-2xs font-medium text-signal">
+              {pendentes.length} na fila
+            </span>
+          ) : null
+        }
+        abertaDeInicio={pendentes.length > 0}
+      >
+        <SendQueue itens={pendentes} />
+      </Gaveta>
 
       <ReportHistoryList
         reports={reports}

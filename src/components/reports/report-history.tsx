@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
+
+import { Gaveta } from "@/components/ui/gaveta";
 import { CheckCircle2, Clock, FileText, TriangleAlert } from "lucide-react";
 
 import {
@@ -67,21 +69,21 @@ export function ReportHistoryList({
   );
 
   return (
-    <section className="mt-10">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold tracking-[-0.015em]">
-            Histórico de envios
-          </h2>
-          <p className="mt-0.5 text-sm text-muted-foreground">{escopo}</p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <span className="text-2xs tabular-nums text-muted-foreground">
-            {filtrados.length} de {reports.length}
-          </span>
-          <PeriodPicker valor={periodo} onChange={setPeriodo} />
-        </div>
+    <Gaveta
+      titulo="Histórico de envios"
+      descricao={escopo}
+      contador={
+        <span className="shrink-0 text-2xs tabular-nums text-muted-foreground">
+          {filtrados.length} de {reports.length}
+        </span>
+      }
+    >
+      {/* ⚠️ O SELETOR DE PERÍODO FICA AQUI DENTRO, e não na barra. O
+          cabeçalho inteiro é um botão: um seletor aninhado nele seria
+          HTML inválido e abriria a gaveta a cada clique. E fechado ele
+          não serviria para nada — filtrar o que não se está vendo. */}
+      <div className="mt-4 flex justify-end">
+        <PeriodPicker valor={periodo} onChange={setPeriodo} />
       </div>
 
       {reports.length === 0 ? (
@@ -160,6 +162,6 @@ export function ReportHistoryList({
           </ul>
         </div>
       )}
-    </section>
+    </Gaveta>
   );
 }

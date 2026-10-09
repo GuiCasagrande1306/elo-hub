@@ -1,15 +1,15 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { Check, ChevronDown, Search, TriangleAlert } from "lucide-react";
+import { Check, Search, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 
 import { salvarAgendaDeRelatorio } from "@/app/(app)/relatorios/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ClientAvatar } from "@/components/clients/client-avatar";
+import { Gaveta } from "@/components/ui/gaveta";
 import { WhatsAppDestinationPicker } from "@/components/clients/whatsapp-destination-picker";
-import { cn } from "@/lib/utils";
 import type { ReportSetupRow } from "@/lib/data";
 
 /* =====================================================================
@@ -136,20 +136,6 @@ export function ReportSetupTable({ linhas }: { linhas: ReportSetupRow[] }) {
       })
       .sort((a, b) => b.n - a.n);
   }, [linhas]);
-  /* ⚠️ NASCE FECHADA, SEMPRE — inclusive com pendência. Decisão do
-     Guilherme em 08/10/2026, junto com a descida para o fim da página.
-
-     Antes ela abria sozinha quando havia conta por configurar, e isso
-     fazia sentido quando a agenda era o primeiro bloco e NENHUMA conta
-     estava ligada. Hoje são 63 linhas: aberta, ela é a página inteira,
-     e o trabalho do dia — escolher a conta, conferir o texto, despachar
-     — fica abaixo de uma tabela de cadastro.
-
-     O QUE PRECISAVA SOBREVIVER sobreviveu: o selo de pendentes e o de
-     dia lotado ficam no cabeçalho, que é visível com a gaveta fechada.
-     Quem precisa agir continua vendo que precisa agir. */
-  const [aberta, setAberta] = useState(false);
-
   const filtradas = useMemo(() => {
     const termo = busca.trim().toLowerCase();
     const base = termo
@@ -232,49 +218,38 @@ export function ReportSetupTable({ linhas }: { linhas: ReportSetupRow[] }) {
   }
 
   return (
-    <section className="mt-8">
-      {/* A BARRA É O PUXADOR DA GAVETA. Fechada, ela precisa parecer
-          algo que se abre — um título solto no fim da página lê como
-          seção vazia, e ninguém clica. */}
-      <button
-        type="button"
-        onClick={() => setAberta((v) => !v)}
-        className="surface-card flex w-full items-center gap-2 p-4 text-left transition-colors hover:bg-surface-2/60"
-      >
-        <div className="min-w-0 flex-1">
-          <h2 className="flex items-center gap-2 text-lg font-semibold tracking-[-0.015em]">
-            Agenda de envio
-            {pendentes > 0 && (
-              <span className="rounded-full bg-warning-muted px-2 py-0.5 text-2xs font-medium text-warning">
-                {pendentes} {pendentes === 1 ? "pendente" : "pendentes"}
-              </span>
-            )}
-          </h2>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            {pendentes === 0
-              ? `Todas as ${linhas.length} contas ativas têm destino e dia definidos.`
-              : "Sem destino e dia, o robô não prepara nada e a fila abaixo nasce vazia."}
-          </p>
-        </div>
-
-        {lotacao.length > 0 && (
-          <span className="shrink-0 rounded-full bg-negative-muted px-2 py-0.5 text-2xs font-medium text-negative">
-            {lotacao.length} {lotacao.length === 1 ? "dia lotado" : "dias lotados"}
+    <Gaveta
+      titulo="Agenda de envio"
+      descricao={
+        pendentes === 0
+          ? `Todas as ${linhas.length} contas ativas têm destino e dia definidos.`
+          : "Sem destino e dia, o robô não prepara nada e a fila acima nasce vazia."
+      }
+      selo={
+        pendentes > 0 ? (
+          <span className="rounded-full bg-warning-muted px-2 py-0.5 text-2xs font-medium text-warning">
+            {pendentes} {pendentes === 1 ? "pendente" : "pendentes"}
           </span>
-        )}
-
-        <span className="shrink-0 text-2xs tabular-nums text-muted-foreground">
-          {prontos} de {linhas.length}
-        </span>
-        <ChevronDown
-          className={cn(
-            "size-4 shrink-0 text-muted-foreground transition-transform",
-            aberta && "rotate-180",
+        ) : null
+      }
+      contador={
+        <>
+          {/* O DIA LOTADO VIAJA NO CABEÇALHO porque é o aviso mais
+              sério da seção: ele diz que algum cliente não vai receber.
+              Dentro da gaveta, fechada, ele não existiria. */}
+          {lotacao.length > 0 && (
+            <span className="shrink-0 rounded-full bg-negative-muted px-2 py-0.5 text-2xs font-medium text-negative">
+              {lotacao.length}{" "}
+              {lotacao.length === 1 ? "dia lotado" : "dias lotados"}
+            </span>
           )}
-        />
-      </button>
-
-      {aberta && (
+          <span className="shrink-0 text-2xs tabular-nums text-muted-foreground">
+            {prontos} de {linhas.length}
+          </span>
+        </>
+      }
+    >
+      {
         <div className="mt-4 flex flex-col gap-3">
           {/* O AVISO PRECISA DIZER O QUE ACONTECE, não só que está cheio.
               "Dia lotado" sozinho parece recomendação de estilo; o que
@@ -464,7 +439,7 @@ export function ReportSetupTable({ linhas }: { linhas: ReportSetupRow[] }) {
             )}
           </div>
         </div>
-      )}
-    </section>
+      }
+    </Gaveta>
   );
 }
