@@ -45,7 +45,15 @@ const SEGMENT_LABELS: Record<ClientSegment, string> = {
 };
 
 
-export default async function ReportsPage() {
+export default async function ReportsPage({
+  searchParams,
+}: {
+  /* Mesma convenção de `/elochat?cliente=` e da prévia do PDF: o slug
+     na URL, não o id. */
+  searchParams: Promise<{ cliente?: string }>;
+}) {
+  const { cliente: clienteInicial } = await searchParams;
+
   /* O papel decide o que a TELA diz; quem decide o que o banco DEVOLVE é
      a policy `report_history_select` (migration 30): admin vê tudo,
      colaborador vê os próprios envios e a fila do cron. Sem a frase, um
@@ -168,7 +176,11 @@ export default async function ReportsPage() {
       />
 
       <div>
-        <CommandStation clients={resumos} modeloDaMensagem={modeloDaMensagem} />
+        <CommandStation
+          clients={resumos}
+          clienteInicial={clienteInicial}
+          modeloDaMensagem={modeloDaMensagem}
+        />
       </div>
 
       {/* ⚠️ A FILA ABRE SOZINHA QUANDO TEM TRABALHO, e é a única das três

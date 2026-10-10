@@ -106,9 +106,23 @@ const LIMITE_DA_LEGENDA = 1024;
 
 export function CommandStation({
   clients,
+  clienteInicial,
   modeloDaMensagem,
 }: {
   clients: ClientSummary[];
+  /**
+   * Slug vindo de `?cliente=` — quem chegou pelo botão de uma conta.
+   *
+   * SLUG E NÃO ID porque é o que já viaja na URL no resto do sistema
+   * (`/elochat?cliente=`, a prévia do PDF) e é o que uma pessoa
+   * consegue ler e corrigir na barra de endereço.
+   *
+   * Desconhecido cai na primeira conta, sem erro: o link pode vir de
+   * um favorito antigo, de uma conta encerrada ou de um colaborador
+   * que não enxerga aquele cliente. Abrir na primeira é o mesmo que
+   * entrar pelo menu.
+   */
+  clienteInicial?: string;
   /**
    * O texto gravado em `report_message_settings`.
    *
@@ -119,7 +133,11 @@ export function CommandStation({
    */
   modeloDaMensagem: string;
 }) {
-  const [clientId, setClientId] = useState(clients[0]?.id ?? "");
+  /* A conta que a tela abre: a do link, se existir na lista. */
+  const inicial =
+    clients.find((c) => c.slug === clienteInicial) ?? clients[0] ?? null;
+
+  const [clientId, setClientId] = useState(inicial?.id ?? "");
   const [copiado, setCopiado] = useState(false);
 
   /* A LEGENDA EDITADA À MÃO, amarrada à conta e à janela em que foi
@@ -153,9 +171,13 @@ export function CommandStation({
 
   /* Abre na janela da META da conta — é o período que o servidor já
      somou, então a tela nasce com número conferido e sem ida ao banco. */
+  /* ⚠️ A JANELA É A DA CONTA QUE ABRIU, não a da primeira da lista.
+     Com `clients[0]` aqui, chegar pelo botão de um cliente mostrava o
+     nome certo com o período de OUTRA conta — e o texto pronto para
+     copiar nasceria com um prazo que não é o dele. */
   const [periodo, setPeriodo] = useState<Intervalo>(() => ({
-    inicio: clients[0]?.period.start ?? "",
-    fim: clients[0]?.period.end ?? "",
+    inicio: inicial?.period.start ?? "",
+    fim: inicial?.period.end ?? "",
   }));
 
   /* Números da janela ESCOLHIDA. `null` = ainda é a janela da meta, e

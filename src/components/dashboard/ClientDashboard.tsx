@@ -197,7 +197,11 @@ export function ClientDashboard({
                 size="sm"
                 className="h-9"
                 nativeButton={false}
-                render={<Link href="/relatorios" />}
+                /* LEVA A CONTA JUNTO. Sem o slug, o botão de um
+                   cliente abria a estação na PRIMEIRA da carteira, e
+                   quem não reparasse no seletor geraria o relatório de
+                   outra pessoa. */
+                render={<Link href={`/relatorios?cliente=${client.slug}`} />}
               >
                 <FileDown className="size-4" />
                 Gerar relatório
