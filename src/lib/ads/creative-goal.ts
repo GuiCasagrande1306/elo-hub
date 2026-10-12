@@ -123,13 +123,14 @@ const POR_OBJETIVO: [RegExp, string][] = [
  * quanto de site, e só a meta separa.
  *
  * ⚠️ O QUE ESTÁ AQUI É O QUE O BANCO SABE CONTAR POR CAMPANHA:
- * investimento, impressões, cliques, a conversão da conta e — desde a
- * migration 76 — visita ao perfil. Objetivo cuja prova o banco não
+ * investimento, impressões, cliques, a conversão da conta, visita ao
+ * perfil (migration 76) e conversa iniciada (migration 91). Objetivo cuja prova o banco não
  * guarda (visualização de vídeo, instalação de app) cai em `conversao`,
  * que é o comportamento antigo, em vez de inventar uma coluna vazia.
  */
 export type UnidadeDoResultado =
   | "visitas"
+  | "conversas"
   | "impressoes"
   | "cliques"
   | "conversao";
@@ -152,6 +153,26 @@ export function unidadeDaCampanha(
      padrões de tráfego para que OUTCOME_LEADS/LINK_CLICKS não vire
      "cliques". */
   if (/LEAD/.test(objetivo)) return "conversao";
+
+  /* CONVERSA DEPOIS DE LEAD, E A ORDEM É DELIBERADA.
+     -----------------------------------------------------------------
+     Numa conta de captação, `POR_SEGMENTO` já conta conversa iniciada
+     como conversão da conta — ali a linha deve mostrar o rótulo da
+     conta ("Leads", "Contatos") e fechar com o card. O desvio para cá
+     é para a campanha de mensagem em conta que NÃO conta conversa:
+     negócio local, e-commerce, delivery.
+
+     Medido no Atman Cozinha, setembro/2026 — `local_business`:
+     "01 | ENGAJAMENTO WHATSAPP", OUTCOME_ENGAGEMENT/REPLIES, R$ 285,32,
+     imprimindo "409 visitas ao perfil" porque a conversão da conta é
+     visita. As 409 eram visitas mesmo — o número certo de uma pergunta
+     que a linha não estava fazendo.
+
+     `MESSAGES` é o objetivo legado; hoje vem OUTCOME_ENGAGEMENT com a
+     meta em REPLIES, e é a meta que separa de uma campanha de perfil. */
+  if (/REPLIES|CONVERSATION|MESSAG/.test(meta) || /MESSAG/.test(objetivo)) {
+    return "conversas";
+  }
 
   if (/^IMPRESSIONS$|REACH|AD_RECALL/.test(meta) || /AWARENESS|BRAND/.test(objetivo)) {
     return "impressoes";
@@ -181,6 +202,7 @@ export const ROTULO_DA_UNIDADE: Record<
   string
 > = {
   visitas: "Visitas ao perfil",
+  conversas: "Conversas iniciadas",
   impressoes: "Impressões",
   cliques: "Cliques",
 };

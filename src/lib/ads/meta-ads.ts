@@ -227,6 +227,14 @@ export function valorDoTipo(
   return toDecimal(typeof valor === "string" ? valor : 0);
 }
 
+/* O evento que a Meta chama de resultado numa campanha de mensagem.
+   É o DO MEIO dos três que se contêm — ver a medição em
+   `conversion-action.ts`: 129 `total_messaging_connection` ⊃ 122 deste
+   ⊃ 117 `messaging_first_reply`. É também o que `POR_SEGMENTO` usa
+   para captação, então a conta de uma conta de leads continua batendo
+   com a linha da campanha. */
+const CONVERSA_INICIADA = "onsite_conversion.messaging_conversation_started_7d";
+
 export function toNormalizedRow(
   row: MetaInsightRow,
   conversionActionTypes: string | string[],
@@ -295,6 +303,20 @@ export function toNormalizedRow(
       row.instagram_profile_visits === undefined
         ? null
         : toInt(row.instagram_profile_visits),
+    /* ⚠️ AUSENTE É ZERO AQUI, ao contrário da visita ao perfil logo
+       acima, e a diferença não é descuido.
+
+       `instagram_profile_visits` é CAMPO da linha: a Meta o omite
+       quando a conta não tem Instagram vinculado, e aí "não mede" é
+       diferente de "mediu zero". Já `actions` é uma LISTA de eventos
+       que aconteceram — um tipo que não está nela é um evento que não
+       ocorreu. Campanha de venda sem nenhuma conversa realmente teve
+       zero conversas.
+
+       O "não apurado" do histórico continua representado, mas no
+       BANCO: a coluna nasce nula na migration 91, e linha gravada
+       antes dela permanece nula até ser sincronizada de novo. */
+    conversations: Math.round(valorDoTipo(row, CONVERSA_INICIADA)),
   };
 }
 

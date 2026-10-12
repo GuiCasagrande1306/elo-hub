@@ -403,10 +403,22 @@ export function FolhaDeRolagem({
                       )}
                     </Td>
                     <Td alinhar="right">
-                      {c.results === null || c.results === 0 ? (
+                      {/* ⚠️ O SUFIXO VEM JUNTO. Sem o "/mil", o custo
+                          da campanha de alcance mente por mil: ali o
+                          número é CPM, porque custo de UMA impressão é
+                          fração de centavo e sairia "R$ 0,00". Esta
+                          folha é a que o CLIENTE abre pelo link, e
+                          imprimia "R$ 27,25" como se fosse o preço de
+                          uma impressão.
+
+                          `custoIndefinido` e não `results === 0`: a
+                          linha já decidiu se há denominador, e refazer
+                          a pergunta aqui é como as duas respostas
+                          divergem. */}
+                      {c.custoIndefinido ? (
                         <span className="text-[#8b95a1]">—</span>
                       ) : (
-                        formatCurrency(c.cpaCents)
+                        `${formatCurrency(c.cpaCents)}${c.custoSufixo}`
                       )}
                     </Td>
                     <Td alinhar="right">{formatCurrency(c.spendCents)}</Td>

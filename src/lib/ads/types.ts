@@ -43,6 +43,15 @@ export interface NormalizedMetricRow {
    * relatório dizer "0 visitas" numa campanha que entregou 131.
    */
   profileVisits: number | null;
+  /**
+   * Conversas iniciadas na campanha, do evento
+   * `onsite_conversion.messaging_conversation_started_7d`.
+   *
+   * `null` = a plataforma não mede isso (todo o Google) ou a linha veio
+   * de um caminho que não apura. Zero é "não houve conversa" — ver a
+   * migration 91.
+   */
+  conversations: number | null;
 }
 
 export type SyncFailureCode =

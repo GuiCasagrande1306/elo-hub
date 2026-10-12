@@ -353,16 +353,28 @@ function campanhasDaPlataforma(
         null,
       );
 
+      /* Mesma regra do nulo da visita, pela migration 91: linha
+         sincronizada antes da coluna existir não é "zero conversas". */
+      const conversas = linhasDaCampanha.reduce<number | null>(
+        (acc, l) =>
+          l.conversations === null || l.conversations === undefined
+            ? acc
+            : (acc ?? 0) + l.conversations,
+        null,
+      );
+
       const resultado =
         unidade === "visitas"
           ? visitas
-          : unidade === "impressoes"
-            ? t.impressions
-            : unidade === "cliques"
-              ? t.clicks
-              : /* A conversão da conta, com o arredondamento que fecha
-                   com o card — ver a nota acima. */
-                arredondados[i];
+          : unidade === "conversas"
+            ? conversas
+            : unidade === "impressoes"
+              ? t.impressions
+              : unidade === "cliques"
+                ? t.clicks
+                : /* A conversão da conta, com o arredondamento que fecha
+                     com o card — ver a nota acima. */
+                  arredondados[i];
 
       /* O custo é o do MESMO denominador que a linha mostra. É a regra
          que já vale no card do criativo: quem vê "131 visitas" ao lado

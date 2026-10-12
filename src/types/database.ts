@@ -508,6 +508,13 @@ export interface DailyMetric {
   optimization_goal: string | null;
   /** Visitas ao perfil no dia. `null` = não apurado, nunca "zero". */
   profile_visits: number | null;
+  /**
+   * Conversas iniciadas no dia, por campanha.
+   *
+   * `null` = linha sincronizada antes da migration 91, não "zero
+   * conversas". A tabela de campanhas imprime "—" nesse caso.
+   */
+  conversations: number | null;
 }
 
 export interface AdCreative {

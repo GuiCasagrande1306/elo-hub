@@ -417,10 +417,13 @@ function generateMetrics(): DailyMetric[] {
         if (platform === "meta_ads") {
           const conversaoCents = Math.round(spendCents * 0.62);
           const perfilCents = Math.round(spendCents * 0.18);
+          const zapCents = Math.round(spendCents * 0.1);
           const imprConv = Math.round(impressions * 0.45);
           const imprPerfil = Math.round(impressions * 0.25);
+          const imprZap = Math.round(impressions * 0.12);
           const cliquesConv = Math.round(clicks * 0.7);
           const cliquesPerfil = Math.round(clicks * 0.15);
+          const cliquesZap = Math.round(clicks * 0.08);
 
           rows.push({
             id: `${clientId}-${platform}-${date}-conv`,
@@ -439,6 +442,9 @@ function generateMetrics(): DailyMetric[] {
             /* Campanha de venda também recebe visita — ela só não é o
                que se cobra dela. O número existe e não entra na tabela. */
             profile_visits: Math.round(imprConv * 0.012),
+            /* Venda também gera conversa — ela só não é o que se cobra
+               daqui. Mesmo raciocínio da visita acima. */
+            conversations: Math.round(cliquesConv * 0.015),
           });
 
           /* A CAMPANHA QUE O DEMO NÃO TINHA, e que é o caso do defeito
@@ -461,6 +467,35 @@ function generateMetrics(): DailyMetric[] {
             objective: "OUTCOME_ENGAGEMENT",
             optimization_goal: "PROFILE_AND_PAGE_ENGAGEMENT",
             profile_visits: Math.round(imprPerfil * 0.055),
+            conversations: 0,
+          });
+
+          /* ⚠️ A CAMPANHA QUE O DEMO NÃO TINHA, segunda edição — e pelo
+             MESMO motivo da de perfil logo acima, uma casa adiante.
+             Ela compra CONVERSA NO WHATSAPP, e até a migration 91 a
+             tabela imprimia nela a conversão da conta.
+
+             Medido no Atman Cozinha, setembro/2026: "01 | ENGAJAMENTO
+             WHATSAPP", REPLIES, R$ 285,32, aparecendo como "409 visitas
+             ao perfil" — o número certo de uma pergunta que a linha não
+             estava fazendo. `conversions: 0` aqui é o que reproduz
+             isso: sem a coluna nova, a linha imprimiria zero. */
+          rows.push({
+            id: `${clientId}-${platform}-${date}-zap`,
+            client_id: clientId,
+            platform,
+            metric_date: date,
+            campaign_id: `${clientId}-zap`,
+            campaign_name: "04 | ENGAJAMENTO WHATSAPP",
+            spend_cents: zapCents,
+            impressions: imprZap,
+            clicks: cliquesZap,
+            conversions: 0,
+            revenue_cents: 0,
+            objective: "OUTCOME_ENGAGEMENT",
+            optimization_goal: "REPLIES",
+            profile_visits: Math.round(imprZap * 0.004),
+            conversations: Math.max(1, Math.round(cliquesZap * 0.22)),
           });
 
           rows.push({
@@ -470,14 +505,18 @@ function generateMetrics(): DailyMetric[] {
             metric_date: date,
             campaign_id: `${clientId}-alc`,
             campaign_name: "03 | RECONHECIMENTO",
-            spend_cents: spendCents - conversaoCents - perfilCents,
-            impressions: impressions - imprConv - imprPerfil,
-            clicks: clicks - cliquesConv - cliquesPerfil,
+            /* O RESTO, e não uma quarta fatia: é o que garante que a
+               soma das campanhas feche exatamente com o total do dia
+               depois de três arredondamentos. */
+            spend_cents: spendCents - conversaoCents - perfilCents - zapCents,
+            impressions: impressions - imprConv - imprPerfil - imprZap,
+            clicks: clicks - cliquesConv - cliquesPerfil - cliquesZap,
             conversions: 0,
             revenue_cents: 0,
             objective: "OUTCOME_AWARENESS",
             optimization_goal: "REACH",
             profile_visits: 0,
+            conversations: 0,
           });
         } else {
           rows.push({
@@ -495,8 +534,9 @@ function generateMetrics(): DailyMetric[] {
             objective: null,
             optimization_goal: null,
             /* Nulo, não zero: fora da Meta não existe visita ao perfil
-               do Instagram para apurar. */
+               do Instagram nem conversa de mensageria para apurar. */
             profile_visits: null,
+            conversations: null,
           });
         }
       }

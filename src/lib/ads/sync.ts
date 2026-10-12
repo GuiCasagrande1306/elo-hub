@@ -289,6 +289,7 @@ async function upsertMetrics(
     objective: row.objective,
     optimization_goal: row.optimizationGoal,
     profile_visits: row.profileVisits,
+    conversations: row.conversations,
     synced_at: new Date().toISOString(),
   }));
 

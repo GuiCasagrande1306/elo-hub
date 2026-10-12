@@ -410,14 +410,40 @@ function CartaoDePlataforma({
         {bloco.campanhas.length > 0 && (
           <>
             <Text style={s.tituloDeBloco}>Campanhas em destaque</Text>
+            {/* ⚠️ A COLUNA "OBJETIVO" E O SUFIXO DO CUSTO SÃO
+                OBRIGATÓRIOS, e esta folha nasceu sem os dois — em
+                02/10/2026, quando substituiu a versão A4. Reposto em
+                12/10/2026, e vale registrar o que a ausência causava:
+
+                1. SEM OBJETIVO, a coluna de resultado empilha unidades
+                   diferentes sem dizer. No demo: 146 (conversões),
+                   2.173 (visitas) e 28.435 (impressões) na mesma
+                   coluna, com o mesmo título "Resultados". O cliente
+                   compara a campanha de reconhecimento com a de venda e
+                   conclui que a de venda é 200 vezes pior.
+
+                2. SEM O "/mil", o custo da campanha de alcance MENTE
+                   POR MIL. Ali o número é CPM — custo de mil
+                   impressões —, porque custo de UMA impressão é fração
+                   de centavo e sairia "R$ 0,00". No demo, a linha de
+                   reconhecimento imprimia "R$ 27,25" como se fosse o
+                   preço de uma impressão. `custoSufixo` existe há
+                   meses em `PlatformCampaign` exatamente para isso, e a
+                   folha nova simplesmente não o lia. */}
             <Tabela
-              colunas={["Campanha", "Investido", "Resultados", "Custo por resultado"]}
-              pesos={[3, 1, 1, 1.4]}
+              colunas={["Campanha", "Objetivo", "Investido", "Resultados", "Custo"]}
+              pesos={[2.6, 1.4, 1, 1, 1.3]}
               linhas={bloco.campanhas.slice(0, 6).map((c) => [
-                truncar(c.name, 52),
+                truncar(c.name, 46),
+                truncar(c.objetivo, 24),
                 formatCurrency(c.spendCents),
                 c.results === null ? "—" : formatNumber(c.results),
-                c.cpaCents && c.cpaCents > 0 ? formatCurrency(c.cpaCents) : "—",
+                /* `custoIndefinido` e não `cpaCents > 0`: a própria
+                   linha já decidiu que não há denominador, e refazer a
+                   pergunta aqui é como as duas respostas divergem. */
+                c.custoIndefinido
+                  ? "—"
+                  : `${formatCurrency(c.cpaCents)}${c.custoSufixo}`,
               ])}
             />
           </>

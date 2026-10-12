@@ -49,8 +49,32 @@ ok("OUTCOME_AWARENESS / IMPRESSIONS → impressoes",
 ok("OUTCOME_SALES / OFFSITE_CONVERSIONS → conversao",
    unidadeDaCampanha("OFFSITE_CONVERSIONS", "OUTCOME_SALES"), "conversao");
 
-ok("OUTCOME_ENGAGEMENT / REPLIES → conversao (a conversa É a conversão)",
-   unidadeDaCampanha("REPLIES", "OUTCOME_ENGAGEMENT"), "conversao");
+/* ⚠️ ESTA ASSERÇÃO MUDOU EM 12/10/2026, e a antiga dizia o contrário:
+   "REPLIES → conversao (a conversa É a conversão)".
+
+   Era verdade só numa conta de CAPTAÇÃO, onde `POR_SEGMENTO` conta
+   conversa iniciada como conversão. Numa conta de negócio local a
+   conversão é visita ao perfil, e a campanha de WhatsApp passava a
+   imprimir visitas — medido no Atman Cozinha, setembro/2026:
+   "01 | ENGAJAMENTO WHATSAPP", R$ 285,32, aparecendo como 409 visitas
+   ao perfil. Número certo de uma pergunta que a linha não fazia.
+
+   A conta continua sendo cobrada pela conversão dela; a LINHA passa a
+   falar do objetivo dela. São dois níveis, e o teste abaixo guarda os
+   dois. */
+ok("OUTCOME_ENGAGEMENT / REPLIES → conversas (o objetivo da campanha)",
+   unidadeDaCampanha("REPLIES", "OUTCOME_ENGAGEMENT"), "conversas");
+
+ok("MESSAGES legado também cai em conversas",
+   unidadeDaCampanha(null, "MESSAGES"), "conversas");
+
+/* ⚠️ E O QUE NÃO PODE MUDAR JUNTO: objetivo de captação continua na
+   conversão da CONTA, com o rótulo dela ("Leads", "Contatos"). Ali a
+   conversa já É contada pela conta, e desviar para "Conversas
+   iniciadas" quebraria o fechamento com o card de Resultados. A ordem
+   das regras em `unidadeDaCampanha` é o que garante isso. */
+ok("⚠️ OUTCOME_LEADS / REPLIES continua em conversao",
+   unidadeDaCampanha("REPLIES", "OUTCOME_LEADS"), "conversao");
 
 ok("LINK_CLICKS / LANDING_PAGE_VIEWS → cliques",
    unidadeDaCampanha("LANDING_PAGE_VIEWS", "LINK_CLICKS"), "cliques");
@@ -118,7 +142,7 @@ ok("…e a unidade diz Visitas ao perfil",
 
 ok("rótulos são texto em português, sem sigla",
    Object.values(ROTULO_DA_UNIDADE),
-   ["Visitas ao perfil", "Impressões", "Cliques"]);
+   ["Visitas ao perfil", "Conversas iniciadas", "Impressões", "Cliques"]);
 
 console.log(falhas === 0 ? "\nTUDO PASSOU" : `\n${falhas} FALHA(S)`);
 process.exit(falhas ? 1 : 0);
