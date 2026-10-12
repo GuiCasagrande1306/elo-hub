@@ -12,6 +12,7 @@ import {
   Stamp,
   TriangleAlert,
   Users,
+  Wallet,
   Workflow,
 } from "lucide-react";
 
@@ -138,6 +139,17 @@ export const navGroups: NavGroup[] = [
       // `adminOnly` some com o item para colaborador — mas é cosmético.
       // Quem barra de fato é o `redirect` no Server Component e, abaixo
       // dele, a policy `financial_admin_only` no Postgres.
+      /* FINANCEIRO E GESTÃO CONVIVEM, por ora. `/financeiro` é o lugar
+         novo do dinheiro da agência — histórico mês a mês e meta de
+         gasto por categoria —, e `/gestao` segue no menu porque ainda é
+         a única porta para `/gestao/recorrencia`, que não tem item
+         próprio. Quando a recorrência mudar de casa, a Gestão sai. */
+      {
+        href: "/financeiro",
+        label: "Financeiro",
+        icon: Wallet,
+        adminOnly: true,
+      },
       {
         href: "/gestao",
         label: "Gestão",
