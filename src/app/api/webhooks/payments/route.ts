@@ -114,8 +114,10 @@ export async function POST(request: NextRequest) {
      Três tentativas, da mais confiável para a menos:
        a) externalReference — o id do nosso cliente, se foi enviado na
           criação da cobrança. É o único caminho sem ambiguidade.
-       b) CNPJ/CPF, com os dígitos normalizados.
-       c) e-mail de contato.
+       b) asaas_customer_id — vínculo gravado pelo script mapear-asaas.
+          Cobre assinaturas recorrentes onde o customer do Asaas não tem
+          externalReference apontando para o nosso cliente.
+       c) e-mail de contato (fallback para cobranças avulsas futuras).
      Não achar o cliente NÃO é erro: o lançamento entra sem vínculo e
      alguém concilia depois. Recusar o webhook faria o gateway
      reenfileirar um evento que nunca vai casar. */
@@ -130,19 +132,13 @@ export async function POST(request: NextRequest) {
     clientId = data?.id ?? null;
   }
 
-  if (!clientId && customer?.cpfCnpj) {
-    const digits = customer.cpfCnpj.replace(/\D/g, "");
-    /* O CNPJ mudou de casa: saiu de `clients` para `client_financials`
-       quando a carteira virou legível por toda a equipe. Aqui a leitura
-       é com service_role, que ignora RLS — o webhook não tem sessão. */
+  if (!clientId && payment.customer) {
     const { data } = await admin
       .from("client_financials")
-      .select("client_id, tax_id")
-      .not("tax_id", "is", null);
-
-    clientId =
-      (data ?? []).find((c) => (c.tax_id ?? "").replace(/\D/g, "") === digits)
-        ?.client_id ?? null;
+      .select("client_id")
+      .eq("asaas_customer_id", payment.customer)
+      .maybeSingle();
+    clientId = data?.client_id ?? null;
   }
 
   if (!clientId && customer?.email) {
