@@ -5,11 +5,14 @@ import { Landmark, Target, Wallet } from "lucide-react";
 import { PageContainer, PageHeader } from "@/components/layout/page-header";
 import { HistoricoDeMeses } from "@/components/financeiro/historico-de-meses";
 import { PainelDeMetas } from "@/components/financeiro/painel-de-metas";
+import { PainelAsaas } from "@/components/financeiro/painel-asaas";
 import { getFinancialData } from "@/lib/data";
 import { primeiroDiaDoMes } from "@/lib/financeiro/categorias";
 import { metasDoMes } from "@/lib/financeiro/metas";
+import { assinaturasAtivas, mrrCents } from "@/lib/asaas/assinaturas";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { formatCurrency } from "@/lib/format";
+import { isDemoMode } from "@/lib/env";
 
 export const metadata: Metadata = { title: "Financeiro" };
 
@@ -48,9 +51,13 @@ export default async function FinanceiroPage() {
 
   const mes = primeiroDiaDoMes();
 
-  const [{ monthly }, metas] = await Promise.all([
+  const [{ monthly }, metas, assinaturas] = await Promise.all([
     getFinancialData(12),
     metasDoMes(mes),
+    isDemoMode ? Promise.resolve([]) : assinaturasAtivas().catch((e) => {
+      console.error("[financeiro] asaas:", e.message);
+      return [];
+    }),
   ]);
 
   /* O mês corrente sai do MESMO array do histórico, e não de uma
@@ -120,6 +127,20 @@ export default async function FinanceiroPage() {
           <PainelDeMetas mes={mes} metas={metas} rotuloDoMes={rotuloDoMes} />
         </div>
       </section>
+
+      {assinaturas.length > 0 && (
+        <section className="mt-8">
+          <h2 className="text-lg font-semibold tracking-[-0.015em]">
+            Assinaturas ativas
+          </h2>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            Cobranças recorrentes no Asaas, ordenadas pelo próximo vencimento.
+          </p>
+          <div className="mt-4">
+            <PainelAsaas assinaturas={assinaturas} mrr={mrrCents(assinaturas)} />
+          </div>
+        </section>
+      )}
 
       <section className="mt-8">
         <h2 className="text-lg font-semibold tracking-[-0.015em]">
