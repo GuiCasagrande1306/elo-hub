@@ -86,7 +86,15 @@ export async function GET(request: NextRequest) {
       expiresAt: final.expiresIn
         ? new Date(Date.now() + final.expiresIn * 1000).toISOString()
         : null,
-      scopes: ["ads_read", "business_management"],
+      scopes: [
+        "ads_read",
+        "business_management",
+        "leads_retrieval",
+        "pages_show_list",
+        "pages_read_engagement",
+        "pages_manage_ads",
+        "pages_manage_metadata",
+      ],
     },
     authorizedBy: {
       name: dono?.name ?? null,

@@ -118,9 +118,17 @@ export function GlobalSearch({
   const tarefas = resultado.termo === busca ? resultado.itens : [];
   const buscando = buscavel && resultado.termo !== busca;
 
+  /* Usuário de CLIENTE não recebe conta nenhuma na busca, pelo mesmo
+     motivo que o bloco "Contas" some da sidebar: o RLS devolveria a
+     própria empresa, e o resultado levaria a `/clientes/<slug>` — a
+     ficha da agência, com contrato e mensalidade. Fechar só a sidebar
+     deixaria o ⌘K como segunda porta para a mesma tela. */
   const clientesEncontrados = useMemo(
-    () => ranquear(clients, termo, (c) => c.name).slice(0, CLIENTES_VISIVEIS),
-    [clients, termo],
+    () =>
+      role === "client"
+        ? []
+        : ranquear(clients, termo, (c) => c.name).slice(0, CLIENTES_VISIVEIS),
+    [clients, role, termo],
   );
 
   const links = useMemo(() => {

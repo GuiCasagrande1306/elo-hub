@@ -38,7 +38,7 @@ import {
  * migration ainda não rodada) não pode derrubar a outra. O erro vai
  * para o log; a tela mostra o painel sem números, que é honesto.
  */
-export async function metasDoMes(mes: string): Promise<MetaDaCategoria[]> {
+export async function metasDoMes(mes: string, incomeCents = 0): Promise<MetaDaCategoria[]> {
   if (isDemoMode) {
     /* ⚠️ O DEMO LÊ O MESMO DATASET DO RESTO DA TELA. A primeira versão
        devolvia zero fixo, e o resultado foi uma tela que se contradizia
@@ -63,6 +63,8 @@ export async function metasDoMes(mes: string): Promise<MetaDaCategoria[]> {
       return {
         category,
         temMeta: false,
+        tipoMeta: "none",
+        percent: null,
         limiteCents: 0,
         pagoCents: doMes
           .filter((t) => t.status === "paid")
@@ -78,6 +80,7 @@ export async function metasDoMes(mes: string): Promise<MetaDaCategoria[]> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc("expense_budget_status", {
     p_month: mes,
+    p_income_cents: incomeCents,
   });
 
   if (error) {
@@ -93,6 +96,8 @@ export async function metasDoMes(mes: string): Promise<MetaDaCategoria[]> {
       | {
           category: TransactionCategory;
           tem_meta: boolean;
+          tipo_meta: "fixed" | "percent" | "none";
+          percent: number | string | null;
           limite_cents: number | string;
           pago_cents: number | string;
           previsto_cents: number | string;
@@ -102,6 +107,8 @@ export async function metasDoMes(mes: string): Promise<MetaDaCategoria[]> {
   ).map((l) => ({
     category: l.category,
     temMeta: l.tem_meta,
+    tipoMeta: l.tipo_meta ?? "none",
+    percent: l.percent !== null ? Number(l.percent) : null,
     limiteCents: Number(l.limite_cents),
     pagoCents: Number(l.pago_cents),
     previstoCents: Number(l.previsto_cents),

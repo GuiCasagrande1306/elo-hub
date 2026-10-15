@@ -209,8 +209,16 @@ export function Sidebar({ user, clients, onNavigate }: SidebarProps) {
             própria empresa, uma linha só, e o link levaria a
             `/clientes/<slug>` — uma tela da agência, com contrato e
             mensalidade. Atalho para porta fechada é pior que atalho
-            nenhum. */}
-        {clients.length > 0 && (
+            nenhum.
+
+            ⚠️ A CONDIÇÃO DE PAPEL ESTAVA FALTANDO, e o parágrafo acima
+            descrevia uma regra que o código não aplicava: a guarda era
+            só `clients.length > 0`. Em produção o bloco aparecia com a
+            própria empresa e levava à ficha da agência; em modo demo,
+            onde não há RLS para filtrar, aparecia a CARTEIRA INTEIRA
+            para quem é de fora. Medido em 08/09/2026, entrando como
+            usuário de cliente. */}
+        {user.role !== "client" && clients.length > 0 && (
           <div className="mt-7">
             <div className="flex items-center justify-between px-2.5 pb-2">
               <span className="eyebrow">Contas</span>

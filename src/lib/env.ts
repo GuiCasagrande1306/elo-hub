@@ -120,6 +120,11 @@ export const serverEnv = {
    */
   evolutionWebhookSecret: process.env.EVOLUTION_WEBHOOK_SECRET ?? "",
 
+  /* Meta Lead Ads webhook — token de verificação gerado por você e
+     colado no painel do aplicativo Meta (campo "Token de verificação").
+     Vazio = webhook recusa tudo. */
+  metaLeadsVerifyToken: process.env.META_LEADS_VERIFY_TOKEN ?? "",
+
   /* Renderizador de PDF: "react-pdf" (padrão) ou "puppeteer".
      ------------------------------------------------------------------
      ⚠️ O PADRÃO VOLTOU PARA `react-pdf` EM 02/10/2026, e o motivo é o

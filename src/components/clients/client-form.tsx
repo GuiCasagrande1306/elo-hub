@@ -123,6 +123,8 @@ export function ClientForm({
       contactEmail: client.contact_email ?? "",
       whatsappPhone: client.whatsapp_phone ?? "",
       optimizationDay: client.optimization_day,
+      metaPageId: ((client as unknown as Record<string, unknown>).meta_page_id as string | null | undefined) ?? "",
+      leadNotifyPhone: ((client as unknown as Record<string, unknown>).lead_notify_phone as string | null | undefined) ?? "",
     },
   });
 
@@ -482,6 +484,58 @@ export function ClientForm({
                 </span>
                 . O WhatsApp acima é o destino que aquela tela usa.
               </p>
+
+              {/* ── Lead Ads ── */}
+              <div className="sm:col-span-2 border-t border-hairline pt-4">
+                <p className="text-sm font-medium">Notificação de leads</p>
+                <p className="mt-0.5 text-2xs text-muted-foreground">
+                  Quando um formulário Meta Lead Ads é preenchido, o Elo Hub
+                  grava o lead e envia um WhatsApp automaticamente.
+                </p>
+              </div>
+
+              <FormField
+                control={form.control}
+                name="metaPageId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>ID da Página Meta</FormLabel>
+                    <FormControl
+                      render={
+                        <Input
+                          placeholder="123456789012345"
+                          inputMode="numeric"
+                        />
+                      }
+                      {...field}
+                    />
+                    <FormDescription>
+                      Número da Página do Facebook vinculada ao formulário
+                      de leads. Encontre em Configurações da Página → Sobre.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="leadNotifyPhone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>WhatsApp para aviso de lead</FormLabel>
+                    <WhatsAppDestinationPicker
+                      value={field.value}
+                      onChange={field.onChange}
+                    />
+                    <FormDescription>
+                      Número ou grupo que recebe o aviso quando um lead
+                      novo chegar. Deixe em branco para não notificar.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             </div>
           </TabsContent>
         </Tabs>

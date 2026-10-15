@@ -551,6 +551,8 @@ export async function saveClientProfile(
     contact_name: v.contactName.trim() || null,
     contact_email: v.contactEmail.trim() || null,
     whatsapp_phone: v.whatsappPhone.trim() || null,
+    meta_page_id: v.metaPageId.trim() || null,
+    lead_notify_phone: v.leadNotifyPhone.trim() || null,
     /* NÃO escreve `report_enabled` nem `report_day`. Escrever daqui
        apagaria o que a tela de agenda gravou: este formulário nunca
        soube de `report_weekday`, a agenda semanal, então salvar o

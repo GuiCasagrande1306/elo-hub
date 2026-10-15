@@ -369,6 +369,13 @@ export const clientFormSchema = z
        tem `report_day` nulo por definição. Ver o comentário longo em
        `client-form.tsx`. */
     optimizationDay: z.number().int().min(1).max(5).nullable(),
+
+    /* Lead Ads — configuração de notificação automática por WhatsApp.
+       Campos opcionais; sem eles o webhook simplesmente não dispara.
+       `leadNotifyPhone` aceita tanto número (só dígitos) quanto JID de
+       grupo (`...@g.us`) — usa o mesmo picker de `whatsappPhone`. */
+    metaPageId: optionalText(40, "ID da Página Meta"),
+    leadNotifyPhone: optionalText(60, "WhatsApp para aviso de lead"),
   });
 
 export type ClientFormValues = z.infer<typeof clientFormSchema>;
@@ -393,6 +400,8 @@ export const FIELD_TAB: Record<keyof ClientFormValues, "perfil" | "operacional">
     contactEmail: "perfil",
     whatsappPhone: "operacional",
     optimizationDay: "operacional",
+    metaPageId: "operacional",
+    leadNotifyPhone: "operacional",
   };
 
 /** Dias úteis da esteira. Fim de semana fica fora: otimização é

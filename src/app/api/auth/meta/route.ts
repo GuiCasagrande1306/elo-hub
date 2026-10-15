@@ -19,7 +19,16 @@ export const dynamic = "force-dynamic";
 /* `ads_read` basta para ler métricas; `ads_management` daria poder de
    ALTERAR campanhas, que este sistema não faz. Pedir a menor permissão
    que resolve também acelera a revisão do app pela Meta. */
-const SCOPES = ["ads_read", "business_management"];
+const SCOPES = [
+  "ads_read",
+  "business_management",
+  /* Ler leads de formulário exige token de página com estas quatro. */
+  "leads_retrieval",
+  "pages_show_list",
+  "pages_read_engagement",
+  "pages_manage_ads",
+  "pages_manage_metadata",
+];
 
 export async function GET(request: NextRequest) {
   const user = await getCurrentUser();

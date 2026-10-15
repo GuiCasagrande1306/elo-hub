@@ -1,13 +1,12 @@
 import {
   BarChart3,
   Building2,
-  Handshake,
   CheckSquare,
   FileText,
+  Inbox,
   Landmark,
   LayoutGrid,
   Repeat,
-  NotebookPen,
   Settings,
   Stamp,
   TriangleAlert,
@@ -45,6 +44,8 @@ export interface NavItem {
    * compara com o `pathname`, que jamais será uma URL absoluta.
    */
   externo?: boolean;
+  /** Só aparece para usuário de cliente. */
+  soCliente?: boolean;
 }
 
 export interface NavGroup {
@@ -75,31 +76,18 @@ export const navGroups: NavGroup[] = [
   {
     label: "Operação",
     items: [
-      /* Comercial vem ANTES de Clientes, e a ordem é o argumento: o dia
-         começa em quem ainda não fechou. Depois de Clientes, o funil
-         viraria o link que ninguém abre. */
-      { href: "/comercial", label: "Comercial", icon: Handshake, matchPrefix: true },
       { href: "/clientes", label: "Clientes", icon: Users, matchPrefix: true },
+      /* Leads só aparece para usuário de cliente: é a página inicial dele
+         (`/` redireciona para cá). A equipe não usa mais pelo menu. */
+      {
+        href: "/leads",
+        label: "Leads",
+        icon: Inbox,
+        matchPrefix: true,
+        soCliente: true,
+      },
       { href: "/esteira", label: "Esteira", icon: Repeat, matchPrefix: true },
       { href: "/tarefas", label: "Tarefas", icon: CheckSquare, matchPrefix: true },
-      /* Conteúdo fecha Operação, e não Análise: o brief é o que se
-         combina com o cliente antes de gravar, não o que se olha
-         depois. Fica ao lado do Carimbo no fluxo real — primeiro o
-         documento define a linha, depois o Carimbo agenda a peça. */
-      {
-        href: "/conteudo",
-        label: "Conteúdo",
-        icon: NotebookPen,
-        matchPrefix: true,
-        /* Fora da barra do mobile pelo motivo descrito em
-           `FORA_DA_BARRA_MOBILE`: ela já carrega sete itens e o oitavo
-           trunca o rótulo de todos. Custa uma tela boa de celular — o
-           roteiro é lido no aparelho, na hora de gravar — mas o custo
-           de truncar recai sobre os sete destinos do dia a dia. Chega-se
-           por ⌘K, pelo menu lateral, ou pelo link que já está no grupo
-           de WhatsApp da gravação. */
-        foraDaBarraMobile: true,
-      },
     ],
   },
   {
@@ -221,13 +209,53 @@ export const secondaryNav: NavItem[] =
  * Continua sendo cosmético: quem barra o acesso é a policy no Postgres.
  * Isto evita oferecer uma porta que o banco vai fechar na cara.
  */
+const NAV_DO_CLIENTE = new Set([
+  /* O funil dele. É a página inicial de quem entra com papel 'client' —
+     `/` redireciona para cá. */
+  "/leads",
+  /* Perfil, senha e o WhatsApp da própria pessoa. A tela já se recorta
+     sozinha por papel; o que é da agência lá dentro é barrado pelo RLS. */
+  "/configuracoes",
+]);
+
 export function podeVerNav(item: NavItem, role: string): boolean {
+  /* ⚠️ ESTE RAMO É O QUE FAZ A LISTA SER DE PERMISSÃO. Enquanto ele não
+     existia, o comentário acima descrevia uma regra que o código não
+     aplicava: um usuário de cliente via Comercial, Clientes, Esteira e
+     Performance no menu. Nenhuma delas devolveria dado — o RLS já
+     continha tudo —, mas oferecer sete portas fechadas faz o sistema
+     parecer quebrado para quem é de fora da agência.
+
+     Ampliar esta lista é decisão POR TELA, não por módulo: cada página
+     que entrar aqui precisa ser lida antes, procurando o que ela mostra
+     quando o RLS devolve vazio e o que ela oferece de ação que é da
+     agência (enviar relatório, editar cadastro, ver contrato). */
+  if (role === "client") return NAV_DO_CLIENTE.has(item.href);
+  if (item.soCliente) return false;
+
   return !item.adminOnly || role === "admin";
 }
 
-/** A barra inferior do celular. */
-export function navDoMobile(): NavItem[] {
-  return primaryNav;
+/**
+ * A barra inferior do celular, já recortada pelo papel.
+ *
+ * Recebe o papel porque a barra é a ÚNICA navegação abaixo de 768px: sem
+ * o filtro, o celular de um usuário de cliente mostraria os seis
+ * destinos da agência enquanto a sidebar do desktop mostra um.
+ */
+export function navDoMobile(role: string): NavItem[] {
+  /* Para o cliente, a lista sai dos GRUPOS e não de `primaryNav`, e
+     `foraDaBarraMobile` é ignorado de propósito. Aquela marca resolve
+     uma disputa por largura que só existe com sete destinos; aplicá-la
+     a uma barra de dois itens esconderia justamente a tela pela qual a
+     pessoa entrou no sistema. */
+  if (role === "client") {
+    return navGroups
+      .flatMap((g) => g.items)
+      .filter((item) => podeVerNav(item, role));
+  }
+
+  return primaryNav.filter((item) => podeVerNav(item, role));
 }
 
 export function isNavActive(item: NavItem, pathname: string): boolean {

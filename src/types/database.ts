@@ -843,3 +843,127 @@ export interface ContentBriefWithRelations extends ContentBrief {
   client?: Pick<Client, "id" | "name" | "brand_primary" | "logo_url"> | null;
   author?: Pick<Profile, "id" | "full_name" | "avatar_url"> | null;
 }
+
+/* ------------------------------------------------------------------ */
+/* CRM de leads DO CLIENTE                                             */
+/*                                                                     */
+/* Tabelas `lead_*` (migration 56). NÃO confundir com `crm_deals`, que  */
+/* é o funil de venda DA AGÊNCIA e vive nos tipos `Deal*` acima: um     */
+/* responde "quanto MRR entra se fechar", o outro "o lead do cliente    */
+/* virou cliente dele". Nomes parecidos, negócios diferentes.           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * O tipo da etapa, e não o nome dela.
+ *
+ * É o que o sistema reconhece: 'ganho' e 'perdido' encerram o lead e são
+ * o que a taxa de aproveitamento soma. O NOME é livre — o cliente pode
+ * chamar de "Fechado" ou "Vendido" —, então procurar pela palavra
+ * quebraria no primeiro que renomear.
+ */
+export type LeadStageKind = "aberto" | "ganho" | "perdido";
+
+/** De onde o lead veio. Espelha o `check` de `lead_deals.source`. */
+export type LeadSource =
+  | "manual"
+  | "meta_ads"
+  | "google_ads"
+  | "whatsapp"
+  | "instagram"
+  | "site"
+  | "indicacao"
+  | "telefone"
+  | "outro";
+
+export interface LeadPipeline {
+  id: string;
+  client_id: string;
+  name: string;
+  is_default: boolean;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LeadStage {
+  id: string;
+  pipeline_id: string;
+  name: string;
+  kind: LeadStageKind;
+  /** Hex `#RRGGBB` ou null. Cor da coluna no quadro. */
+  color: string | null;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LeadContact {
+  id: string;
+  client_id: string;
+  name: string;
+  /** SÓ DÍGITOS — o banco tem check `^[0-9]{10,15}$`. Ver `apenasDigitos`. */
+  phone: string | null;
+  email: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LeadDeal {
+  id: string;
+  client_id: string;
+  pipeline_id: string;
+  stage_id: string;
+  contact_id: string | null;
+  title: string;
+  /** CENTAVOS. 0 = sem valor estimado, que é o normal em lead novo. */
+  value_cents: number;
+  source: LeadSource;
+  owner_id: string | null;
+  position: number;
+  closed_at: string | null;
+  /**
+   * Preenchido ao descartar. Guarda o SLUG de `MOTIVOS_DESCARTE`, não o
+   * rótulo — ver o cabeçalho de `lib/leads/vocabulario.ts`.
+   */
+  lost_reason: string | null;
+  /** Chave da origem externa. Só a ingestão automática preenche. */
+  external_id: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LeadNote {
+  id: string;
+  deal_id: string;
+  author_id: string | null;
+  body: string;
+  created_at: string;
+}
+
+export interface LeadTask {
+  id: string;
+  deal_id: string;
+  title: string;
+  due_at: string;
+  assignee_id: string | null;
+  done_at: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface LeadWithRelations extends LeadDeal {
+  contact: LeadContact | null;
+  owner: Pick<Profile, "id" | "full_name" | "avatar_url"> | null;
+  noteCount: number;
+  /** Tarefas em aberto, já ordenadas por vencimento. */
+  openTasks: Pick<LeadTask, "id" | "title" | "due_at">[];
+}
+
+/** O que a tela do CRM de leads precisa para desenhar o quadro inteiro. */
+export interface LeadBoard {
+  pipeline: LeadPipeline;
+  stages: LeadStage[];
+  leads: LeadWithRelations[];
+}

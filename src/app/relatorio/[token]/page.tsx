@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 
 import { FolhaDeRolagem } from "@/components/reports/folha-de-rolagem";
+import { RelatorioInterativo } from "@/components/reports/relatorio-interativo";
 import { SeletorDePeriodo } from "@/components/reports/seletor-de-periodo";
 import { getPrintReportData } from "@/lib/reports/print-data";
 import { resolverAgencia } from "@/lib/reports/payload";
@@ -74,6 +75,11 @@ export default async function RelatorioPublicoPage({
   const agency = await resolverAgencia(data.client.agency_partner);
   const ontem = somarDiasBR(dataNoBrasil(), -1);
 
+  /* A cor da marca do cliente, na MESMA precedência que a FolhaDeRolagem
+     usa por dentro — assim a barra de progresso combina com o cabeçalho
+     em vez de brigar com ele. */
+  const brand = data.client.brand_primary ?? agency?.brandPrimary ?? "#4A5568";
+
   return (
     <div className="min-h-screen bg-[#f2f4f7]">
       <SeletorDePeriodo
@@ -82,13 +88,18 @@ export default async function RelatorioPublicoPage({
         maximo={ontem}
       />
 
-      {/* Sombra e respiro: aqui a folha é uma página dentro de um
-          navegador, não um arquivo. Sem isso ela encosta nas bordas e
-          não se lê onde o documento começa. No PDF nada disso existe,
-          porque o Puppeteer fotografa só a folha. */}
-      <div className="mx-auto w-fit pb-16 shadow-[0_2px_24px_rgba(17,24,39,0.08)]">
-        <FolhaDeRolagem data={data} agency={agency} />
-      </div>
+      {/* ⚠️ A camada interativa vive SÓ aqui, no caminho que um navegador
+          humano percorre. A rota /reports/render, fotografada pelo
+          Puppeteer, NÃO a usa — animação brigaria com a captura. */}
+      <RelatorioInterativo brand={brand}>
+        {/* Sombra e respiro: aqui a folha é uma página dentro de um
+            navegador, não um arquivo. Sem isso ela encosta nas bordas e
+            não se lê onde o documento começa. No PDF nada disso existe,
+            porque o Puppeteer fotografa só a folha. */}
+        <div className="mx-auto w-fit pb-16 shadow-[0_2px_24px_rgba(17,24,39,0.08)]">
+          <FolhaDeRolagem data={data} agency={agency} />
+        </div>
+      </RelatorioInterativo>
     </div>
   );
 }

@@ -8,6 +8,7 @@ import {
   createSupabaseServerClient,
   getCurrentUser,
 } from "@/lib/supabase/server";
+import type { TransactionCategory } from "@/types/database";
 
 /* =====================================================================
    Ações do financeiro
@@ -30,11 +31,12 @@ type Resultado = { ok: true } | { ok: false; error: string };
  * um número digitado por engano.
  */
 export async function salvarMetaDeGasto(input: {
-  /** Primeiro dia do mês, `YYYY-MM-01`. */
   mes: string;
   category: string;
-  /** Texto do formulário: "4.000,00". Vazio apaga. */
+  /** Texto do campo de valor fixo: "4.000,00". Vazio = sem meta fixa. */
   limite: string;
+  /** Percentual (0–100). null = sem meta %. Exclusivo com limite. */
+  percent?: number | null;
   note?: string | null;
 }): Promise<Resultado> {
   const user = await getCurrentUser();
@@ -48,12 +50,14 @@ export async function salvarMetaDeGasto(input: {
   }
 
   const bruto = input.limite.trim();
+  const usandoPercent = input.percent != null && input.percent > 0;
 
   if (isDemoMode) return { ok: true };
 
   const supabase = await createSupabaseServerClient();
 
-  if (bruto === "") {
+  /* Apagar: campo de valor vazio E sem percentual */
+  if (bruto === "" && !usandoPercent) {
     /* ⚠️ `count` EXATO, e não só `error`. O PostgREST devolve
        `error: null` quando o delete não casa nenhuma linha — sem o
        count, apagar uma meta que a policy recusou diria "meta
@@ -77,23 +81,87 @@ export async function salvarMetaDeGasto(input: {
     return { ok: true };
   }
 
+  if (usandoPercent) {
+    const pct = Number(input.percent);
+    if (!Number.isFinite(pct) || pct <= 0 || pct > 100) {
+      return { ok: false, error: "Percentual inválido (1–100)." };
+    }
+    const { error } = await supabase.from("expense_budgets").upsert(
+      { month: input.mes, category: input.category, percent: pct, limit_cents: null, note: input.note?.trim() || null, created_by: user.id },
+      { onConflict: "month,category" },
+    );
+    if (error) return { ok: false, error: error.message };
+    revalidatePath("/financeiro");
+    return { ok: true };
+  }
+
   const cents = parseCurrencyToCents(bruto);
   if (cents === null || cents < 0) {
     return { ok: false, error: "Valor inválido. Use algo como 4.000,00." };
   }
 
-  /* `upsert` na chave (month, category), que é a unique da migration
-     90: a tela edita uma célula e não sabe se a linha existe. */
   const { error } = await supabase.from("expense_budgets").upsert(
     {
       month: input.mes,
       category: input.category,
       limit_cents: cents,
+      percent: null,
       note: input.note?.trim() || null,
       created_by: user.id,
     },
     { onConflict: "month,category" },
   );
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/financeiro");
+  return { ok: true };
+}
+
+/**
+ * Lança uma transação avulsa (entrada ou saída).
+ */
+export async function lancarTransacao(input: {
+  tipo: "income" | "expense";
+  category: TransactionCategory;
+  descricao: string;
+  valorStr: string;
+  dataVencimento: string;
+  dataPagamento: string | null;
+  status: "paid" | "pending";
+}): Promise<Resultado> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Faça login de novo." };
+  if (user.role !== "admin") {
+    return { ok: false, error: "Só administrador lança transações." };
+  }
+
+  const cents = parseCurrencyToCents(input.valorStr);
+  if (cents === null || cents <= 0) {
+    return { ok: false, error: "Valor inválido. Use algo como 1.500,00." };
+  }
+
+  if (!input.dataVencimento) {
+    return { ok: false, error: "Informe a data de vencimento." };
+  }
+
+  if (isDemoMode) return { ok: true };
+
+  const supabase = await createSupabaseServerClient();
+
+  const { error } = await supabase.from("financial_transactions").insert({
+    type: input.tipo,
+    category: input.category,
+    description: input.descricao.trim(),
+    amount_cents: cents,
+    due_date: input.dataVencimento,
+    paid_date: input.status === "paid" ? (input.dataPagamento || input.dataVencimento) : null,
+    status: input.status,
+    provider: null,
+    external_id: null,
+    recurrence_key: null,
+    client_id: null,
+  });
 
   if (error) return { ok: false, error: error.message };
 

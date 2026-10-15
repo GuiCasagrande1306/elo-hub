@@ -56,33 +56,14 @@ export function primeiroDiaDoMes(data = new Date()): string {
 
 export interface MetaDaCategoria {
   category: TransactionCategory;
-  /**
-   * Existe linha em `expense_budgets` para este mês e categoria.
-   *
-   * ⚠️ NÃO É `limiteCents > 0`. Meta zero é decisão — "nesta categoria
-   * não quero gastar nada" —, e meta ausente é esquecimento. A tela
-   * mostra as duas de formas diferentes, e misturá-las faria a
-   * categoria sem orçamento parecer orçada em R$ 0,00.
-   */
   temMeta: boolean;
+  /** 'fixed' = valor em centavos | 'percent' = % do faturamento | 'none' = sem meta */
+  tipoMeta: "fixed" | "percent" | "none";
+  /** Percentual digitado (0–100), só quando tipoMeta === 'percent'. */
+  percent: number | null;
+  /** Limite calculado em centavos (fixo ou % × receita). Zero quando sem meta. */
   limiteCents: number;
   pagoCents: number;
-  /**
-   * Despesa do mês ainda não liquidada.
-   *
-   * Separada do pago de propósito: quem olha a meta no dia 10 precisa
-   * enxergar o que já comprometeu. Só com o pago, o orçamento estoura
-   * no fim do mês com contas que já existiam.
-   */
   previstoCents: number;
-  /**
-   * Quantos lançamentos de despesa a categoria teve no mês.
-   *
-   * ⚠️ É O QUE SEPARA "não gastei" DE "ninguém anotou". Medido em
-   * 11/10/2026: as 79 linhas do financeiro são TODAS receita — o lado
-   * da despesa nunca recebeu um lançamento. Sem este número, a tela
-   * diria "0% da meta" em toda categoria e o mês pareceria exemplar
-   * justamente porque está vazio.
-   */
   lancamentos: number;
 }

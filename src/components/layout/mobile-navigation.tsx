@@ -34,13 +34,22 @@ import { cn } from "@/lib/utils";
    navegação parecerem o mesmo produto.
    ===================================================================== */
 
-export function MobileNavigation() {
+export function MobileNavigation({ role }: { role: string }) {
   const pathname = usePathname();
 
-  // A barra inferior carrega apenas os destinos principais. Contas,
-  // configurações e perfil continuam na gaveta do topo — cinco itens é
-  // o limite antes de os rótulos começarem a truncar.
-  const items = navDoMobile();
+  /* A barra inferior carrega apenas os destinos principais. Contas,
+     configurações e perfil continuam na gaveta do topo — cinco itens é
+     o limite antes de os rótulos começarem a truncar.
+
+     O PAPEL ENTRA AQUI porque abaixo de 768px esta barra é a única
+     navegação que existe: sem o filtro, o celular de um usuário de
+     cliente ofereceria os destinos da agência que a sidebar do desktop
+     já não oferece. */
+  const items = navDoMobile(role);
+
+  // Papel sem nenhum destino não desenha barra — moldura vazia presa ao
+  // rodapé é pior que barra nenhuma, e ainda comeria a altura reservada.
+  if (items.length === 0) return null;
 
   return (
     <nav
