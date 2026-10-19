@@ -2,7 +2,12 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { serverEnv } from "@/lib/env";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { notificarNovoLead } from "@/lib/leads/notificacao";
+import {
+  extrairCampos,
+  registrarLeadMeta,
+  type CamposDoLead,
+  type ClienteDoLead,
+} from "@/lib/leads/registrar-lead-meta";
 import { tokenDaPagina } from "@/lib/leads/token-da-pagina";
 
 /* =====================================================================
@@ -122,7 +127,7 @@ export async function POST(request: NextRequest) {
 type Resultado = "processado" | "ignorado";
 
 async function processarLead(value: MetaLeadgenValue): Promise<Resultado> {
-  const { leadgen_id, page_id, form_id } = value;
+  const { leadgen_id, page_id } = value;
 
   if (!leadgen_id || !page_id) {
     console.warn("[meta-leads] leadgen_id ou page_id ausente:", value);
@@ -131,7 +136,6 @@ async function processarLead(value: MetaLeadgenValue): Promise<Resultado> {
 
   const supabase = createSupabaseAdminClient();
 
-  /* ── 1. Identificar o cliente pela página ──────────────────────── */
   const { data: clientRow, error: clientErr } = await supabase
     .from("clients")
     .select("id, name, lead_notify_phone, whatsapp_phone")
@@ -148,140 +152,20 @@ async function processarLead(value: MetaLeadgenValue): Promise<Resultado> {
     return "ignorado";
   }
 
-  const client = clientRow as {
-    id: string;
-    name: string;
-    lead_notify_phone: string | null;
-    whatsapp_phone: string | null;
-  };
+  const client = clientRow as ClienteDoLead;
+  const campos = await buscarLeadNaGraph(client.id, page_id, leadgen_id);
+  const resultado = await registrarLeadMeta(supabase, client, leadgen_id, campos);
 
-  /* ── 2. Buscar dados do lead na Graph API ──────────────────────── */
-  const leadData = await buscarLeadNaGraph(client.id, page_id, leadgen_id);
-
-  /* ── 3. Funil padrão do cliente ────────────────────────────────── */
-  const pipelineId = await garantirFunil(client.id, supabase);
-  if (!pipelineId) {
-    console.error(`[meta-leads] sem funil para cliente ${client.id}`);
-    return "ignorado";
-  }
-
-  /* Primeira etapa do tipo 'aberto' */
-  const { data: stageRow } = await supabase
-    .from("lead_stages")
-    .select("id")
-    .eq("pipeline_id", pipelineId)
-    .eq("kind", "aberto")
-    .order("position", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-
-  if (!stageRow) {
-    console.error(`[meta-leads] sem etapa aberta no funil ${pipelineId}`);
-    return "ignorado";
-  }
-
-  const stageId = (stageRow as { id: string }).id;
-
-  /* ── 4. Contato ────────────────────────────────────────────────── */
-  const contactName = leadData?.nome ?? "Lead Meta Ads";
-  const contactPhone = leadData?.telefone ?? null;
-  const contactEmail = leadData?.email ?? null;
-
-  let contactId: string | null = null;
-
-  if (contactPhone) {
-    const { data: existente } = await supabase
-      .from("lead_contacts")
-      .select("id")
-      .eq("client_id", client.id)
-      .eq("phone", contactPhone)
-      .maybeSingle();
-
-    if (existente) {
-      contactId = (existente as { id: string }).id;
-    }
-  }
-
-  if (!contactId) {
-    const { data: novoContato, error: contactErr } = await supabase
-      .from("lead_contacts")
-      .insert({
-        client_id: client.id,
-        name: contactName,
-        phone: contactPhone,
-        email: contactEmail,
-      })
-      .select("id")
-      .single();
-
-    if (contactErr) {
-      console.error("[meta-leads] erro ao criar contato:", contactErr.message);
-    } else {
-      contactId = (novoContato as { id: string }).id;
-    }
-  }
-
-  /* ── 5. Deal ───────────────────────────────────────────────────── */
-  const titulo = contactName !== "Lead Meta Ads"
-    ? contactName
-    : leadData?.formName
-      ? `Lead · ${leadData.formName}`
-      : "Lead Meta Ads";
-
-  const { error: dealErr } = await supabase.from("lead_deals").insert({
-    client_id: client.id,
-    pipeline_id: pipelineId,
-    stage_id: stageId,
-    contact_id: contactId,
-    title: titulo,
-    source: "meta_ads",
-    external_id: leadgen_id,
-    position: Date.now(),
-    value_cents: 0,
-    created_by: null,
-  });
-
-  if (dealErr) {
-    /* external_id único: se a entrega chegar duas vezes, ignora a segunda. */
-    if (dealErr.code === "23505") return "ignorado";
-    console.error("[meta-leads] erro ao criar deal:", dealErr.message);
-    return "ignorado";
-  }
-
-  /* ── 6. Notificação ────────────────────────────────────────────── */
-  const notifyPhone = client.lead_notify_phone ?? client.whatsapp_phone;
-
-  if (notifyPhone) {
-    await notificarNovoLead(notifyPhone, {
-      clientName: client.name,
-      contactName: contactName !== "Lead Meta Ads" ? contactName : null,
-      contactPhone,
-      contactEmail,
-      formName: leadData?.formName ?? null,
-      campaignName: leadData?.campaignName ?? null,
-      extras: leadData?.extras,
-    });
-  }
-
-  return "processado";
+  return resultado === "criado" ? "processado" : "ignorado";
 }
 
 /* ─── Graph API ─────────────────────────────────────────────────────── */
-
-interface LeadFields {
-  nome: string | null;
-  telefone: string | null;
-  email: string | null;
-  formName: string | null;
-  campaignName: string | null;
-  extras: Record<string, string>;
-}
 
 async function buscarLeadNaGraph(
   clientId: string,
   pageId: string,
   leadgenId: string,
-): Promise<LeadFields | null> {
+): Promise<CamposDoLead | null> {
   const supabase = createSupabaseAdminClient();
 
   /* Token do cliente (meta_ads) — integration_secrets não tem RLS */
@@ -331,94 +215,4 @@ async function buscarLeadNaGraph(
     console.error("[meta-leads] fetch Graph API falhou:", err instanceof Error ? err.message : err);
     return null;
   }
-}
-
-function extrairCampos(
-  fieldData: { name: string; values: string[] }[],
-  adName: string | null,
-): LeadFields {
-  const mapa: Record<string, string> = {};
-
-  for (const campo of fieldData) {
-    const valor = campo.values[0] ?? "";
-    if (valor) mapa[campo.name.toLowerCase()] = valor;
-  }
-
-  /* Mapeamento dos nomes padrão do Meta para os nossos campos */
-  const nome =
-    mapa["full_name"] ??
-    mapa["nome"] ??
-    (mapa["first_name"] && mapa["last_name"]
-      ? `${mapa["first_name"]} ${mapa["last_name"]}`.trim()
-      : mapa["first_name"] ?? mapa["last_name"] ?? null);
-
-  const telefone = normalizePhone(
-    mapa["phone_number"] ?? mapa["telefone"] ?? mapa["phone"] ?? null,
-  );
-
-  const email = mapa["email"] ?? null;
-
-  /* Campos extras: tudo que não é nome/telefone/email */
-  const CAMPOS_PADRÃO = new Set([
-    "full_name", "nome", "first_name", "last_name",
-    "phone_number", "telefone", "phone", "email",
-  ]);
-
-  const extras: Record<string, string> = {};
-  for (const campo of fieldData) {
-    const k = campo.name.toLowerCase();
-    if (!CAMPOS_PADRÃO.has(k)) {
-      const v = campo.values[0];
-      if (v) extras[campo.name] = v;
-    }
-  }
-
-  return {
-    nome,
-    telefone,
-    email,
-    formName: null,
-    campaignName: adName,
-    extras,
-  };
-}
-
-function normalizePhone(raw: string | null): string | null {
-  if (!raw) return null;
-  const digits = raw.replace(/\D/g, "");
-  /* Remove +55 do prefixo internacional se já está lá */
-  const clean = digits.startsWith("55") && digits.length > 11
-    ? digits.slice(2)
-    : digits;
-  if (clean.length < 10 || clean.length > 11) return null;
-  return clean;
-}
-
-/* ─── Funil padrão ──────────────────────────────────────────────────── */
-
-async function garantirFunil(
-  clientId: string,
-  supabase: ReturnType<typeof createSupabaseAdminClient>,
-): Promise<string | null> {
-  /* Tenta achar um padrão existente */
-  const { data: existente } = await supabase
-    .from("lead_pipelines")
-    .select("id")
-    .eq("client_id", clientId)
-    .eq("is_default", true)
-    .maybeSingle();
-
-  if (existente) return (existente as { id: string }).id;
-
-  /* Cria via RPC — a mesma que a tela usa, por isso existe em `public` */
-  const { data, error } = await supabase.rpc("criar_funil_padrao", {
-    p_client: clientId,
-  });
-
-  if (error) {
-    console.error("[meta-leads] criar_funil_padrao:", error.message);
-    return null;
-  }
-
-  return (data as string | null) ?? null;
 }
