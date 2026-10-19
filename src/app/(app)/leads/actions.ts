@@ -7,6 +7,7 @@ import { isDemoMode, serverEnv } from "@/lib/env";
 import { apenasDigitos, MOTIVOS_DESCARTE } from "@/lib/leads/vocabulario";
 import { notificarNovoLead } from "@/lib/leads/notificacao";
 import { tokenDaPagina } from "@/lib/leads/token-da-pagina";
+import { extrairCampos } from "@/lib/leads/registrar-lead-meta";
 import {
   createSupabaseServerClient,
   getCurrentUser,
@@ -833,33 +834,8 @@ export async function importarLeadMeta(input: {
   const fieldData = data.field_data ?? [];
 
   /* 4. Extrair campos */
-  const mapa: Record<string, string> = {};
-  for (const campo of fieldData) {
-    const v = campo.values[0];
-    if (v) mapa[campo.name.toLowerCase()] = v;
-  }
-
-  const nome =
-    mapa["full_name"] ?? mapa["nome"] ??
-    (mapa["first_name"] && mapa["last_name"]
-      ? `${mapa["first_name"]} ${mapa["last_name"]}`.trim()
-      : mapa["first_name"] ?? mapa["last_name"] ?? null);
-
-  const rawPhone = mapa["phone_number"] ?? mapa["telefone"] ?? mapa["phone"] ?? null;
-  const digitosBrutos = rawPhone ? rawPhone.replace(/\D/g, "") : "";
-  const digits = digitosBrutos.startsWith("55") && digitosBrutos.length > 11
-    ? digitosBrutos.slice(2)
-    : digitosBrutos;
-  const telefone = digits.length >= 10 && digits.length <= 11 ? digits : null;
-  const email = mapa["email"] ?? null;
-
-  const PADRÃO = new Set(["full_name","nome","first_name","last_name","phone_number","telefone","phone","email"]);
-  const extras: Record<string, string> = {};
-  for (const campo of fieldData) {
-    if (!PADRÃO.has(campo.name.toLowerCase()) && campo.values[0]) {
-      extras[campo.name] = campo.values[0];
-    }
-  }
+  const campos = extrairCampos(fieldData, data.ad_name ?? null);
+  const { nome, telefone, email, extras } = campos;
 
   /* 5. Funil */
   const { data: pipelineRow } = await supabase

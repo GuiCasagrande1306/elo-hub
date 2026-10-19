@@ -33,10 +33,23 @@ export interface CamposDoLead {
 
 export type ResultadoDoRegistro = "criado" | "duplicado" | "erro";
 
+const CAMPOS_NOME = ["full_name", "nome_completo", "nome", "name"];
+const CAMPOS_TELEFONE = ["phone_number", "telefone", "phone", "celular", "whatsapp"];
+
 const CAMPOS_PADRAO = new Set([
-  "full_name", "nome", "first_name", "last_name",
-  "phone_number", "telefone", "phone", "email",
+  ...CAMPOS_NOME, ...CAMPOS_TELEFONE, "first_name", "last_name", "email",
 ]);
+
+/* Pergunta personalizada chega como chave: "qual_é_o_seu_objetivo?". */
+function rotulo(chave: string): string {
+  const texto = chave.replace(/_/g, " ").trim();
+  return texto.charAt(0).toUpperCase() + texto.slice(1);
+}
+
+function primeiro(mapa: Record<string, string>, chaves: string[]): string | null {
+  for (const c of chaves) if (mapa[c]) return mapa[c];
+  return null;
+}
 
 export function extrairCampos(
   fieldData: { name: string; values: string[] }[],
@@ -50,8 +63,7 @@ export function extrairCampos(
   }
 
   const nome =
-    mapa["full_name"] ??
-    mapa["nome"] ??
+    primeiro(mapa, CAMPOS_NOME) ??
     (mapa["first_name"] && mapa["last_name"]
       ? `${mapa["first_name"]} ${mapa["last_name"]}`.trim()
       : mapa["first_name"] ?? mapa["last_name"] ?? null);
@@ -59,12 +71,12 @@ export function extrairCampos(
   const extras: Record<string, string> = {};
   for (const campo of fieldData) {
     const v = campo.values?.[0];
-    if (v && !CAMPOS_PADRAO.has(campo.name.toLowerCase())) extras[campo.name] = v;
+    if (v && !CAMPOS_PADRAO.has(campo.name.toLowerCase())) extras[rotulo(campo.name)] = v;
   }
 
   return {
     nome,
-    telefone: normalizarTelefone(mapa["phone_number"] ?? mapa["telefone"] ?? mapa["phone"] ?? null),
+    telefone: normalizarTelefone(primeiro(mapa, CAMPOS_TELEFONE)),
     email: mapa["email"] ?? null,
     formName,
     campaignName: adName,
