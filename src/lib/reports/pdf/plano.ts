@@ -224,16 +224,27 @@ function compiladoDoRelatorio(payload: ReportPayload): ItemDoCompilado[] {
     .map((kpi) => ({ kpi, fonte: fonteDoValor(kpi) }));
 }
 
+/**
+ * O gráfico ganha bloco próprio com uma fileira só (encaixado ao lado de
+ * três KPIs ele sairia do tamanho de um selo) ou quando nenhuma fileira
+ * tem vaga à direita. Fora disso entra no vazio da última fileira e não
+ * soma altura. A folha decide o desenho por esta mesma função: quando
+ * eram duas regras, 8 KPIs (duas fileiras cheias) desenhavam o bloco sem
+ * a altura reservada, e as colunas subiam por cima do título.
+ */
+export function graficoEmBlocoProprio(fileiras: unknown[][]): boolean {
+  return fileiras.length < 2 || fileiras.every((f) => f.length === KPIS_POR_FILEIRA);
+}
+
 function alturaDaPlataforma(b: Omit<BlocoPlataforma, "altura" | "tipo">): number {
   let h = ALTURA.filete + ALTURA.recheioDoCartao + ALTURA.cabecalhoDaPlataforma;
 
   h += b.fileiras.length * ALTURA.fileiraDeKpi;
 
-  /* ⚠️ O GRÁFICO NÃO SOMA ALTURA PRÓPRIA quando há duas ou mais
-     fileiras de KPI: no Reportei ele ocupa o espaço VAZIO à direita da
-     segunda fileira, não um bloco abaixo dela. Somar os dois produziria
-     justamente o palmo de branco que este trabalho existe para tirar. */
-  if (b.temGrafico && b.fileiras.length < 2) h += ALTURA.grafico;
+  /* O gráfico só soma altura quando vai para bloco próprio — ver
+     `graficoEmBlocoProprio`. Encaixado no vazio da última fileira, somar
+     produziria o palmo de branco que o encaixe existe para tirar. */
+  if (b.temGrafico && graficoEmBlocoProprio(b.fileiras)) h += ALTURA.grafico;
 
   if (b.funil.length > 0) {
     h += ALTURA.tituloDeBloco + b.funil.length * ALTURA.degrauDoFunil;

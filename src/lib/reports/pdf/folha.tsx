@@ -20,6 +20,7 @@ import {
   type Bloco,
   type BlocoCompilado,
   type BlocoPlataforma,
+  graficoEmBlocoProprio,
 } from "./plano";
 import { escalaDoGrafico } from "../escala-do-grafico";
 import { formatarSerie } from "../serie-do-grafico";
@@ -27,6 +28,7 @@ import { copyDoAnuncio, semEmoji } from "./texto-seguro";
 import type { ReportPayload } from "@/lib/reports/payload";
 import {
   formatCurrency,
+  formatCurrencyCompact,
   formatNumber,
   formatPercent,
   formatPeriod,
@@ -129,6 +131,7 @@ const s = StyleSheet.create({
   },
 
   celula: { fontSize: 8.5, paddingHorizontal: 8, paddingVertical: 6 },
+  rotuloDoEixo: { fontSize: 7.5, color: TINTA_FRACA },
   celulaCabecalho: {
     fontSize: 8,
     fontWeight: 700,
@@ -354,7 +357,7 @@ function CartaoDePlataforma({
                 `alturaDaPlataforma` em plano.ts. Sem isto, o espaço à
                 direita de dois ou três KPIs ficaria em branco, que é a
                 queixa que originou este trabalho. */}
-            {bloco.temGrafico && i === bloco.fileiras.length - 1 && fileira.length < 4 && (
+            {bloco.temGrafico && !graficoEmBlocoProprio(bloco.fileiras) && i === bloco.fileiras.length - 1 && (
               <View style={{ flex: 1, paddingLeft: 16 }}>
                 <GraficoDeLinha payload={payload} cor={cor} altura={ALTURA.fileiraDeKpi - 16} />
               </View>
@@ -363,7 +366,7 @@ function CartaoDePlataforma({
         ))}
 
         {/* Gráfico em bloco próprio só quando há uma fileira cheia. */}
-        {bloco.temGrafico && bloco.fileiras.every((f) => f.length === 4) && (
+        {bloco.temGrafico && graficoEmBlocoProprio(bloco.fileiras) && (
           <View style={{ height: ALTURA.grafico }}>
             <Text style={s.tituloDeBloco}>Investimento por dia</Text>
             <GraficoDeLinha payload={payload} cor={cor} altura={ALTURA.grafico - ALTURA.tituloDeBloco} />
@@ -559,6 +562,9 @@ function Selo({ kpi }: { kpi: ReportPayload["kpis"][number] }) {
  * e aproximar curva com retângulos rotacionados sai pior do que uma
  * série de barras honesta.
  */
+const LARGURA_DO_EIXO = 34;
+const ALTURA_DAS_DATAS = 14;
+
 function GraficoDeLinha({
   payload,
   cor,
@@ -573,23 +579,69 @@ function GraficoDeLinha({
 
   const valores = pontos.map((p) => p.spend ?? 0);
   const escala = escalaDoGrafico(Math.max(...valores, 1), "dinheiro");
-  const alturaDoDesenho = altura - 26;
+  const alturaDoDesenho = altura - 26 - ALTURA_DAS_DATAS;
+
+  /* As datas não cabem todas: trinta rótulos viram uma tarja cinza, e no
+     gráfico encaixado ao lado dos KPIs nem sete cabem. Mesma ideia do
+     `interval="preserveStartEnd"` da folha HTML. */
+  const passo = Math.ceil(pontos.length / (altura > 150 ? 8 : 4));
+  const nivel = (v: number) => alturaDoDesenho * (1 - v / escala.topo);
 
   return (
     <View style={{ height: altura }}>
-      <View style={{ flexDirection: "row", alignItems: "flex-end", height: alturaDoDesenho, gap: 1.5 }}>
-        {valores.map((v, i) => (
-          <View
-            key={i}
-            style={{
-              flex: 1,
-              height: Math.max(2, (v / escala.topo) * alturaDoDesenho),
-              backgroundColor: cor,
-              opacity: 0.85,
-              borderRadius: 1,
-            }}
-          />
-        ))}
+      <View style={{ flexDirection: "row", height: alturaDoDesenho }}>
+        {/* EIXO DE VALORES, com as mesmas três marcas da folha HTML
+            (`escalaDoGrafico`). Sem ele o cliente via a altura das
+            colunas e não tinha como saber quanto cada uma valia. */}
+        <View style={{ width: LARGURA_DO_EIXO }}>
+          {escala.marcas.map((m) => (
+            <Text
+              key={m}
+              style={[s.rotuloDoEixo, { position: "absolute", right: 6, top: nivel(m) - 4.5 }]}
+            >
+              {formatCurrencyCompact(Math.round(m * 100))}
+            </Text>
+          ))}
+        </View>
+        <View style={{ flex: 1 }}>
+          {escala.marcas.map((m) => (
+            <View
+              key={m}
+              style={{ position: "absolute", left: 0, right: 0, top: nivel(m), borderTopWidth: 0.5, borderTopColor: FIO }}
+            />
+          ))}
+          <View style={{ flexDirection: "row", alignItems: "flex-end", height: alturaDoDesenho, gap: 1.5 }}>
+            {valores.map((v, i) => (
+              <View
+                key={i}
+                style={{
+                  flex: 1,
+                  height: Math.max(2, (v / escala.topo) * alturaDoDesenho),
+                  backgroundColor: cor,
+                  opacity: 0.85,
+                  borderRadius: 1,
+                }}
+              />
+            ))}
+          </View>
+        </View>
+      </View>
+      {/* Datas em posição absoluta, centradas na coluna: dentro de uma
+          célula do tamanho da barra, "12/10" quebraria em duas linhas. */}
+      <View style={{ height: ALTURA_DAS_DATAS, marginLeft: LARGURA_DO_EIXO }}>
+        {pontos.map((p, i) =>
+          i % passo === 0 ? (
+            <Text
+              key={p.date}
+              style={[
+                s.rotuloDoEixo,
+                { position: "absolute", top: 4, width: 40, marginLeft: -20, textAlign: "center", left: `${((i + 0.5) / pontos.length) * 100}%` },
+              ]}
+            >
+              {p.date.slice(8, 10)}/{p.date.slice(5, 7)}
+            </Text>
+          ) : null,
+        )}
       </View>
       {/* ⚠️ `formatarSerie`, NÃO `formatCurrency`. `TrendPoint.spend`
           chega em REAIS (`spendCents / 100` em `buildTrend`), e passá-lo
