@@ -517,6 +517,7 @@ export function payloadHeadline(payload: ReportPayload) {
         /* Basta UMA plataforma isolar para o número da capa já não ser
            a conta inteira, e o selo precisa dizer isso. */
         isolado: acc.origem.isolado || p.totals.origem.isolado,
+        contaResultados: acc.origem.contaResultados || p.totals.origem.contaResultados,
       },
     }),
     EMPTY_TOTALS,

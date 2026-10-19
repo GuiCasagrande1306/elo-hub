@@ -110,6 +110,14 @@ export interface TotaisDeOrigem {
    * quando são todas é pior do que não dizer nada.
    */
   isolado: boolean;
+  /**
+   * A contagem de resultados também segue a origem. Só em conta de
+   * captação (Mensagens/Cadastros): a conversa que veio do engajamento do
+   * Instagram não é lead da campanha de leads, e "40 leads a R$ 5,49"
+   * com 2 deles vindos de fora não fecha na calculadora. Em venda, não —
+   * a compra que veio do alcance é venda de verdade (nota no topo).
+   */
+  contaResultados: boolean;
 }
 
 /**
@@ -131,7 +139,7 @@ export function totaisDeOrigem<
   const tudo = somar(linhas);
 
   if (familias.size === 0) {
-    return { ...tudo, isolado: false };
+    return { ...tudo, isolado: false, contaResultados: false };
   }
 
   /* A DECISÃO É POR CAMPANHA, NÃO POR LINHA, e a diferença só aparece no
@@ -179,7 +187,7 @@ export function totaisDeOrigem<
      Sem isto, essas duas mostrariam custo "—" e ROAS infinito no
      relatório do cliente. */
   if (origem.spendCents === 0 || origem.conversions === 0) {
-    return { ...tudo, isolado: false };
+    return { ...tudo, isolado: false, contaResultados: false };
   }
 
   /* PISO DE REPRESENTATIVIDADE, e ele é a segunda metade da rede.
@@ -214,14 +222,15 @@ export function totaisDeOrigem<
      Lá De Casa fica abaixo (33%) — ali a diferença era de R$ 3. O piso
      não mexe em nenhuma conta em que a regra estava funcionando. */
   if (origem.conversions * 2 < tudo.conversions) {
-    return { ...tudo, isolado: false };
+    return { ...tudo, isolado: false, contaResultados: false };
   }
 
   /* Só é "isolado" se sobrou algo de fora. Uma conta em que TODA
      campanha é de venda — e existem: Atacado de Pratas, 100% — está
      certa dos dois jeitos, e anunciar isolamento ali sugere um recorte
      que não houve. */
-  return { ...origem, isolado: origem.spendCents < tudo.spendCents };
+  const isolado = origem.spendCents < tudo.spendCents;
+  return { ...origem, isolado, contaResultados: isolado && !familias.has("Vendas") };
 }
 
 function somar<
@@ -231,7 +240,7 @@ function somar<
     revenue_cents: number;
     conversions: number;
   },
->(linhas: T[]): Omit<TotaisDeOrigem, "isolado"> {
+>(linhas: T[]): Omit<TotaisDeOrigem, "isolado" | "contaResultados"> {
   const campanhas = new Set<string>();
   let spendCents = 0;
   let conversions = 0;

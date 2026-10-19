@@ -173,6 +173,7 @@ const ORIGEM_VAZIA: TotaisDeOrigem = {
   revenueCents: 0,
   campanhas: 0,
   isolado: false,
+  contaResultados: false,
 };
 
 export const EMPTY_TOTALS: MetricTotals = {
@@ -221,6 +222,7 @@ export function sumMetrics(
         revenueCents: base.revenueCents,
         campanhas: new Set(rows.map((r) => r.campaign_id)).size,
         isolado: false,
+        contaResultados: false,
       };
 
   return { ...base, origem };
@@ -302,7 +304,7 @@ export function deriveMetric(key: MetricKey, t: MetricTotals): number {
       return t.spendCents;
     case "results":
     case "leads":
-      return t.conversions;
+      return t.origem.contaResultados ? t.origem.conversions : t.conversions;
     /* AS DUAS RAZÕES DE EFICIÊNCIA SAEM DA ORIGEM, e são as únicas.
        Ver o comentário de `MetricTotals.origem`. */
     case "cpa":
@@ -413,7 +415,9 @@ export function computeKpi(
     previousFormatted: anteriorIndefinido ? "—" : def.format(previousValue),
     indefinido,
     origem:
-      USAM_ORIGEM.has(key) && current.origem.isolado
+      (USAM_ORIGEM.has(key) ||
+        (current.origem.contaResultados && (key === "results" || key === "leads"))) &&
+      current.origem.isolado
         ? current.origem.campanhas
         : null,
   };
