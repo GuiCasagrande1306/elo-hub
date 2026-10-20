@@ -106,6 +106,11 @@ export async function proxy(request: NextRequest) {
      */
     pathname.startsWith("/relatorio/") ||
     /**
+     * Pesquisa NPS do cliente. O token em `clients.nps_token` é a única
+     * fechadura, como no relatório por link; token inválido dá 404.
+     */
+    pathname.startsWith("/pesquisa/") ||
+    /**
      * "Esqueci minha senha". Quem chega aqui não tem sessão — é o
      * motivo de a página existir. Mandá-la para `/login` fecharia a
      * porta na cara de quem já está do lado de fora.

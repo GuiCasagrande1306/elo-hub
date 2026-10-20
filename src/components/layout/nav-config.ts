@@ -8,6 +8,7 @@ import {
   LayoutGrid,
   Repeat,
   Settings,
+  Smile,
   Stamp,
   TriangleAlert,
   Users,
@@ -98,6 +99,7 @@ export const navGroups: NavGroup[] = [
       // Não é adminOnly: quem gerencia a conta precisa ver antes de o
       // anúncio cair, e saldo de mídia não é dado financeiro da agência.
       { href: "/alertas-saldo", label: "Alertas de saldo", icon: TriangleAlert },
+      { href: "/nps", label: "NPS dos clientes", icon: Smile, adminOnly: true },
     ],
   },
   {
