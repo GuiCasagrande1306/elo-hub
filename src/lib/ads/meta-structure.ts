@@ -160,12 +160,13 @@ export async function fetchAdStructure(
   /* O Google roda EM PARALELO com a Meta e engole os próprios erros —
      ver `fetchGoogleStructure`. Uma conta que só tem Google precisa
      aparecer, e uma que só tem Meta não pode esperar o Google falhar. */
+  const vende = ["ecommerce", "delivery"].includes(google?.clients?.segment ?? "");
   const promessaGoogle = fetchGoogleStructure(
     google?.external_account_id,
     google?.integration_secrets?.refresh_token,
     since,
     until,
-  );
+  ).then((nos) => (vende ? nos : semFaturamento(nos)));
 
   /* A guarda também ESTREITA os tipos daqui para baixo — por isso ela
      testa `token` e `conta` diretamente, em vez de um booleano à parte
@@ -455,4 +456,11 @@ function consolidar(
     conectadas,
     moeda: "BRL",
   };
+}
+
+/* Mesma regra da sincronização (`sync.ts`): fora de e-commerce e
+   delivery, o `conversionsValue` do Google é valor padrão da ação de
+   conversão, não venda. */
+function semFaturamento(nos: NoDaArvore[]): NoDaArvore[] {
+  return nos.map((n) => ({ ...n, revenueCents: 0, filhos: semFaturamento(n.filhos) }));
 }

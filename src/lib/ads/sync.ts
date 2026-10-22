@@ -53,6 +53,8 @@ const PROVIDERS: Record<string, AdsProvider> = {
   meta_ads: metaAdsProvider,
 };
 
+const SEGMENTOS_QUE_VENDEM = new Set<string>(["ecommerce", "delivery"]);
+
 /** Linhas por requisição de upsert — evita payload grande demais. */
 const UPSERT_CHUNK = 500;
 
@@ -212,7 +214,16 @@ async function syncIntegration(
       });
     }
 
-    const rows = result.rows.filter((r) => r.metricDate);
+    /* Faturamento do Google só em conta que vende. Em captação e negócio
+       local o Google preenche `conversionsValue` com o valor padrão da
+       ação de conversão (R$ 1 por lead, R$ 10 por ligação…), e isso
+       virava "faturamento" e ROAS no relatório e no painel da agência. */
+    const vende = SEGMENTOS_QUE_VENDEM.has(integration.clients?.segment ?? "");
+    const rows = result.rows
+      .filter((r) => r.metricDate)
+      .map((r) =>
+        integration.platform === "google_ads" && !vende ? { ...r, revenueCents: 0 } : r,
+      );
     const upserted = await upsertMetrics(admin, integration, rows);
 
     /* Criativos DEPOIS das métricas, e sem poder derrubá-las.
