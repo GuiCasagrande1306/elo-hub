@@ -6,6 +6,7 @@ import {
   isMetricField,
   metricFieldOf,
 } from "./conversion-action";
+import { objetivoDoCriativo } from "./creative-goal";
 import {
   decimalToCents,
   isSupportedCurrency,
@@ -55,6 +56,9 @@ const FIELDS = [
   "clicks",
   "actions",
   "action_values",
+  /* O que a campanha otimiza (a coluna "Resultados" do Gerenciador).
+     Decide se conversa iniciada conta como lead — ver `tiposDaLinha`. */
+  "results",
   /* Campos próprios do Insights, fora de `actions`: hoje só
      `instagram_profile_visits`. Ver a medição em `conversion-action.ts`. */
   ...CAMPOS_DE_METRICA,
@@ -63,6 +67,10 @@ const FIELDS = [
 interface MetaAction {
   action_type: string;
   value: string;
+}
+
+interface MetaResult {
+  indicator?: string;
 }
 
 
@@ -77,6 +85,7 @@ interface MetaInsightRow {
   clicks?: string;
   actions?: MetaAction[];
   action_values?: MetaAction[];
+  results?: MetaResult[];
   /* Campos de métrica chegam como STRING, no mesmo nível da linha —
      "instagram_profile_visits": "2005". Não é array. */
   instagram_profile_visits?: string;
@@ -235,15 +244,43 @@ export function valorDoTipo(
    com a linha da campanha. */
 const CONVERSA_INICIADA = "onsite_conversion.messaging_conversation_started_7d";
 
+/**
+ * Os tipos que contam NESTA linha.
+ *
+ * Em campanha de CADASTRO que não otimiza conversa, a conversa iniciada
+ * sai da conta: é quem preencheu o formulário e depois tocou no WhatsApp,
+ * a mesma pessoa contada duas vezes. Medido na Raspadora, 15–21/10/2026:
+ * 8 `lead_grouped` + 4 conversas = 12 no relatório, contra 8 leads no
+ * Gerenciador. Campanha de leads POR WhatsApp (Istituto Burgo, Life Mind)
+ * traz `results` = conversa iniciada e continua contando.
+ *
+ * O objetivo decide, não a meta de otimização: a Meta devolve "Unknown
+ * Optimization Goal" em toda campanha OUTCOME_LEADS.
+ */
+function tiposDaLinha(
+  tipos: string[],
+  row: { objective?: string; optimization_goal?: string; results?: MetaResult[] },
+): string[] {
+  if (!tipos.includes(CONVERSA_INICIADA)) return tipos;
+
+  const meta =
+    row.optimization_goal && !/unknown/i.test(row.optimization_goal) ? row.optimization_goal : null;
+  if (objetivoDoCriativo(meta, row.objective ?? null) !== "Cadastros") return tipos;
+
+  const otimizaConversa = row.results?.some((r) => r.indicator?.includes(CONVERSA_INICIADA));
+  return otimizaConversa ? tipos : tipos.filter((t) => t !== CONVERSA_INICIADA);
+}
+
 export function toNormalizedRow(
   row: MetaInsightRow,
   conversionActionTypes: string | string[],
 ): NormalizedMetricRow {
   /* Aceita string por compatibilidade: `conversion_action_type` no banco
      continua sendo uma coluna de texto, e chamador antigo não quebra. */
-  const tipos = Array.isArray(conversionActionTypes)
-    ? conversionActionTypes
-    : [conversionActionTypes];
+  const tipos = tiposDaLinha(
+    Array.isArray(conversionActionTypes) ? conversionActionTypes : [conversionActionTypes],
+    row,
+  );
 
   /* SOMA sobre o conjunto, e o conjunto só contém eventos disjuntos —
      ver a análise em `conversion-action.ts`. Somar tipos que se contêm
@@ -528,6 +565,7 @@ interface MetaAdInsightRow {
   objective?: string;
   optimization_goal?: string;
   instagram_profile_visits?: string;
+  results?: MetaResult[];
 }
 
 /**
@@ -566,7 +604,7 @@ export async function fetchAdInsights(
        `objective`/`optimization_goal` entram para o card do criativo
        poder mudar de vitrine — campanha de venda mostra ticket médio e
        ROAS, campanha de perfil mostra visita e custo por visita. */
-    `ad_id,spend,impressions,clicks,actions,action_values,` +
+    `ad_id,spend,impressions,clicks,actions,action_values,results,` +
       `objective,optimization_goal,${CAMPOS_DE_METRICA.join(",")}`,
   );
   url.searchParams.set("time_range", JSON.stringify({ since, until }));
@@ -591,7 +629,8 @@ export async function fetchAdInsights(
       /* Mesma soma sobre o CONJUNTO de action_types usada nas métricas
          diárias. Se o card do criativo contasse um evento e o painel
          outro, os dois discordariam sobre a mesma conta. */
-      const conversions = conversionActionTypes.reduce(
+      const tiposDoAnuncio = tiposDaLinha(conversionActionTypes, row);
+      const conversions = tiposDoAnuncio.reduce(
         (acc, tipo) =>
           acc +
           valorDoTipo(row, tipo),
