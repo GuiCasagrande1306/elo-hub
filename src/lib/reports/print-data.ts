@@ -35,6 +35,7 @@ import type {
   DailyMetric,
   MetricKey,
 } from "@/types/database";
+import { rotulosDoGoogle } from "./rotulo-do-google";
 
 /* =====================================================================
    Dados da página de impressão
@@ -306,6 +307,7 @@ export async function getPrintReportData(
       template.grafico,
       loja,
       lojaAnterior,
+      { google_ads: (await rotulosDoGoogle(clientId, prev.start, periodEnd)) ?? {} },
     ),
     creativesDoPeriodo: metricasDoPeriodo !== null,
     totaisMeta,
@@ -394,6 +396,7 @@ function assemble(
   },
   loja: TotaisDaLoja | null = null,
   lojaAnterior: TotaisDaLoja | null = null,
+  rotulosPorPlataforma: Partial<Record<string, Partial<Record<MetricKey, string>>>> = {},
 ): Omit<
   PrintReportData,
   | "creativesDoPeriodo"
@@ -469,6 +472,7 @@ function assemble(
       previous,
       rotulos,
       tiposDeConversao,
+      rotulosPorPlataforma,
     ),
     creatives,
     trend: buildTrend(current, tiposDeConversao),

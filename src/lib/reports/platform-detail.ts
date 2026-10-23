@@ -151,6 +151,8 @@ export function buildPlatformDetail(
   anteriores: DailyMetric[],
   rotulos: Partial<Record<MetricKey, string>> = {},
   tiposDeConversao?: string[],
+  /** Rótulos que valem só para uma plataforma — ver `rotulo-do-google.ts`. */
+  rotulosPorPlataforma: Partial<Record<string, Partial<Record<MetricKey, string>>>> = {},
 ): PlatformDetail[] {
   const porPlataformaAnterior = new Map(
     splitByPlatform(anteriores, tiposDeConversao).map(
@@ -162,6 +164,7 @@ export function buildPlatformDetail(
 
   return splitByPlatform(atuais, tiposDeConversao).map((p) => {
     const anterior = porPlataformaAnterior.get(p.platform) ?? vazio;
+    const rotulosDaPlataforma = { ...rotulos, ...rotulosPorPlataforma[p.platform] };
 
     return {
       platform: p.platform,
@@ -169,10 +172,10 @@ export function buildPlatformDetail(
       spendShare: p.spendShare,
       kpis: metricasComNumero(p.totals, anterior).map((key) => {
         const kpi = computeKpi(key, p.totals, anterior);
-        const rotulo = rotulos[key];
+        const rotulo = rotulosDaPlataforma[key];
         return rotulo ? { ...kpi, label: rotulo } : kpi;
       }),
-      campaigns: campanhasDaPlataforma(atuais, p.platform, rotulos),
+      campaigns: campanhasDaPlataforma(atuais, p.platform, rotulosDaPlataforma),
     };
   });
 }
