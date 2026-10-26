@@ -1,11 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import type { ZodError } from "zod";
 
 import { isDemoMode } from "@/lib/env";
 import { brandColorFromName } from "@/lib/brand-color";
-import { dataNoBrasil, mesCorrenteBR } from "@/lib/date-br";
+import { syncAllClients } from "@/lib/ads/sync";
+import { dataNoBrasil, mesCorrenteBR, somarDiasBR } from "@/lib/date-br";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   defaultGoalMetricFor,
@@ -623,6 +625,8 @@ export async function saveClientProfile(
      nichos. */
   const zerou = mudouUnidadeDaMeta(antes?.segment, v.segment);
 
+  if (antes?.segment !== v.segment) ressincronizarDepois(v.clientId);
+
   if (zerou) {
     const { start } = mesCorrenteBR();
     await supabase
@@ -640,6 +644,27 @@ export async function saveClientProfile(
   revalidatePath("/esteira");
   revalidatePath("/");
   return { ok: true, metaZerada: zerou };
+}
+
+/**
+ * Regrava as métricas do cliente depois da resposta.
+ *
+ * O segmento e a conversão escolhida decidem o que vira `conversions` NA
+ * SINCRONIZAÇÃO. Sem isto, trocar o segmento só valia na rodada da
+ * madrugada, e só para o mês corrente: em 26/10/2026 Maya Sushi e
+ * Zebuino passaram de negócio local para captação às 13h, e o relatório
+ * gerado em seguida mostrou visitas ao perfil como "780 leads".
+ */
+function ressincronizarDepois(clientId: string) {
+  if (isDemoMode) return;
+  after(async () => {
+    const hoje = dataNoBrasil();
+    try {
+      await syncAllClients({ clientId, range: { since: somarDiasBR(hoje, -90), until: hoje } });
+    } catch (e) {
+      console.error("[clientes] ressincronização após troca de segmento:", e instanceof Error ? e.message : e);
+    }
+  });
 }
 
 /**
@@ -855,6 +880,8 @@ export async function setConversionAction(input: {
     .eq("platform", "meta_ads");
 
   if (error) return { ok: false, error: error.message };
+
+  ressincronizarDepois(input.clientId);
 
   revalidatePath("/clientes");
   return { ok: true };
