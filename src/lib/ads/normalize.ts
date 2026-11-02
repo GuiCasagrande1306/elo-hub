@@ -85,6 +85,20 @@ export function currentMonthRange(now = new Date()): { since: string; until: str
   return { since: toISODate(first), until: toISODate(last) };
 }
 
+/**
+ * Janela da rodada diária: do dia 1º do mês OU de 7 dias atrás, o que
+ * vier antes. Só o mês corrente deixava o último dia do mês anterior
+ * pela metade: o dia 31/10/2026 foi sincronizado às 6h20 dele mesmo e
+ * nunca mais (gasto de R$ 0 contra R$ 89 no Meta). Sete e não 28: a
+ * rodada é sequencial com teto de 300s e já chega perto dele no fim do
+ * mês, que é o tamanho máximo desta janela.
+ */
+export function dailyRange(now = new Date()): { since: string; until: string } {
+  const mes = currentMonthRange(now);
+  const recuo = lookbackRange(7, now);
+  return { since: recuo.since < mes.since ? recuo.since : mes.since, until: mes.until };
+}
+
 /** Janela curta terminando hoje — usada nas rodadas de hora em hora. */
 export function lookbackRange(days: number, now = new Date()): {
   since: string;

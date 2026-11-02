@@ -73,7 +73,6 @@ interface MetaResult {
   indicator?: string;
 }
 
-
 interface MetaInsightRow {
   date_start: string;
   campaign_id?: string;
@@ -140,67 +139,110 @@ export const metaAdsProvider: AdsProvider = {
       ? request.externalAccountId
       : `act_${request.externalAccountId}`;
 
-    const url = new URL(
-      `https://graph.facebook.com/${serverEnv.metaApiVersion}/${accountId}/insights`,
+    const inteiro = await buscarInsights(
+      accountId,
+      request.accessToken,
+      request.since,
+      request.until,
+      conversionAction,
     );
-    url.searchParams.set("level", "campaign");
-    url.searchParams.set("time_increment", "1");
-    url.searchParams.set("fields", FIELDS);
-    url.searchParams.set(
-      "time_range",
-      JSON.stringify({ since: request.since, until: request.until }),
-    );
-    url.searchParams.set("limit", "500");
-
-    const rows: NormalizedMetricRow[] = [];
-    let nextUrl: string | null = url.toString();
-    let page = 0;
-
-    try {
-      // Paginação com teto: uma conta grande pode devolver dezenas de
-      // páginas, e sem limite um `paging.next` em loop trava o cron.
-      while (nextUrl && page < 25) {
-        const response: Response = await fetch(nextUrl, {
-          headers: { Authorization: `Bearer ${request.accessToken}` },
-          signal: AbortSignal.timeout(30_000),
-          cache: "no-store",
-        });
-
-        const payload = (await response.json()) as MetaResponse;
-
-        if (!response.ok || payload.error) {
-          const code = payload.error?.code ?? 0;
-          return {
-            ok: false,
-            code: AUTH_ERROR_CODES.has(code)
-              ? "auth_expired"
-              : RATE_LIMIT_CODES.has(code)
-                ? "rate_limited"
-                : "platform_error",
-            message:
-              payload.error?.message ?? `Graph API respondeu ${response.status}.`,
-          };
-        }
-
-        for (const row of payload.data ?? []) {
-          rows.push(toNormalizedRow(row, conversionAction));
-        }
-
-        nextUrl = payload.paging?.next ?? null;
-        page += 1;
-      }
-
-      return { ok: true, rows };
-    } catch (error) {
-      return {
-        ok: false,
-        code: "network_error",
-        message:
-          error instanceof Error ? error.message : "Falha de rede ao chamar a Meta.",
-      };
+    if (
+      inteiro.ok ||
+      (inteiro.code !== "network_error" && inteiro.code !== "platform_error")
+    ) {
+      return inteiro;
     }
+
+    /* Conta pesada: o período inteiro estoura o tempo ou volta "unknown
+       error" do próprio Meta. Medido na Flying Sushi (01/10–01/11/2026):
+       mês inteiro = erro em 30s, 9 dias = 20s; em blocos de 7 dias o mês
+       levou 146s, e a rodada diária é sequencial com teto de 300s.
+       shortcut: só os 7 dias mais recentes da janela entram nessa conta
+       (os anteriores ficam como foram gravados quando eram recentes);
+       trocar por blocos se a rodada ganhar orçamento. Token e limite de
+       uso falhariam igual, por isso não repetem. */
+    const hoje = new Date().toISOString().slice(0, 10);
+    const fim = request.until < hoje ? request.until : hoje;
+    const seteDias = new Date(`${fim}T12:00:00Z`);
+    seteDias.setUTCDate(seteDias.getUTCDate() - 6);
+    const desde = seteDias.toISOString().slice(0, 10);
+    if (desde <= request.since) return inteiro;
+    return buscarInsights(
+      accountId,
+      request.accessToken,
+      desde,
+      request.until,
+      conversionAction,
+    );
   },
 };
+
+async function buscarInsights(
+  accountId: string,
+  accessToken: string,
+  since: string,
+  until: string,
+  conversionAction: string | string[],
+): Promise<ProviderResult> {
+  const url = new URL(
+    `https://graph.facebook.com/${serverEnv.metaApiVersion}/${accountId}/insights`,
+  );
+  url.searchParams.set("level", "campaign");
+  url.searchParams.set("time_increment", "1");
+  url.searchParams.set("fields", FIELDS);
+  url.searchParams.set("time_range", JSON.stringify({ since, until }));
+  url.searchParams.set("limit", "500");
+
+  const rows: NormalizedMetricRow[] = [];
+  let nextUrl: string | null = url.toString();
+  let page = 0;
+
+  try {
+    // Paginação com teto: uma conta grande pode devolver dezenas de
+    // páginas, e sem limite um `paging.next` em loop trava o cron.
+    while (nextUrl && page < 25) {
+      const response: Response = await fetch(nextUrl, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        signal: AbortSignal.timeout(30_000),
+        cache: "no-store",
+      });
+
+      const payload = (await response.json()) as MetaResponse;
+
+      if (!response.ok || payload.error) {
+        const code = payload.error?.code ?? 0;
+        return {
+          ok: false,
+          code: AUTH_ERROR_CODES.has(code)
+            ? "auth_expired"
+            : RATE_LIMIT_CODES.has(code)
+              ? "rate_limited"
+              : "platform_error",
+          message:
+            payload.error?.message ?? `Graph API respondeu ${response.status}.`,
+        };
+      }
+
+      for (const row of payload.data ?? []) {
+        rows.push(toNormalizedRow(row, conversionAction));
+      }
+
+      nextUrl = payload.paging?.next ?? null;
+      page += 1;
+    }
+
+    return { ok: true, rows };
+  } catch (error) {
+    return {
+      ok: false,
+      code: "network_error",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Falha de rede ao chamar a Meta.",
+    };
+  }
+}
 
 /**
  * Converte uma linha de insight da Meta para o formato do banco.
@@ -259,15 +301,24 @@ const CONVERSA_INICIADA = "onsite_conversion.messaging_conversation_started_7d";
  */
 function tiposDaLinha(
   tipos: string[],
-  row: { objective?: string; optimization_goal?: string; results?: MetaResult[] },
+  row: {
+    objective?: string;
+    optimization_goal?: string;
+    results?: MetaResult[];
+  },
 ): string[] {
   if (!tipos.includes(CONVERSA_INICIADA)) return tipos;
 
   const meta =
-    row.optimization_goal && !/unknown/i.test(row.optimization_goal) ? row.optimization_goal : null;
-  if (objetivoDoCriativo(meta, row.objective ?? null) !== "Cadastros") return tipos;
+    row.optimization_goal && !/unknown/i.test(row.optimization_goal)
+      ? row.optimization_goal
+      : null;
+  if (objetivoDoCriativo(meta, row.objective ?? null) !== "Cadastros")
+    return tipos;
 
-  const otimizaConversa = row.results?.some((r) => r.indicator?.includes(CONVERSA_INICIADA));
+  const otimizaConversa = row.results?.some((r) =>
+    r.indicator?.includes(CONVERSA_INICIADA),
+  );
   return otimizaConversa ? tipos : tipos.filter((t) => t !== CONVERSA_INICIADA);
 }
 
@@ -278,7 +329,9 @@ export function toNormalizedRow(
   /* Aceita string por compatibilidade: `conversion_action_type` no banco
      continua sendo uma coluna de texto, e chamador antigo não quebra. */
   const tipos = tiposDaLinha(
-    Array.isArray(conversionActionTypes) ? conversionActionTypes : [conversionActionTypes],
+    Array.isArray(conversionActionTypes)
+      ? conversionActionTypes
+      : [conversionActionTypes],
     row,
   );
 
@@ -412,9 +465,7 @@ const AD_FIELDS = [
  * que a Meta preenche em todo criativo, e uma imagem pequena na tabela
  * é melhor que um quadrado cinza.
  */
-function melhorImagem(
-  creative: MetaAdNode["creative"],
-): string | null {
+function melhorImagem(creative: MetaAdNode["creative"]): string | null {
   return (
     creative?.image_url ??
     creative?.object_story_spec?.video_data?.image_url ??
@@ -631,9 +682,7 @@ export async function fetchAdInsights(
          outro, os dois discordariam sobre a mesma conta. */
       const tiposDoAnuncio = tiposDaLinha(conversionActionTypes, row);
       const conversions = tiposDoAnuncio.reduce(
-        (acc, tipo) =>
-          acc +
-          valorDoTipo(row, tipo),
+        (acc, tipo) => acc + valorDoTipo(row, tipo),
         0,
       );
 

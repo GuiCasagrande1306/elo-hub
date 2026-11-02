@@ -5,7 +5,7 @@ import { googleAdsProvider } from "./google-ads";
 import { fetchActiveAds, fetchAdInsights, metaAdsProvider } from "./meta-ads";
 import { guardarMiniaturasPendentes } from "./miniaturas";
 import { coletarConversoesGoogle } from "./conversoes-google";
-import { currentMonthRange, lookbackRange } from "./normalize";
+import { dailyRange, lookbackRange } from "./normalize";
 import { conversionActionFor } from "./conversion-action";
 import type {
   AdsProvider,
@@ -59,7 +59,7 @@ const SEGMENTOS_QUE_VENDEM = new Set<string>(["ecommerce", "delivery"]);
 const UPSERT_CHUNK = 500;
 
 export interface SyncOptions {
-  /** "recent" = janela curta (padrão). "month" = mês corrente inteiro. */
+  /** "recent" = janela curta (padrão). "month" = mês corrente + 7 dias (`dailyRange`). */
   mode?: "recent" | "month";
   lookbackDays?: number;
   /** Restringe a um cliente — usado pelo botão de sincronizar avulso. */
@@ -95,7 +95,7 @@ export async function syncAllClients(
   const period =
     options.range ??
     (mode === "month"
-      ? currentMonthRange()
+      ? dailyRange()
       : lookbackRange(options.lookbackDays ?? 3));
 
   // service_role: o job não tem usuário na ponta, e `integration_secrets`
