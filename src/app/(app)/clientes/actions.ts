@@ -316,6 +316,10 @@ export async function setAdAccountId(input: {
   } catch {
     syncAviso = "Conta vinculada, mas não consegui buscar os números agora.";
   }
+  /* A rodada acima cobre só o mês corrente + 7 dias. Na Padá (conta
+     escolhida em 02/11/2026) outubro ficou com 7 dias de Google: R$ 0,07
+     no relatório contra R$ 15,68 na plataforma. O histórico vem depois. */
+  ressincronizarDepois(input.clientId);
 
   revalidatePath("/clientes");
   revalidatePath("/performance");
@@ -559,7 +563,7 @@ export async function saveClientProfile(
        apagaria o que a tela de agenda gravou: este formulário nunca
        soube de `report_weekday`, a agenda semanal, então salvar o
        cadastro de um cliente semanal zerava o agendamento dele sem
-       aviso. Quem manda na agenda é `salvarAgendaDeRelatorio`. */
+       aviso. Quem manda na agenda é `salvarProgramacoes` (tabela `report_schedules`). */
     optimization_day: v.optimizationDay,
   };
 
