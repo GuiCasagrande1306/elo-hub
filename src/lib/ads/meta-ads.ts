@@ -62,6 +62,11 @@ const FIELDS = [
   /* Campos próprios do Insights, fora de `actions`: hoje só
      `instagram_profile_visits`. Ver a medição em `conversion-action.ts`. */
   ...CAMPOS_DE_METRICA,
+  /* "Seguidores no Instagram" do Gerenciador, atribuídos aos anúncios.
+     Fora da documentação pública: o nome saiu do código do próprio
+     Gerenciador (03/11/2026). Padá, outubro: 408 na campanha de
+     engajamento, 7 na de tráfego, 2 na de reconhecimento. */
+  "instagram_profile_follow",
 ].join(",");
 
 interface MetaAction {
@@ -88,6 +93,7 @@ interface MetaInsightRow {
   /* Campos de métrica chegam como STRING, no mesmo nível da linha —
      "instagram_profile_visits": "2005". Não é array. */
   instagram_profile_visits?: string;
+  instagram_profile_follow?: string;
 }
 
 interface MetaResponse {
@@ -393,6 +399,11 @@ export function toNormalizedRow(
       row.instagram_profile_visits === undefined
         ? null
         : toInt(row.instagram_profile_visits),
+    // Mesma regra do nulo da visita: campo da linha, ausente = não mede.
+    instagramFollows:
+      row.instagram_profile_follow === undefined
+        ? null
+        : toInt(row.instagram_profile_follow),
     /* ⚠️ AUSENTE É ZERO AQUI, ao contrário da visita ao perfil logo
        acima, e a diferença não é descuido.
 

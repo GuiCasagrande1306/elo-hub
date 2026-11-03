@@ -43,6 +43,8 @@ export interface NormalizedMetricRow {
    * relatório dizer "0 visitas" numa campanha que entregou 131.
    */
   profileVisits: number | null;
+  /** Seguidores do Instagram atribuídos aos anúncios. `null` = não apurado. */
+  instagramFollows: number | null;
   /**
    * Conversas iniciadas na campanha, do evento
    * `onsite_conversion.messaging_conversation_started_7d`.

@@ -508,6 +508,8 @@ export interface DailyMetric {
   optimization_goal: string | null;
   /** Visitas ao perfil no dia. `null` = não apurado, nunca "zero". */
   profile_visits: number | null;
+  /** Seguidores do Instagram vindos dos anúncios. `null` = não apurado (migration 100). */
+  instagram_follows: number | null;
   /**
    * Conversas iniciadas no dia, por campanha.
    *

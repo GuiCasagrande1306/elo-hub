@@ -194,6 +194,7 @@ export function buildPlatformDetail(
           ? acoesGoogle.map((a) => kpiDeContagem(a.chave, a.label, a.atual, a.anterior))
           : []),
         ...(p.platform === "meta_ads" ? kpiDeMensagens(atuais, anteriores, tiposDeConversao) : []),
+        ...(p.platform === "meta_ads" ? kpiDeSeguidores(atuais, anteriores) : []),
       ],
       campaigns: campanhasDaPlataforma(atuais, p.platform, rotulosDaPlataforma),
     };
@@ -254,6 +255,20 @@ function kpiDeMensagens(
   const atual = somaConversas(atuais);
   const anterior = somaConversas(anteriores);
   return atual > 0 || anterior > 0 ? [kpiDeContagem("meta_mensagens", "Mensagens", atual, anterior)] : [];
+}
+
+const somaSeguidores = (linhas: DailyMetric[]) =>
+  linhas.reduce((s, l) => s + (l.platform === "meta_ads" ? (l.instagram_follows ?? 0) : 0), 0);
+
+/* "Seguidores no Instagram" do Gerenciador, para todos os clientes
+   (pedido de 03/11/2026). Só aparece com número: conta sem Instagram
+   vinculado não ganha um cartão zerado. */
+function kpiDeSeguidores(atuais: DailyMetric[], anteriores: DailyMetric[]): KpiResult[] {
+  const atual = somaSeguidores(atuais);
+  const anterior = somaSeguidores(anteriores);
+  return atual > 0 || anterior > 0
+    ? [kpiDeContagem("meta_seguidores", "Seguidores no Instagram", atual, anterior)]
+    : [];
 }
 
 /**

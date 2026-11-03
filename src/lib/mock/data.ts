@@ -442,6 +442,7 @@ function generateMetrics(): DailyMetric[] {
             /* Campanha de venda também recebe visita — ela só não é o
                que se cobra dela. O número existe e não entra na tabela. */
             profile_visits: Math.round(imprConv * 0.012),
+            instagram_follows: null,
             /* Venda também gera conversa — ela só não é o que se cobra
                daqui. Mesmo raciocínio da visita acima. */
             conversations: Math.round(cliquesConv * 0.015),
@@ -467,6 +468,7 @@ function generateMetrics(): DailyMetric[] {
             objective: "OUTCOME_ENGAGEMENT",
             optimization_goal: "PROFILE_AND_PAGE_ENGAGEMENT",
             profile_visits: Math.round(imprPerfil * 0.055),
+            instagram_follows: null,
             conversations: 0,
           });
 
@@ -495,6 +497,7 @@ function generateMetrics(): DailyMetric[] {
             objective: "OUTCOME_ENGAGEMENT",
             optimization_goal: "REPLIES",
             profile_visits: Math.round(imprZap * 0.004),
+            instagram_follows: null,
             conversations: Math.max(1, Math.round(cliquesZap * 0.22)),
           });
 
@@ -516,6 +519,7 @@ function generateMetrics(): DailyMetric[] {
             objective: "OUTCOME_AWARENESS",
             optimization_goal: "REACH",
             profile_visits: 0,
+            instagram_follows: null,
             conversations: 0,
           });
         } else {
@@ -536,6 +540,7 @@ function generateMetrics(): DailyMetric[] {
             /* Nulo, não zero: fora da Meta não existe visita ao perfil
                do Instagram nem conversa de mensageria para apurar. */
             profile_visits: null,
+            instagram_follows: null,
             conversations: null,
           });
         }

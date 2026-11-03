@@ -378,6 +378,7 @@ export function toNormalizedRow(row: GoogleAdsRow): NormalizedMetricRow {
     /* Visita ao perfil do Instagram não existe no Google Ads. Nulo diz
        "não se apura aqui"; zero diria que houve zero. */
     profileVisits: null,
+    instagramFollows: null,
     /* O Google não tem mensageria no Insights. Nulo e não zero: a
        plataforma não mede, não é que não houve. */
     conversations: null,
