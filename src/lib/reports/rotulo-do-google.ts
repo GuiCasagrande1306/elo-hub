@@ -47,8 +47,9 @@ function nomeDaAcao(acao: string | null, categoria: string | null): Nome | null 
 
 /**
  * Rótulos para o cartão do Google, ou `null` para manter os do template
- * (sem conversão no período, ou só compras). Ações de tipos diferentes
- * viram "Conversões": somar ligação com rota sob o nome de uma delas
+ * (só compras, ou erro na leitura). Sem conversão no período, ou ações
+ * de tipos diferentes, viram "Conversões": somar ligação com rota sob o
+ * nome de uma delas
  * repetiria o erro que este arquivo corrige.
  */
 export async function rotulosDoGoogle(
@@ -70,7 +71,10 @@ export async function rotulosDoGoogle(
     console.error("[relatorio] conversões do Google:", error.message);
     return null;
   }
-  if (!data || data.length === 0) return null;
+  /* Sem conversão no período o cartão continua mostrando a linha (ver
+     `metricasComNumero`), e o nome do template ("Leads", "Mensagens")
+     prometeria o que o Google não mede. */
+  if (!data || data.length === 0) return rotulosDe(GENERICO);
 
   const nomes = new Map<string, Nome>();
   for (const linha of data) {
@@ -79,7 +83,89 @@ export async function rotulosDoGoogle(
     nomes.set(nome.plural, nome);
   }
 
-  const nome = nomes.size === 1 ? [...nomes.values()][0] : GENERICO;
+  return rotulosDe(nomes.size === 1 ? [...nomes.values()][0] : GENERICO);
+}
+
+function rotulosDe(nome: Nome): Partial<Record<MetricKey, string>> {
   const custo = `Custo por ${nome.singular}`;
   return { results: nome.plural, leads: nome.plural, cpa: custo, cpl: custo };
+}
+
+/* =====================================================================
+   Ligações, rotas e visitas à loja, cada uma no seu cartão
+   ---------------------------------------------------------------------
+   Pedido da Padá e da Kalik (03/11/2026): o cartão do Google dizia
+   "Conversões", e o dono da loja quer saber quantos LIGARAM e quantos
+   pediram rota. Na Kalik, outubro: 219 cliques para ligar, 165 rotas e
+   84 visitas à loja dentro de um "Conversões 303".
+
+   Ação local do Perfil da Empresa só existe em `all_conversions` (ver
+   `categorias-google.ts`); a ação que é conversão de verdade vem em
+   `conversions`. Por isso o número de cada cartão é `conversions` quando
+   a ação tem alguma na janela, e `all_conversions` quando não tem —
+   a Kalik tem 84 visitas à loja em `conversions` e 169 em `all`, e o
+   que o Google mostra na coluna principal é 84.
+   ===================================================================== */
+
+export interface AcaoDoGoogle {
+  chave: string;
+  label: string;
+  atual: number;
+  anterior: number;
+}
+
+const ACOES_LOCAIS: { chave: string; label: string; casa: (nome: string, cat: string | null) => boolean }[] = [
+  {
+    chave: "google_ligacoes",
+    label: "Ligações",
+    casa: (n, c) => c === "PHONE_CALL_LEAD" || /call|ligar|liga[cç]/i.test(n),
+  },
+  { chave: "google_rotas", label: "Rotas", casa: (n, c) => c === "GET_DIRECTIONS" || /direction/i.test(n) },
+  { chave: "google_visitas_loja", label: "Visitas à loja", casa: (_n, c) => c === "STORE_VISIT" },
+];
+
+/** Negócio local vê ligação e rota mesmo zeradas: zero ali é a notícia. */
+const SEMPRE_NO_NEGOCIO_LOCAL = new Set(["google_ligacoes", "google_rotas"]);
+
+export async function acoesDoGoogle(
+  clientId: string,
+  segmento: string | null,
+  anteriorInicio: string,
+  inicio: string,
+  fim: string,
+): Promise<AcaoDoGoogle[]> {
+  if (isDemoMode) return [];
+
+  const { data, error } = await createSupabaseAdminClient()
+    .from("google_conversion_daily")
+    .select("metric_date, action_name, category, conversions, all_conversions")
+    .eq("client_id", clientId)
+    .gte("metric_date", anteriorInicio)
+    .lte("metric_date", fim);
+
+  if (error) {
+    console.error("[relatorio] ações do Google:", error.message);
+    return [];
+  }
+
+  return ACOES_LOCAIS.flatMap(({ chave, label, casa }) => {
+    const linhas = (data ?? []).filter((l) => casa(l.action_name ?? "", l.category));
+    const usaPrincipal = linhas.some((l) => Number(l.conversions) > 0);
+    const soma = (de: string, ate: string) =>
+      linhas
+        .filter((l) => l.metric_date >= de && l.metric_date <= ate)
+        .reduce((s, l) => s + Number(usaPrincipal ? l.conversions : l.all_conversions), 0);
+
+    const atual = soma(inicio, fim);
+    const anterior = soma(anteriorInicio, diaAntes(inicio));
+    const mostra =
+      atual > 0 || anterior > 0 || (segmento === "local_business" && SEMPRE_NO_NEGOCIO_LOCAL.has(chave));
+    return mostra ? [{ chave, label, atual, anterior }] : [];
+  });
+}
+
+function diaAntes(dia: string): string {
+  const d = new Date(`${dia}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
 }

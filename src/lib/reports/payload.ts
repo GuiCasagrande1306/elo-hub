@@ -38,7 +38,7 @@ import type {
   ReportSection,
   ReportTemplate,
 } from "@/types/database";
-import { rotulosDoGoogle } from "./rotulo-do-google";
+import { acoesDoGoogle, rotulosDoGoogle } from "./rotulo-do-google";
 
 /* =====================================================================
    Payload do relatório
@@ -279,7 +279,7 @@ export async function buildReportPayload(options: {
      não pode comparar com um período diferente do resto da folha. */
   const anterior = previousPeriod(periodStart, periodEnd);
 
-  const [metrics, candidatos, metricasDoPeriodo, lojaAgora, lojaAntes, rotulosGoogle] =
+  const [metrics, candidatos, metricasDoPeriodo, lojaAgora, lojaAntes, rotulosGoogle, acoesGoogle] =
     await Promise.all([
       source.metrics(client.id, periodStart, periodEnd),
       source.creatives(client.id, Math.max(creativeLimit * 8, 48)),
@@ -290,6 +290,7 @@ export async function buildReportPayload(options: {
       receitaDaLoja(client.id, anterior.start, anterior.end),
       /* Desde o período anterior: o cartão compara as duas janelas. */
       rotulosDoGoogle(client.id, anterior.start, periodEnd),
+      acoesDoGoogle(client.id, client.segment, anterior.start, periodStart, periodEnd),
     ]);
 
   /* `null` = não deu para apurar (conta sem Meta, token vencido, rede).
@@ -420,6 +421,7 @@ export async function buildReportPayload(options: {
       rotulos,
       metrics.tiposDeConversao,
       { google_ads: rotulosGoogle ?? {} },
+      acoesGoogle,
     ),
     creatives: creatives.map((ad) => {
       const image = ad.storage_path ?? ad.thumbnail_url;

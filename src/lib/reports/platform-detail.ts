@@ -6,6 +6,7 @@ import {
   type KpiResult,
 } from "@/lib/metrics/kpi";
 import type { AdCreative, DailyMetric, MetricKey } from "@/types/database";
+import type { AcaoDoGoogle } from "./rotulo-do-google";
 import {
   ROTULO_DA_UNIDADE,
   unidadeDaCampanha,
@@ -99,7 +100,9 @@ const METRICAS_DA_PLATAFORMA: MetricKey[] = [
   "clicks",
   "ctr",
   "cpc",
-  "cpm",
+  /* CPM saiu em 03/11/2026, a pedido (Kalik, Istituto Burgo): no
+     cartão do cliente ele só assustava — R$ 164 no Google de pesquisa
+     do Burgo — e não responde pergunta que o dono da conta faça. */
   "results",
   "cpa",
   "revenue",
@@ -118,10 +121,15 @@ const METRICAS_DA_PLATAFORMA: MetricKey[] = [
 function metricasComNumero(
   atual: ReturnType<typeof sumMetrics>,
   anterior: ReturnType<typeof sumMetrics>,
+  platform: AdCreative["platform"],
 ): MetricKey[] {
-  return METRICAS_DA_PLATAFORMA.filter(
-    (key) => deriveMetric(key, atual) !== 0 || deriveMetric(key, anterior) !== 0,
-  );
+  return METRICAS_DA_PLATAFORMA.filter((key) => {
+    /* No Google o que se compra é clique, e a pergunta é quantos
+       viraram conversão. Conversão fica mesmo zerada, que zero ali é a
+       notícia. */
+    if (platform === "google_ads" && (key === "results" || key === "cpa")) return true;
+    return deriveMetric(key, atual) !== 0 || deriveMetric(key, anterior) !== 0;
+  });
 }
 
 /**
@@ -153,6 +161,8 @@ export function buildPlatformDetail(
   tiposDeConversao?: string[],
   /** Rótulos que valem só para uma plataforma — ver `rotulo-do-google.ts`. */
   rotulosPorPlataforma: Partial<Record<string, Partial<Record<MetricKey, string>>>> = {},
+  /** Ligações, rotas, visitas à loja — ver `acoesDoGoogle`. */
+  acoesGoogle: AcaoDoGoogle[] = [],
 ): PlatformDetail[] {
   const porPlataformaAnterior = new Map(
     splitByPlatform(anteriores, tiposDeConversao).map(
@@ -164,20 +174,86 @@ export function buildPlatformDetail(
 
   return splitByPlatform(atuais, tiposDeConversao).map((p) => {
     const anterior = porPlataformaAnterior.get(p.platform) ?? vazio;
-    const rotulosDaPlataforma = { ...rotulos, ...rotulosPorPlataforma[p.platform] };
+    const rotulosDaPlataforma = {
+      ...rotulos,
+      ...(p.platform === "meta_ads" && tudoConversa(atuais, tiposDeConversao) ? MENSAGENS : {}),
+      ...rotulosPorPlataforma[p.platform],
+    };
 
     return {
       platform: p.platform,
       label: p.label,
       spendShare: p.spendShare,
-      kpis: metricasComNumero(p.totals, anterior).map((key) => {
-        const kpi = computeKpi(key, p.totals, anterior);
-        const rotulo = rotulosDaPlataforma[key];
-        return rotulo ? { ...kpi, label: rotulo } : kpi;
-      }),
+      kpis: [
+        ...metricasComNumero(p.totals, anterior, p.platform).map((key) => {
+          const kpi = computeKpi(key, p.totals, anterior);
+          const rotulo = rotulosDaPlataforma[key];
+          return rotulo ? { ...kpi, label: rotulo } : kpi;
+        }),
+        ...(p.platform === "google_ads"
+          ? acoesGoogle.map((a) => kpiDeContagem(a.chave, a.label, a.atual, a.anterior))
+          : []),
+        ...(p.platform === "meta_ads" ? kpiDeMensagens(atuais, anteriores, tiposDeConversao) : []),
+      ],
       campaigns: campanhasDaPlataforma(atuais, p.platform, rotulosDaPlataforma),
     };
   });
+}
+
+/* Quando TODO resultado do Meta no período é conversa iniciada,
+   "Leads" no cartão prometeria cadastro, e o que chega é mensagem no
+   WhatsApp. Pedido do Istituto Burgo (171 resultados, 171 conversas em
+   outubro/2026).
+
+   ⚠️ PELO DADO, NÃO PELA CONVERSÃO DA INTEGRAÇÃO. Trocar a conversão do
+   Burgo para "Conversa iniciada" muda a campanha de origem: a
+   "05 | LEADS | WHATSAPP" é OUTCOME_LEADS, família "Cadastros", e com só
+   "Mensagens" a origem fica vazia — o custo por resultado de 08–14/10
+   pulava de R$ 8,25 para R$ 18,13, a conta inteira. */
+const MENSAGENS: Partial<Record<MetricKey, string>> = {
+  results: "Mensagens",
+  leads: "Mensagens",
+  cpa: "Custo por mensagem",
+  cpl: "Custo por mensagem",
+};
+
+function tudoConversa(linhas: DailyMetric[], tipos: string[] = []): boolean {
+  /* Negócio local conta visita ao perfil: conversa e resultado são
+     coisas diferentes ali, e a soma pode empatar por acaso. */
+  if (!tipos.includes("onsite_conversion.messaging_conversation_started_7d")) return false;
+  let resultados = 0;
+  let conversas = 0;
+  for (const l of linhas) {
+    if (l.platform !== "meta_ads") continue;
+    resultados += Number(l.conversions);
+    conversas += l.conversations ?? 0;
+  }
+  return resultados > 0 && conversas >= resultados;
+}
+
+/** Um cartão de contagem fora de `MetricKey` (ligações, mensagens). */
+function kpiDeContagem(chave: string, label: string, atual: number, anterior: number): KpiResult {
+  const vazio = sumMetrics([]);
+  const t = (n: number) => ({ ...vazio, conversions: n, origem: { ...vazio.origem, conversions: n } });
+  return { ...computeKpi("results", t(atual), t(anterior)), key: chave as MetricKey, label, hint: label };
+}
+
+const somaConversas = (linhas: DailyMetric[]) =>
+  linhas.reduce((s, l) => s + (l.platform === "meta_ads" ? (l.conversations ?? 0) : 0), 0);
+
+/* Mensagens AO LADO do resultado, quando o resultado é outra coisa —
+   negócio local conta visita ao perfil. Pedido da Padá e da Kalik.
+   Quando todo resultado já é conversa, o próprio "Resultados" vira
+   "Mensagens" (ver `MENSAGENS`) e um segundo cartão repetiria o número. */
+function kpiDeMensagens(
+  atuais: DailyMetric[],
+  anteriores: DailyMetric[],
+  tipos?: string[],
+): KpiResult[] {
+  if (tudoConversa(atuais, tipos)) return [];
+  const atual = somaConversas(atuais);
+  const anterior = somaConversas(anteriores);
+  return atual > 0 || anterior > 0 ? [kpiDeContagem("meta_mensagens", "Mensagens", atual, anterior)] : [];
 }
 
 /**
