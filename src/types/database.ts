@@ -1,3 +1,4 @@
+import type { MetricasDoRelatorio } from "@/lib/reports/metricas-do-relatorio";
 /**
  * Tipos de domínio do Elo Hub.
  *
@@ -212,6 +213,8 @@ export interface Client {
   persona: ClientPersona;
   contract_start: string | null;
   owner_id: string | null;
+  /** Cartões do relatório por plataforma; `null` = automático (migration 101). */
+  report_metrics: MetricasDoRelatorio | null;
   /** Dia do mês (1-28) do envio automático; null quando não agendado. */
   report_day: number | null;
   /**

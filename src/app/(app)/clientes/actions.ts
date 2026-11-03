@@ -22,6 +22,11 @@ import {
   type NewClientValues,
 } from "@/lib/validation/client";
 import type { Client, ClientSegment } from "@/types/database";
+import {
+  metricasValidas,
+  type MetricasDoRelatorio,
+  type PlataformaDoRelatorio,
+} from "@/lib/reports/metricas-do-relatorio";
 
 /**
  * Cadastro de novo cliente.
@@ -96,6 +101,7 @@ export async function createClientAction(
         ? Number(values.optimizationDay)
         : null,
       owner_id: "u-admin",
+      report_metrics: null,
       created_at: new Date().toISOString(),
     });
 
@@ -1102,6 +1108,60 @@ export async function revogarLinkDoRelatorio(
   if (!count) {
     return { ok: false, error: "Nenhum link ativo para revogar." };
   }
+
+  revalidatePath("/clientes");
+  return { ok: true };
+}
+
+/**
+ * Escolhe os cartões de uma plataforma no relatório do cliente.
+ *
+ * Aberto ao time inteiro, não só a admin: quem acompanha a conta é quem
+ * sabe o que o cliente lê (pedido de 03/11/2026, para o Bernardo). A
+ * RLS de `clients_update` já é essa — ver a migration 24.
+ */
+export async function setReportMetrics(input: {
+  clientId: string;
+  platform: PlataformaDoRelatorio;
+  /** `null` = voltar ao automático. */
+  metricas: string[] | null;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (input.platform !== "meta_ads" && input.platform !== "google_ads") {
+    return { ok: false, error: "Plataforma inválida." };
+  }
+  const escolha = input.metricas === null ? null : metricasValidas(input.platform, input.metricas);
+  if (escolha !== null && escolha.length === 0) {
+    return { ok: false, error: "Escolha ao menos uma métrica, ou volte ao automático." };
+  }
+
+  if (isDemoMode) return { ok: true };
+
+  const { getCurrentUser } = await import("@/lib/supabase/server");
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Sessão expirada." };
+  if (user.role === "client") return { ok: false, error: "Sem permissão." };
+
+  const supabase = await createSupabaseServerClient();
+  const { data: atual, error: erroLeitura } = await supabase
+    .from("clients")
+    .select("report_metrics")
+    .eq("id", input.clientId)
+    .maybeSingle();
+  if (erroLeitura) return { ok: false, error: erroLeitura.message };
+  if (!atual) return { ok: false, error: "Cliente não encontrado." };
+
+  const proximo: MetricasDoRelatorio = { ...(atual.report_metrics ?? {}) };
+  if (escolha) proximo[input.platform] = escolha;
+  else delete proximo[input.platform];
+
+  // `.select` para saber se a RLS deixou gravar: update barrado volta 0 linha, sem erro.
+  const { data, error } = await supabase
+    .from("clients")
+    .update({ report_metrics: Object.keys(proximo).length ? proximo : null })
+    .eq("id", input.clientId)
+    .select("id");
+  if (error) return { ok: false, error: error.message };
+  if (!data?.length) return { ok: false, error: "Sem permissão para editar este cliente." };
 
   revalidatePath("/clientes");
   return { ok: true };

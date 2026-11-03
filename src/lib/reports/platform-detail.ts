@@ -7,6 +7,7 @@ import {
 } from "@/lib/metrics/kpi";
 import type { AdCreative, DailyMetric, MetricKey } from "@/types/database";
 import type { AcaoDoGoogle } from "./rotulo-do-google";
+import type { MetricasDoRelatorio, PlataformaDoRelatorio } from "./metricas-do-relatorio";
 import {
   ROTULO_DA_UNIDADE,
   unidadeDaCampanha,
@@ -163,6 +164,8 @@ export function buildPlatformDetail(
   rotulosPorPlataforma: Partial<Record<string, Partial<Record<MetricKey, string>>>> = {},
   /** Ligações, rotas, visitas à loja — ver `acoesDoGoogle`. */
   acoesGoogle: AcaoDoGoogle[] = [],
+  /** `clients.report_metrics` — ver `metricas-do-relatorio.ts`. */
+  metricasDoCliente: MetricasDoRelatorio | null = null,
 ): PlatformDetail[] {
   const porPlataformaAnterior = new Map(
     splitByPlatform(anteriores, tiposDeConversao).map(
@@ -180,22 +183,35 @@ export function buildPlatformDetail(
       ...rotulosPorPlataforma[p.platform],
     };
 
+    const daBase = (key: MetricKey) => {
+      const kpi = computeKpi(key, p.totals, anterior);
+      const rotulo = rotulosDaPlataforma[key];
+      return rotulo ? { ...kpi, label: rotulo } : kpi;
+    };
+    const doGoogle = (a: AcaoDoGoogle) => kpiDeContagem(a.chave, a.label, a.atual, a.anterior);
+
+    const escolha = metricasDoCliente?.[p.platform as PlataformaDoRelatorio];
+    const kpis = escolha?.length
+      ? escolha.flatMap((key): KpiResult[] => {
+          if (key === "meta_mensagens")
+            return [kpiDeContagem(key, "Mensagens", somaConversas(atuais), somaConversas(anteriores))];
+          if (key === "meta_seguidores")
+            return [kpiDeContagem(key, "Seguidores no Instagram", somaSeguidores(atuais), somaSeguidores(anteriores))];
+          if (key.startsWith("google_")) return acoesGoogle.filter((a) => a.chave === key).map(doGoogle);
+          return [daBase(key as MetricKey)];
+        })
+      : [
+          ...metricasComNumero(p.totals, anterior, p.platform).map(daBase),
+          ...(p.platform === "google_ads" ? acoesGoogle.filter((a) => a.automatica).map(doGoogle) : []),
+          ...(p.platform === "meta_ads" ? kpiDeMensagens(atuais, anteriores, tiposDeConversao) : []),
+          ...(p.platform === "meta_ads" ? kpiDeSeguidores(atuais, anteriores) : []),
+        ];
+
     return {
       platform: p.platform,
       label: p.label,
       spendShare: p.spendShare,
-      kpis: [
-        ...metricasComNumero(p.totals, anterior, p.platform).map((key) => {
-          const kpi = computeKpi(key, p.totals, anterior);
-          const rotulo = rotulosDaPlataforma[key];
-          return rotulo ? { ...kpi, label: rotulo } : kpi;
-        }),
-        ...(p.platform === "google_ads"
-          ? acoesGoogle.map((a) => kpiDeContagem(a.chave, a.label, a.atual, a.anterior))
-          : []),
-        ...(p.platform === "meta_ads" ? kpiDeMensagens(atuais, anteriores, tiposDeConversao) : []),
-        ...(p.platform === "meta_ads" ? kpiDeSeguidores(atuais, anteriores) : []),
-      ],
+      kpis,
       campaigns: campanhasDaPlataforma(atuais, p.platform, rotulosDaPlataforma),
     };
   });

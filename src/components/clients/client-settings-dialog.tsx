@@ -14,6 +14,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ClientForm } from "@/components/clients/client-form";
 import { IntegrationsCard } from "@/components/clients/integrations-card";
+import { MetricasDoRelatorioEditor } from "@/components/clients/metricas-do-relatorio";
 import type { Client, ClientSegment } from "@/types/database";
 import type { IntegrationStatus } from "@/lib/data";
 
@@ -90,6 +91,7 @@ export function ClientSettingsDialog({
                     está errado, e o motivo mais comum de abrir isto. */}
                 <TabsTrigger value="integracoes">Contas de mídia</TabsTrigger>
                 <TabsTrigger value="cadastro">Cadastro</TabsTrigger>
+                <TabsTrigger value="relatorio">Relatório</TabsTrigger>
               </TabsList>
 
               <TabsContent value="integracoes" className="mt-4">
@@ -104,6 +106,14 @@ export function ClientSettingsDialog({
 
               <TabsContent value="cadastro" className="mt-4">
                 <ClientForm client={client} semMoldura agencias={agencias} />
+              </TabsContent>
+
+              <TabsContent value="relatorio" className="mt-4">
+                <MetricasDoRelatorioEditor
+                  clientId={client.id}
+                  valor={client.report_metrics}
+                  plataformas={integrations.filter((i) => i.connected).map((i) => i.platform)}
+                />
               </TabsContent>
             </Tabs>
           )}

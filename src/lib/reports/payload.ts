@@ -422,6 +422,7 @@ export async function buildReportPayload(options: {
       metrics.tiposDeConversao,
       { google_ads: rotulosGoogle ?? {} },
       acoesGoogle,
+      client.report_metrics,
     ),
     creatives: creatives.map((ad) => {
       const image = ad.storage_path ?? ad.thumbnail_url;

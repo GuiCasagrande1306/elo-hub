@@ -112,6 +112,8 @@ export interface AcaoDoGoogle {
   label: string;
   atual: number;
   anterior: number;
+  /** Entra no relatório automático. Com métricas escolhidas, vale a escolha. */
+  automatica: boolean;
 }
 
 const ACOES_LOCAIS: { chave: string; label: string; casa: (nome: string, cat: string | null) => boolean }[] = [
@@ -148,7 +150,7 @@ export async function acoesDoGoogle(
     return [];
   }
 
-  return ACOES_LOCAIS.flatMap(({ chave, label, casa }) => {
+  return ACOES_LOCAIS.flatMap(({ chave, label, casa }): AcaoDoGoogle[] => {
     const linhas = (data ?? []).filter((l) => casa(l.action_name ?? "", l.category));
     const usaPrincipal = linhas.some((l) => Number(l.conversions) > 0);
     const soma = (de: string, ate: string) =>
@@ -158,9 +160,9 @@ export async function acoesDoGoogle(
 
     const atual = soma(inicio, fim);
     const anterior = soma(anteriorInicio, diaAntes(inicio));
-    const mostra =
+    const automatica =
       atual > 0 || anterior > 0 || (segmento === "local_business" && SEMPRE_NO_NEGOCIO_LOCAL.has(chave));
-    return mostra ? [{ chave, label, atual, anterior }] : [];
+    return [{ chave, label, atual, anterior, automatica }];
   });
 }
 

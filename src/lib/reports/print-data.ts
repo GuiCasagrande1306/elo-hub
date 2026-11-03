@@ -476,6 +476,7 @@ function assemble(
       tiposDeConversao,
       rotulosPorPlataforma,
       acoesGoogle,
+      client.report_metrics,
     ),
     creatives,
     trend: buildTrend(current, tiposDeConversao),
