@@ -38,6 +38,20 @@ ok("escolhido: CPM e mensagens zeradas aparecem, na ordem dada", chaves({ meta_a
   "spend", "cpm", "meta_mensagens",
 ]);
 ok("escolha só do Google não mexe na Meta", chaves({ google_ads: ["spend"] }), chaves(null));
+const custo = (linhas: DailyMetric[]) =>
+  buildPlatformDetail(linhas, [], {}, [], {}, [], { meta_ads: ["meta_custo_mensagem"] })[0].kpis[0];
+const whats = { campaign_id: "w", objective: "OUTCOME_ENGAGEMENT", optimization_goal: "REPLIES" };
+ok(
+  "custo por mensagem: só o gasto da campanha de mensagem",
+  custo([linha({ conversations: 0 }), linha({ ...whats, spend_cents: 3000, conversations: 10 })]).value,
+  300,
+);
+ok(
+  "custo por mensagem: mensagens de fora da origem caem na conta inteira",
+  custo([linha({ conversations: 5 }), linha({ ...whats, spend_cents: 3000, conversations: 0 })]).value,
+  2600,
+);
+ok("custo por mensagem: sem conversa é indefinido", custo([linha({ conversations: 0 })]).indefinido, true);
 ok("validação: ordem do catálogo, sem lixo nem repetição", metricasValidas("meta_ads", ["cpm", "lixo", "spend", "cpm"]), [
   "spend", "cpm",
 ]);

@@ -195,6 +195,7 @@ export function buildPlatformDetail(
       ? escolha.flatMap((key): KpiResult[] => {
           if (key === "meta_mensagens")
             return [kpiDeContagem(key, "Mensagens", somaConversas(atuais), somaConversas(anteriores))];
+          if (key === "meta_custo_mensagem") return [kpiDeCustoPorMensagem(atuais, anteriores)];
           if (key === "meta_seguidores")
             return [kpiDeContagem(key, "Seguidores no Instagram", somaSeguidores(atuais), somaSeguidores(anteriores))];
           if (key.startsWith("google_")) return acoesGoogle.filter((a) => a.chave === key).map(doGoogle);
@@ -234,10 +235,12 @@ const MENSAGENS: Partial<Record<MetricKey, string>> = {
   cpl: "Custo por mensagem",
 };
 
+const CONVERSA_INICIADA = "onsite_conversion.messaging_conversation_started_7d";
+
 function tudoConversa(linhas: DailyMetric[], tipos: string[] = []): boolean {
   /* Negócio local conta visita ao perfil: conversa e resultado são
      coisas diferentes ali, e a soma pode empatar por acaso. */
-  if (!tipos.includes("onsite_conversion.messaging_conversation_started_7d")) return false;
+  if (!tipos.includes(CONVERSA_INICIADA)) return false;
   let resultados = 0;
   let conversas = 0;
   for (const l of linhas) {
@@ -271,6 +274,28 @@ function kpiDeMensagens(
   const atual = somaConversas(atuais);
   const anterior = somaConversas(anteriores);
   return atual > 0 || anterior > 0 ? [kpiDeContagem("meta_mensagens", "Mensagens", atual, anterior)] : [];
+}
+
+/* Para o cliente cuja conversão é outra (negócio local conta visita ao
+   perfil), pedido do Cottura em 09/11/2026. Mesma regra de origem do custo
+   por resultado: gasto das campanhas de mensagem, ou a conta inteira quando
+   elas não respondem pela maioria das conversas. */
+const totaisDeConversas = (linhas: DailyMetric[]) =>
+  sumMetrics(
+    linhas
+      .filter((l) => l.platform === "meta_ads")
+      .map((l) => ({ ...l, conversions: l.conversations ?? 0 })),
+    [CONVERSA_INICIADA],
+  );
+
+function kpiDeCustoPorMensagem(atuais: DailyMetric[], anteriores: DailyMetric[]): KpiResult {
+  const label = "Custo por mensagem";
+  return {
+    ...computeKpi("cpa", totaisDeConversas(atuais), totaisDeConversas(anteriores)),
+    key: "meta_custo_mensagem" as MetricKey,
+    label,
+    hint: label,
+  };
 }
 
 const somaSeguidores = (linhas: DailyMetric[]) =>

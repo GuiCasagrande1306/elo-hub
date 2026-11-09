@@ -28,7 +28,7 @@ const BASE = [
   { key: "cpm", label: "CPM" },
   { key: "results", label: "Resultados (a conversão da conta)" },
   { key: "cpa", label: "Custo por resultado" },
-  { key: "revenue", label: "Faturamento" },
+  { key: "revenue", label: "Receita / Faturamento" },
   { key: "roas", label: "ROAS" },
 ];
 
@@ -36,6 +36,7 @@ export const CATALOGO_DE_METRICAS: Record<PlataformaDoRelatorio, { key: string; 
   meta_ads: [
     ...BASE,
     { key: "meta_mensagens", label: "Mensagens" },
+    { key: "meta_custo_mensagem", label: "Custo por mensagem" },
     { key: "meta_seguidores", label: "Seguidores no Instagram" },
   ],
   google_ads: [
