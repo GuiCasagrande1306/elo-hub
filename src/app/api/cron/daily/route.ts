@@ -229,17 +229,14 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  /* --- 2. Sincronização -------------------------------------------
-     Depois dos relatórios, de propósito — ver a nota acima. Fica com o
-     tempo que sobrar do teto da função; o que não couber hoje entra na
-     rodada de amanhã, porque `mode=month` reprocessa o mês inteiro. */
-  if (rodar("sync")) {
-    // `mode=month` porque a rodada diária também precisa capturar
-    // reatribuições retroativas das plataformas.
-    resposta.sync = await syncAllClients({ mode: "month" });
-  }
+  /* --- 1.9. Faturamento da loja ------------------------------------
+     ANTES DOS ANÚNCIOS, e a ordem é o conserto. A sincronização de
+     anúncios gasta o teto inteiro da função (11/11/2026: 09:20:09 →
+     09:25:00), e a loja, que vinha depois, ficou dois dias sem rodar —
+     o Atacado de Pratas mostrava R$ 21.616,91 contra R$ 31.138,86 na
+     Magazord. A loja leva segundos; os anúncios que não couberem hoje
+     o `mode=month` de amanhã recupera.
 
-  /* --- 2.5. Faturamento da loja ------------------------------------
      Só os clientes com loja cadastrada em `store_integrations` — hoje,
      o Atacado de Pratas. Quem não tem passa direto, e a etapa custa
      uma consulta.
@@ -274,6 +271,16 @@ export async function GET(request: NextRequest) {
         erro: error instanceof Error ? error.message : "falha desconhecida",
       };
     }
+  }
+
+  /* --- 2. Sincronização -------------------------------------------
+     Depois dos relatórios, de propósito — ver a nota acima. Fica com o
+     tempo que sobrar do teto da função; o que não couber hoje entra na
+     rodada de amanhã, porque `mode=month` reprocessa o mês inteiro. */
+  if (rodar("sync")) {
+    // `mode=month` porque a rodada diária também precisa capturar
+    // reatribuições retroativas das plataformas.
+    resposta.sync = await syncAllClients({ mode: "month" });
   }
 
   /* --- 3. Aviso de saldo ------------------------------------------

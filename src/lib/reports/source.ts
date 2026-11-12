@@ -8,6 +8,7 @@ import {
   getCreatives,
   getMetricsWithComparison,
   getReportTemplates,
+  resolverMiniaturas,
 } from "@/lib/data";
 import { tiposDeConversaoDoCliente } from "@/lib/ads/conversao-do-cliente";
 import { previousPeriod, sumMetrics } from "@/lib/metrics/kpi";
@@ -233,14 +234,18 @@ export function systemSource(): ReportSource {
           .sort((a, b) => b.spend_cents - a.spend_cents)
           .slice(0, limit);
       }
-      const { data } = await createSupabaseAdminClient()
+      const admin = createSupabaseAdminClient();
+      const { data } = await admin
         .from("ad_creatives")
         .select("*")
         .eq("client_id", clientId)
         .eq("is_active", true)
         .order("spend_cents", { ascending: false })
         .limit(limit);
-      return (data ?? []) as AdCreative[];
+      /* `storage_path` é caminho no bucket privado: sem assinar, o PDF
+         recebia endereço relativo e desenhava quadro cinza no lugar da
+         miniatura (Atacado de Pratas, 03–09/11/2026). */
+      return resolverMiniaturas(admin, (data ?? []) as AdCreative[]);
     },
 
     db: async () => createSupabaseAdminClient() as unknown as ReportWriter,
