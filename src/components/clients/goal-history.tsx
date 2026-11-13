@@ -11,7 +11,10 @@ import {
   YAxis,
 } from "recharts";
 
+import { useMemo } from "react";
+
 import { mesCurto, nomeDoMes } from "@/lib/date-br";
+import { useMoeda } from "@/lib/moeda";
 import type { GoalHistoryEntry } from "@/lib/data";
 
 /* =====================================================================
@@ -26,18 +29,23 @@ import type { GoalHistoryEntry } from "@/lib/data";
    congelado passaria a contradizer o painel sem avisar.
    ===================================================================== */
 
-const BRL = new Intl.NumberFormat("pt-BR", {
-  style: "currency",
-  currency: "BRL",
-  maximumFractionDigits: 0,
-});
-
-const BRL_COMPACT = new Intl.NumberFormat("pt-BR", {
-  style: "currency",
-  currency: "BRL",
-  notation: "compact",
-  maximumFractionDigits: 1,
-});
+/* Sem centavos: no histórico o que importa é a ordem de grandeza.
+   Na moeda da conta de anúncio — US$ para conta cadastrada nos EUA. */
+function dinheiroDoHistorico(moeda: string) {
+  return {
+    BRL: new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: moeda,
+      maximumFractionDigits: 0,
+    }),
+    BRL_COMPACT: new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: moeda,
+      notation: "compact",
+      maximumFractionDigits: 1,
+    }),
+  };
+}
 
 const INT = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 });
 
@@ -48,13 +56,15 @@ const INT = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 });
  * unidades. Formatar o histórico inteiro pela regra de hoje imprimiria
  * "R$ 1,20" onde foram 120 leads.
  */
-function valorDoMes(entry: GoalHistoryEntry, valor: number): string {
+function valorDoMes(entry: GoalHistoryEntry, valor: number, BRL: Intl.NumberFormat): string {
   return entry.metricKey === "revenue"
     ? BRL.format(valor / 100)
     : INT.format(valor);
 }
 
 export function GoalHistory({ entries }: { entries: GoalHistoryEntry[] }) {
+  const moeda = useMoeda();
+  const { BRL, BRL_COMPACT } = useMemo(() => dinheiroDoHistorico(moeda), [moeda]);
   /* O gráfico tem um eixo Y só. Meses em centavos e meses em contagem
      na mesma escala fariam a barra de R$ 40.000 esmagar a de 120 leads
      até virar um traço. Quando as unidades divergem, o gráfico sai e
@@ -190,7 +200,7 @@ export function GoalHistory({ entries }: { entries: GoalHistoryEntry[] }) {
                         <td className="py-2">{nomeDoMes(e.month)}</td>
                         <td className="py-2 text-right tabular-nums">
                           {e.plannedResults
-                            ? valorDoMes(e, e.plannedResults)
+                            ? valorDoMes(e, e.plannedResults, BRL)
                             : "—"}
                         </td>
                         <td
@@ -200,7 +210,7 @@ export function GoalHistory({ entries }: { entries: GoalHistoryEntry[] }) {
                               : "py-2 text-right tabular-nums"
                           }
                         >
-                          {valorDoMes(e, e.executedResults)}
+                          {valorDoMes(e, e.executedResults, BRL)}
                         </td>
                         <td className="py-2 text-right tabular-nums text-muted-foreground">
                           {e.plannedBudgetCents

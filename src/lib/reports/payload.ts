@@ -115,6 +115,8 @@ export interface ReportPayload {
     brandPrimary: string | null;
     logoUrl: string | null;
     website: string | null;
+    /** Moeda das contas de anúncio (ISO 4217) — "USD" imprime US$. */
+    moeda: string;
   };
   /**
    * Se os números da galeria foram apurados PARA O PERÍODO do relatório.
@@ -343,6 +345,7 @@ export async function buildReportPayload(options: {
     rotulos,
     totaisAgora,
     totaisAntes,
+    client.ad_currency,
   ).map((k) => {
     if (lojaAgora === null) return k;
 
@@ -370,7 +373,7 @@ export async function buildReportPayload(options: {
   const retornoDoPeriodo =
     temFaturamento && !metricasDoTemplate.includes("roas")
       ? (() => {
-          const k = computeKpi("roas", totaisAgora, totaisAntes);
+          const k = computeKpi("roas", totaisAgora, totaisAntes, client.ad_currency);
           return lojaAgora === null ? k : { ...k, label: "Retorno sobre a loja" };
         })()
       : null;
@@ -403,6 +406,7 @@ export async function buildReportPayload(options: {
       brandPrimary: client.brand_primary,
       logoUrl: client.logo_url,
       website: client.website,
+      moeda: client.ad_currency,
     },
     creativesDoPeriodo: metricasDoPeriodo !== null,
     fonteDoFaturamento,
@@ -423,6 +427,7 @@ export async function buildReportPayload(options: {
       { google_ads: rotulosGoogle ?? {} },
       acoesGoogle,
       client.report_metrics,
+      client.ad_currency,
     ),
     creatives: creatives.map((ad) => {
       const image = ad.storage_path ?? ad.thumbnail_url;

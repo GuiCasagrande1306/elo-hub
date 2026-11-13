@@ -183,7 +183,7 @@ function Desenho({
   if (bloco.tipo === "compilado")
     return <CartaoDoCompilado bloco={bloco} acento={acento} />;
   if (bloco.tipo === "anuncios")
-    return <CartaoDeAnuncios bloco={bloco} acento={acento} />;
+    return <CartaoDeAnuncios bloco={bloco} acento={acento} moeda={payload.client.moeda} />;
   return <CartaoDePlataforma bloco={bloco} payload={payload} acento={acento} />;
 }
 
@@ -439,14 +439,14 @@ function CartaoDePlataforma({
               linhas={bloco.campanhas.slice(0, 6).map((c) => [
                 truncar(c.name, 46),
                 truncar(c.objetivo, 24),
-                formatCurrency(c.spendCents),
+                formatCurrency(c.spendCents, payload.client.moeda),
                 c.results === null ? "—" : formatNumber(c.results),
                 /* `custoIndefinido` e não `cpaCents > 0`: a própria
                    linha já decidiu que não há denominador, e refazer a
                    pergunta aqui é como as duas respostas divergem. */
                 c.custoIndefinido
                   ? "—"
-                  : `${formatCurrency(c.cpaCents)}${c.custoSufixo}`,
+                  : `${formatCurrency(c.cpaCents, payload.client.moeda)}${c.custoSufixo}`,
               ])}
             />
           </>
@@ -461,9 +461,11 @@ function CartaoDePlataforma({
 function CartaoDeAnuncios({
   bloco,
   acento,
+  moeda,
 }: {
   bloco: Extract<Bloco, { tipo: "anuncios" }>;
   acento: string;
+  moeda: string;
 }) {
   return (
     <View style={[s.cartao, { height: bloco.altura }]}>
@@ -503,10 +505,10 @@ function CartaoDeAnuncios({
             <Text style={[s.celula, { flex: 3 }]}>
               {truncar(copyDoAnuncio(a.primaryText, 90) ?? a.adName ?? "Anúncio", 72)}
             </Text>
-            <Text style={[s.celula, { flex: 1, textAlign: "right" }]}>{formatCurrency(a.spendCents)}</Text>
+            <Text style={[s.celula, { flex: 1, textAlign: "right" }]}>{formatCurrency(a.spendCents, moeda)}</Text>
             <Text style={[s.celula, { flex: 1, textAlign: "right" }]}>{formatNumber(a.results)}</Text>
             <Text style={[s.celula, { flex: 1.2, textAlign: "right" }]}>
-              {a.cpaCents > 0 ? formatCurrency(a.cpaCents) : "—"}
+              {a.cpaCents > 0 ? formatCurrency(a.cpaCents, moeda) : "—"}
             </Text>
           </View>
         ))}
@@ -599,7 +601,7 @@ function GraficoDeLinha({
               key={m}
               style={[s.rotuloDoEixo, { position: "absolute", right: 6, top: nivel(m) - 4.5 }]}
             >
-              {formatCurrencyCompact(Math.round(m * 100))}
+              {formatCurrencyCompact(Math.round(m * 100), payload.client.moeda)}
             </Text>
           ))}
         </View>
@@ -649,7 +651,7 @@ function GraficoDeLinha({
           novo: o pico de R$ 2.618,05 saía impresso como R$ 26,18. Erro
           silencioso, plausível e dentro do relatório do cliente. */}
       <Text style={{ fontSize: 7.5, color: TINTA_FRACA, marginTop: 8, textAlign: "center" }}>
-        Investimento diário · pico de {formatarSerie(Math.max(...valores), "spend")}
+        Investimento diário · pico de {formatarSerie(Math.max(...valores), "spend", payload.client.moeda)}
       </Text>
     </View>
   );

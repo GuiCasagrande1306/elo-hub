@@ -166,6 +166,8 @@ export function buildPlatformDetail(
   acoesGoogle: AcaoDoGoogle[] = [],
   /** `clients.report_metrics` — ver `metricas-do-relatorio.ts`. */
   metricasDoCliente: MetricasDoRelatorio | null = null,
+  /** Moeda das contas do cliente (`clients.ad_currency`). */
+  moeda = "BRL",
 ): PlatformDetail[] {
   const porPlataformaAnterior = new Map(
     splitByPlatform(anteriores, tiposDeConversao).map(
@@ -184,7 +186,7 @@ export function buildPlatformDetail(
     };
 
     const daBase = (key: MetricKey) => {
-      const kpi = computeKpi(key, p.totals, anterior);
+      const kpi = computeKpi(key, p.totals, anterior, moeda);
       const rotulo = rotulosDaPlataforma[key];
       return rotulo ? { ...kpi, label: rotulo } : kpi;
     };
@@ -195,7 +197,7 @@ export function buildPlatformDetail(
       ? escolha.flatMap((key): KpiResult[] => {
           if (key === "meta_mensagens")
             return [kpiDeContagem(key, "Mensagens", somaConversas(atuais), somaConversas(anteriores))];
-          if (key === "meta_custo_mensagem") return [kpiDeCustoPorMensagem(atuais, anteriores)];
+          if (key === "meta_custo_mensagem") return [kpiDeCustoPorMensagem(atuais, anteriores, moeda)];
           if (key === "meta_seguidores")
             return [kpiDeContagem(key, "Seguidores no Instagram", somaSeguidores(atuais), somaSeguidores(anteriores))];
           if (key.startsWith("google_")) return acoesGoogle.filter((a) => a.chave === key).map(doGoogle);
@@ -288,10 +290,14 @@ const totaisDeConversas = (linhas: DailyMetric[]) =>
     [CONVERSA_INICIADA],
   );
 
-function kpiDeCustoPorMensagem(atuais: DailyMetric[], anteriores: DailyMetric[]): KpiResult {
+function kpiDeCustoPorMensagem(
+  atuais: DailyMetric[],
+  anteriores: DailyMetric[],
+  moeda: string,
+): KpiResult {
   const label = "Custo por mensagem";
   return {
-    ...computeKpi("cpa", totaisDeConversas(atuais), totaisDeConversas(anteriores)),
+    ...computeKpi("cpa", totaisDeConversas(atuais), totaisDeConversas(anteriores), moeda),
     key: "meta_custo_mensagem" as MetricKey,
     label,
     hint: label,

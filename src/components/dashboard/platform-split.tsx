@@ -9,7 +9,14 @@ import { formatCurrency, formatNumber, formatPercent } from "@/lib/format";
  * mais preciso que comparar ângulo, e a barra ainda acomoda os números
  * exatos na mesma linha — que é o que o gestor realmente lê.
  */
-export function PlatformSplitList({ data }: { data: PlatformSplitData[] }) {
+export function PlatformSplitList({
+  data,
+  moeda = "BRL",
+}: {
+  data: PlatformSplitData[];
+  /** Moeda das contas do cliente (`clients.ad_currency`). */
+  moeda?: string;
+}) {
   if (data.length === 0) {
     return (
       <p className="py-8 text-center text-sm text-muted-foreground">
@@ -43,7 +50,7 @@ export function PlatformSplitList({ data }: { data: PlatformSplitData[] }) {
                 {row.label}
               </span>
               <span className="text-sm tabular-nums">
-                {formatCurrency(row.totals.spendCents)}
+                {formatCurrency(row.totals.spendCents, moeda)}
                 <span className="ml-2 text-xs text-muted-foreground">
                   {formatPercent(row.spendShare, 0)}
                 </span>
@@ -76,7 +83,7 @@ export function PlatformSplitList({ data }: { data: PlatformSplitData[] }) {
                     imprimem a MESMA frase a partir do mesmo
                     `PlatformSplit` — o gestor não pode conferir na tela
                     um número diferente do que o cliente recebe. */}
-                {row.cpaIndefinido ? "—" : formatCurrency(row.cpa)} por
+                {row.cpaIndefinido ? "—" : formatCurrency(row.cpa, moeda)} por
                 resultado
               </span>
             </div>

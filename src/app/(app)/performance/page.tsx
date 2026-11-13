@@ -72,9 +72,9 @@ export default async function PerformancePage({
         return {
           client,
           trend: buildTrend(metrics.current),
-          spend: computeKpi("spend", metrics.currentTotals, metrics.previousTotals),
-          results: computeKpi("results", metrics.currentTotals, metrics.previousTotals),
-          cpa: computeKpi("cpa", metrics.currentTotals, metrics.previousTotals),
+          spend: computeKpi("spend", metrics.currentTotals, metrics.previousTotals, client.ad_currency),
+          results: computeKpi("results", metrics.currentTotals, metrics.previousTotals, client.ad_currency),
+          cpa: computeKpi("cpa", metrics.currentTotals, metrics.previousTotals, client.ad_currency),
           roas: deriveMetric("roas", metrics.currentTotals),
         };
       }),
@@ -214,6 +214,7 @@ export default async function PerformancePage({
                       clientId={client.id}
                       clientName={client.name}
                       clientSlug={client.slug}
+                      moeda={client.ad_currency}
                       resultLabel={
                         defaultGoalMetricFor(client.segment).label
                       }

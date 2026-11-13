@@ -82,7 +82,12 @@ interface IntegrationRow {
   external_account_id: string;
   currency: string | null;
   conversion_action_type: string | null;
-  clients: { name: string; status: string; segment: ClientSegment | null } | null;
+  clients: {
+    name: string;
+    status: string;
+    segment: ClientSegment | null;
+    ad_currency: string;
+  } | null;
   integration_secrets: { access_token: string | null; refresh_token: string | null } | null;
 }
 
@@ -108,7 +113,7 @@ export async function syncAllClients(
       `
       id, client_id, platform, external_account_id, currency,
       conversion_action_type,
-      clients!inner(name, status, segment),
+      clients!inner(name, status, segment, ad_currency),
       integration_secrets(access_token, refresh_token)
     `,
     )
@@ -181,6 +186,21 @@ async function syncIntegration(
         ...base,
         code: "platform_error",
         message: `Sem provedor implementado para ${integration.platform}.`,
+        durationMs: Date.now() - started,
+      });
+    }
+
+    /* Moeda: o número vem na moeda DA CONTA e é gravado sem conversão;
+       a página formata com `clients.ad_currency`. Uma conta em moeda
+       diferente da do cliente somaria dólar com real num total sem
+       significado — recusada aqui, com o motivo. As duas colunas vêm de
+       `detectarMoedaDoCliente`, no vínculo da conta. */
+    const moedaDoCliente = integration.clients?.ad_currency ?? "BRL";
+    if ((integration.currency ?? "BRL") !== moedaDoCliente) {
+      return await recordFailure(admin, integration, {
+        ...base,
+        code: "unsupported_currency",
+        message: `Conta em ${integration.currency}, cliente em ${moedaDoCliente}. Contas em moedas diferentes não somam.`,
         durationMs: Date.now() - started,
       });
     }

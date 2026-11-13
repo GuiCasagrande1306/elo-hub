@@ -35,9 +35,37 @@ const COMPACT = new Intl.NumberFormat("pt-BR", {
   maximumFractionDigits: 1,
 });
 
-/** Centavos → "R$ 12.345,67" */
-export function formatCurrency(cents: number): string {
-  return BRL.format(cents / 100);
+/* Um formatador por moeda, criado na primeira vez: `Intl.NumberFormat`
+   é caro de construir e é chamado em toda célula de tabela. */
+const POR_MOEDA = new Map<string, { cheio: Intl.NumberFormat; curto: Intl.NumberFormat }>();
+
+function formatadores(moeda: string) {
+  if (moeda === "BRL") return { cheio: BRL, curto: BRL_COMPACT };
+  let f = POR_MOEDA.get(moeda);
+  if (!f) {
+    f = {
+      cheio: new Intl.NumberFormat("pt-BR", { style: "currency", currency: moeda, minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      curto: new Intl.NumberFormat("pt-BR", { style: "currency", currency: moeda, notation: "compact", maximumFractionDigits: 1 }),
+    };
+    POR_MOEDA.set(moeda, f);
+  }
+  return f;
+}
+
+/**
+ * Centavos → "R$ 12.345,67". Com `moeda`, na moeda da conta de anúncio:
+ * "USD" → "US$ 12.345,67". Não converte nada — o número já vem da
+ * plataforma na moeda da conta; só o símbolo muda.
+ */
+/** "BRL" → "R$", "USD" → "US$". Para eixo de gráfico e prefixo de campo. */
+export function simboloDaMoeda(moeda = "BRL"): string {
+  return (
+    formatadores(moeda).cheio.formatToParts(0).find((p) => p.type === "currency")?.value ?? moeda
+  );
+}
+
+export function formatCurrency(cents: number, moeda = "BRL"): string {
+  return formatadores(moeda).cheio.format(cents / 100);
 }
 
 /**
@@ -89,8 +117,8 @@ export function parseCurrencyToCents(input: string): number | null {
 }
 
 /** Centavos → "R$ 12,3 mil". Para eixos de gráfico e telas estreitas. */
-export function formatCurrencyCompact(cents: number): string {
-  return BRL_COMPACT.format(cents / 100);
+export function formatCurrencyCompact(cents: number, moeda = "BRL"): string {
+  return formatadores(moeda).curto.format(cents / 100);
 }
 
 export function formatNumber(value: number): string {

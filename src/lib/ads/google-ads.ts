@@ -2,7 +2,6 @@ import "server-only";
 
 import { serverEnv } from "@/lib/env";
 import {
-  isSupportedCurrency,
   microsToCents,
   normalizeCustomerId,
   toDecimal,
@@ -116,14 +115,6 @@ export const googleAdsProvider: AdsProvider = {
         ok: false,
         code: "auth_expired",
         message: "Sem refresh token salvo para esta conta do Google Ads.",
-      };
-    }
-
-    if (!isSupportedCurrency(request.currency)) {
-      return {
-        ok: false,
-        code: "unsupported_currency",
-        message: `Conta em ${request.currency}. Somar com contas em BRL produziria um total sem significado.`,
       };
     }
 

@@ -33,6 +33,8 @@ export interface MetricDefinition {
   /** Sentido em que o indicador MELHORA. */
   betterWhen: "up" | "down" | "neutral";
   format: (value: number) => string;
+  /** Valor em centavos: formata na moeda da conta, não sempre em R$. */
+  dinheiro?: boolean;
   /** Versão curta, para eixo de gráfico. */
   formatCompactValue?: (value: number) => string;
   hint: string;
@@ -45,6 +47,7 @@ export const METRIC_DEFINITIONS: Record<MetricKey, MetricDefinition> = {
     // Gastar mais não é bom nem ruim isoladamente — depende do retorno.
     betterWhen: "neutral",
     format: formatCurrency,
+    dinheiro: true,
     formatCompactValue: (v) => formatCompact(v / 100),
     hint: "Soma do valor investido em mídia paga no período.",
   },
@@ -61,6 +64,7 @@ export const METRIC_DEFINITIONS: Record<MetricKey, MetricDefinition> = {
     label: "Custo por Resultado",
     betterWhen: "down", // ← o ponto crítico
     format: formatCurrency,
+    dinheiro: true,
     formatCompactValue: (v) => formatCompact(v / 100),
     hint: "Investimento dividido pelo número de resultados.",
   },
@@ -69,6 +73,7 @@ export const METRIC_DEFINITIONS: Record<MetricKey, MetricDefinition> = {
     label: "Receita",
     betterWhen: "up",
     format: formatCurrency,
+    dinheiro: true,
     formatCompactValue: (v) => formatCompact(v / 100),
     hint: "Valor de conversão informado pelas plataformas.",
   },
@@ -91,6 +96,7 @@ export const METRIC_DEFINITIONS: Record<MetricKey, MetricDefinition> = {
     label: "CPC",
     betterWhen: "down",
     format: formatCurrency,
+    dinheiro: true,
     hint: "Custo médio por clique.",
   },
   cpm: {
@@ -98,6 +104,7 @@ export const METRIC_DEFINITIONS: Record<MetricKey, MetricDefinition> = {
     label: "CPM",
     betterWhen: "down",
     format: formatCurrency,
+    dinheiro: true,
     hint: "Custo por mil impressões.",
   },
   impressions: {
@@ -128,6 +135,7 @@ export const METRIC_DEFINITIONS: Record<MetricKey, MetricDefinition> = {
     label: "Custo por Lead",
     betterWhen: "down",
     format: formatCurrency,
+    dinheiro: true,
     hint: "Investimento dividido pelo número de leads.",
   },
   aov: {
@@ -135,6 +143,7 @@ export const METRIC_DEFINITIONS: Record<MetricKey, MetricDefinition> = {
     label: "Ticket Médio",
     betterWhen: "up",
     format: formatCurrency,
+    dinheiro: true,
     hint: "Receita dividida pelo número de compras.",
   },
 };
@@ -375,8 +384,11 @@ export function computeKpi(
   key: MetricKey,
   current: MetricTotals,
   previous: MetricTotals,
+  /** Moeda das contas do cliente (`clients.ad_currency`). */
+  moeda = "BRL",
 ): KpiResult {
   const def = METRIC_DEFINITIONS[key];
+  const formatar = (v: number) => formatMetric(key, v, moeda);
   const value = deriveMetric(key, current);
   const previousValue = deriveMetric(key, previous);
 
@@ -407,12 +419,12 @@ export function computeKpi(
     label: def.label,
     hint: def.hint,
     value,
-    formatted: indefinido ? "—" : def.format(value),
+    formatted: indefinido ? "—" : formatar(value),
     deltaPercent,
     direction,
     sentiment,
     previousValue,
-    previousFormatted: anteriorIndefinido ? "—" : def.format(previousValue),
+    previousFormatted: anteriorIndefinido ? "—" : formatar(previousValue),
     indefinido,
     origem:
       (USAM_ORIGEM.has(key) ||
@@ -448,9 +460,10 @@ export function kpisDoTemplate(
   rotulos: Partial<Record<MetricKey, string>>,
   current: MetricTotals,
   previous: MetricTotals = EMPTY_TOTALS,
+  moeda = "BRL",
 ): KpiResult[] {
   return metrics.map((key) => {
-    const kpi = computeKpi(key, current, previous);
+    const kpi = computeKpi(key, current, previous, moeda);
     const rotulo = rotulos[key];
     return rotulo ? { ...kpi, label: rotulo } : kpi;
   });
@@ -597,8 +610,9 @@ export function previousPeriod(start: string, end: string) {
 }
 
 /** Formata um valor de KPI usando a definição do registro. */
-export function formatMetric(key: MetricKey, value: number): string {
-  return METRIC_DEFINITIONS[key].format(value);
+export function formatMetric(key: MetricKey, value: number, moeda = "BRL"): string {
+  const def = METRIC_DEFINITIONS[key];
+  return def.dinheiro ? formatCurrency(value, moeda) : def.format(value);
 }
 
 export { formatDecimal };

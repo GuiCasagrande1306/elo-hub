@@ -63,7 +63,7 @@ export type SyncFailureCode =
   | "auth_expired"
   /** Cota da API estourada. Vale tentar de novo mais tarde. */
   | "rate_limited"
-  /** Conta em moeda diferente de BRL — somar produziria número errado. */
+  /** Conta em moeda diferente da do cliente — somar produziria número errado. */
   | "unsupported_currency"
   /** Qualquer outra falha da plataforma. */
   | "platform_error"

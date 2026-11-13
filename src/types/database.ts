@@ -218,6 +218,8 @@ export interface Client {
   report_metrics: MetricasDoRelatorio | null;
   /** Checklist de onboarding. Null = lista padrão, nada marcado (migration 103). */
   onboarding_checklist: ItemDoOnboarding[] | null;
+  /** Moeda das contas de anúncio (ISO 4217), detectada no vínculo (migration 104). */
+  ad_currency: string;
   /** Dia do mês (1-28) do envio automático; null quando não agendado. */
   report_day: number | null;
   /**

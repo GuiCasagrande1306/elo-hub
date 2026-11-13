@@ -155,6 +155,7 @@ export function ClientCard({
             value={computedGoalValue}
             metric={metric}
             slug={client.slug}
+            moeda={client.ad_currency}
           />
         )}
       </div>
@@ -232,11 +233,13 @@ function NoGoalState({
   value,
   metric,
   slug,
+  moeda,
 }: {
   spendCents: number;
   value: number;
   metric: GoalMetric;
   slug: string;
+  moeda: string;
 }) {
   return (
     <div className="flex h-full flex-col justify-between gap-4">
@@ -244,7 +247,7 @@ function NoGoalState({
         <div>
           <dt className="eyebrow">Investido no mês</dt>
           <dd className="mt-0.5 text-sm font-semibold tabular-nums">
-            {formatCurrency(spendCents)}
+            {formatCurrency(spendCents, moeda)}
           </dd>
         </div>
         <div>
@@ -253,7 +256,7 @@ function NoGoalState({
               1.240 vendas, quando são R$ 12,40 de faturamento. */}
           <dt className="eyebrow">{metric.label}</dt>
           <dd className="mt-0.5 text-sm font-semibold tabular-nums">
-            {formatGoalValue(metric, value)}
+            {formatGoalValue(metric, value, moeda)}
           </dd>
         </div>
       </dl>

@@ -187,9 +187,9 @@ export function goalExecutedFrom(
 }
 
 /** Formata um valor já na unidade da meta. */
-export function formatGoalValue(metric: GoalMetric, value: number): string {
+export function formatGoalValue(metric: GoalMetric, value: number, moeda = "BRL"): string {
   return metric.isCurrency
-    ? formatCurrency(Math.round(value))
+    ? formatCurrency(Math.round(value), moeda)
     : formatNumber(Math.round(value));
 }
 

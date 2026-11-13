@@ -24,9 +24,11 @@ import { cn } from "@/lib/utils";
 interface AdGalleryProps {
   creatives: AdCreative[];
   className?: string;
+  /** Moeda das contas do cliente (`clients.ad_currency`). */
+  moeda?: string;
 }
 
-export function AdGallery({ creatives, className }: AdGalleryProps) {
+export function AdGallery({ creatives, className, moeda = "BRL" }: AdGalleryProps) {
   if (creatives.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-hairline py-12 text-center">
@@ -45,13 +47,13 @@ export function AdGallery({ creatives, className }: AdGalleryProps) {
       )}
     >
       {creatives.map((ad) => (
-        <AdCard key={ad.id} ad={ad} />
+        <AdCard key={ad.id} ad={ad} moeda={moeda} />
       ))}
     </div>
   );
 }
 
-function AdCard({ ad }: { ad: AdCreative }) {
+function AdCard({ ad, moeda }: { ad: AdCreative; moeda: string }) {
   const cpa = ad.conversions > 0 ? ad.spend_cents / ad.conversions : 0;
   const ctr = ad.impressions > 0 ? ad.clicks / ad.impressions : 0;
 
@@ -98,11 +100,11 @@ function AdCard({ ad }: { ad: AdCreative }) {
         </p>
 
         <dl className="mt-4 grid grid-cols-3 gap-2 border-t border-hairline pt-3">
-          <Metric label="Investido" value={formatCurrency(ad.spend_cents)} />
+          <Metric label="Investido" value={formatCurrency(ad.spend_cents, moeda)} />
           <Metric label="Resultados" value={formatNumber(ad.conversions)} />
           <Metric
             label="CPA"
-            value={cpa > 0 ? formatCurrency(cpa) : "—"}
+            value={cpa > 0 ? formatCurrency(cpa, moeda) : "—"}
             highlight
           />
         </dl>

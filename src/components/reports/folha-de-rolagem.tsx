@@ -63,6 +63,9 @@ export function FolhaDeRolagem({
     loja,
   } = data;
 
+  // US$ para conta de anúncio cadastrada nos EUA — ver `lib/moeda.tsx`.
+  const moeda = client.ad_currency;
+
   /* Fallback NEUTRO: sem cor do cliente, o documento não deve herdar a
      marca de uma agência. */
   const brand = client.brand_primary ?? agency?.brandPrimary ?? "#4A5568";
@@ -76,6 +79,7 @@ export function FolhaDeRolagem({
 
   const funil = etapasDoFunil({
     spendCents: totals.spendCents,
+    moeda,
     resultados: totals.results,
     totais: totaisMeta,
     impressoes: somaDeKpi(kpis, platformDetail, "impressions"),
@@ -274,7 +278,7 @@ export function FolhaDeRolagem({
             <div className="grid grid-cols-4 gap-4">
               <Cartao
                 rotulo="Faturamento da loja"
-                valor={formatCurrency(loja.receitaCents)}
+                valor={formatCurrency(loja.receitaCents, moeda)}
                 anterior={null}
                 delta={null}
                 sentimento="positive"
@@ -293,7 +297,7 @@ export function FolhaDeRolagem({
                 valor={
                   loja.ticketMedioCents === null
                     ? "—"
-                    : formatCurrency(loja.ticketMedioCents)
+                    : formatCurrency(loja.ticketMedioCents, moeda)
                 }
                 anterior={null}
                 delta={null}
@@ -354,6 +358,7 @@ export function FolhaDeRolagem({
                 color={brand}
                 series={grafico.series}
                 largura={LARGURA_DO_GRAFICO}
+                moeda={moeda}
               />
             </div>
           </div>
@@ -418,10 +423,10 @@ export function FolhaDeRolagem({
                       {c.custoIndefinido ? (
                         <span className="text-[#8b95a1]">—</span>
                       ) : (
-                        `${formatCurrency(c.cpaCents)}${c.custoSufixo}`
+                        `${formatCurrency(c.cpaCents, moeda)}${c.custoSufixo}`
                       )}
                     </Td>
-                    <Td alinhar="right">{formatCurrency(c.spendCents)}</Td>
+                    <Td alinhar="right">{formatCurrency(c.spendCents, moeda)}</Td>
                   </tr>
                 ))}
               </Tabela>
@@ -463,7 +468,7 @@ export function FolhaDeRolagem({
               ]}
             >
               {creatives.map((c, i) => {
-                const d = derivadas(c);
+                const d = derivadas(c, moeda);
                 return (
                   <tr
                     key={c.id}
@@ -504,7 +509,7 @@ export function FolhaDeRolagem({
                         {formatNumber(c.conversions)}
                       </span>
                     </Td>
-                    <Td alinhar="right">{formatCurrency(c.spend_cents)}</Td>
+                    <Td alinhar="right">{formatCurrency(c.spend_cents, moeda)}</Td>
                     <Td alinhar="right">{d.ctr}</Td>
                     <Td alinhar="right">{d.cpc}</Td>
                     <Td alinhar="right">{d.cpm}</Td>
@@ -844,18 +849,21 @@ function Td({
  * produziria `Infinity` no CPC, e `formatCurrency(Infinity)` imprime
  * "R$ NaN" no documento do cliente.
  */
-function derivadas(c: {
-  spend_cents: number;
-  impressions: number;
-  clicks: number;
-}): { ctr: string; cpc: string; cpm: string } {
+function derivadas(
+  c: {
+    spend_cents: number;
+    impressions: number;
+    clicks: number;
+  },
+  moeda: string,
+): { ctr: string; cpc: string; cpm: string } {
   return {
     // Fração, não porcentagem: `formatPercent` multiplica por 100.
     ctr: c.impressions > 0 ? formatPercent(c.clicks / c.impressions) : "—",
-    cpc: c.clicks > 0 ? formatCurrency(Math.round(c.spend_cents / c.clicks)) : "—",
+    cpc: c.clicks > 0 ? formatCurrency(Math.round(c.spend_cents / c.clicks), moeda) : "—",
     cpm:
       c.impressions > 0
-        ? formatCurrency(Math.round((c.spend_cents / c.impressions) * 1000))
+        ? formatCurrency(Math.round((c.spend_cents / c.impressions) * 1000), moeda)
         : "—",
   };
 }

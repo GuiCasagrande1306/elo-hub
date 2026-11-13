@@ -13,7 +13,8 @@ import {
 } from "recharts";
 
 import type { TrendPoint } from "@/lib/metrics/kpi";
-import { formatCompact, formatDate } from "@/lib/format";
+import { formatCompact, formatDate, simboloDaMoeda } from "@/lib/format";
+import { useMoeda } from "@/lib/moeda";
 import { cn } from "@/lib/utils";
 
 /**
@@ -45,6 +46,8 @@ export function TrendChart({
   secondary = "results",
   className,
 }: TrendChartProps) {
+  const moeda = useMoeda();
+  const simbolo = simboloDaMoeda(moeda);
   const [hidden, setHidden] = useState<Set<SeriesKey>>(new Set());
 
   const toggle = (key: SeriesKey) =>
@@ -127,7 +130,7 @@ export function TrendChart({
             />
             <YAxis
               yAxisId="left"
-              tickFormatter={(value: number) => `R$ ${formatCompact(value)}`}
+              tickFormatter={(value: number) => `${simbolo} ${formatCompact(value)}`}
               tickLine={false}
               axisLine={false}
               width={62}
@@ -137,7 +140,7 @@ export function TrendChart({
               yAxisId="right"
               orientation="right"
               tickFormatter={(value: number) =>
-                isCurrency ? `R$ ${formatCompact(value)}` : formatCompact(value)
+                isCurrency ? `${simbolo} ${formatCompact(value)}` : formatCompact(value)
               }
               tickLine={false}
               axisLine={false}
@@ -211,6 +214,7 @@ function ChartTooltip({
   label?: string;
   secondary: SeriesKey;
 }) {
+  const moeda = useMoeda();
   if (!active || !payload?.length) return null;
 
   const value = (key: string) =>
@@ -219,7 +223,7 @@ function ChartTooltip({
   const currency = (n: number) =>
     n.toLocaleString("pt-BR", {
       style: "currency",
-      currency: "BRL",
+      currency: moeda,
       maximumFractionDigits: 0,
     });
 

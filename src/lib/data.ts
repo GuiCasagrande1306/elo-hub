@@ -699,6 +699,7 @@ export async function getClientsWithGoals(
         progress: buildGoalProgress({
           goal,
           metric,
+          moeda: client.ad_currency,
           computedSpendCents: totals.spendCents,
           computedConversions: totals.conversions,
           computedRevenueCents: totals.revenueCents,
@@ -759,6 +760,7 @@ export async function getClientGoalProgress(client: Client): Promise<{
     progress: buildGoalProgress({
       goal,
       metric,
+      moeda: client.ad_currency,
       computedSpendCents: totals.spendCents,
       computedConversions: totals.conversions,
       computedRevenueCents: loja?.receitaCents ?? totals.revenueCents,

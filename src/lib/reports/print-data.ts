@@ -449,7 +449,7 @@ function assemble(
     // Mesmas funções do dashboard: é o que garante que o PDF entregue ao
     // cliente não divirja do número que o gestor vê na tela.
     kpis: HERO_METRICS.map((key) => {
-      const kpi = computeKpi(key, currentTotals, previousTotals);
+      const kpi = computeKpi(key, currentTotals, previousTotals, client.ad_currency);
 
       /* Com loja, o rótulo precisa dizer o que o número virou. "ROAS"
          sobre faturamento de loja inteira faria o cliente ler retorno
@@ -477,6 +477,7 @@ function assemble(
       rotulosPorPlataforma,
       acoesGoogle,
       client.report_metrics,
+      client.ad_currency,
     ),
     creatives,
     trend: buildTrend(current, tiposDeConversao),

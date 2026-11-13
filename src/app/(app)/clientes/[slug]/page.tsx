@@ -155,7 +155,9 @@ export default async function ClientPage({
     : null;
 
   const kpis = heroMetricsFor(client.segment)
-    .map((key) => computeKpi(key, metrics.currentTotals, metrics.previousTotals))
+    .map((key) =>
+      computeKpi(key, metrics.currentTotals, metrics.previousTotals, client.ad_currency),
+    )
     /* "Resultados" e "Custo por Resultado" são rótulos genéricos do
        catálogo de métricas. Aqui já sabemos o que a conta vende, então
        o card diz "Visitas ao perfil" e "Custo por visita" em vez de
@@ -211,6 +213,7 @@ export default async function ClientPage({
           kpi.key,
           comLoja(metrics.currentTotals, loja.receitaCents),
           comLoja(metrics.previousTotals, lojaAnterior?.receitaCents ?? 0),
+          client.ad_currency,
         );
 
         return kpi.key === "roas"

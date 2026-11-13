@@ -310,6 +310,7 @@ export function ClientsDirectory({
               ? buildGoalProgress({
                   goal: patched,
                   metric,
+                  moeda: row.client.ad_currency,
                   computedSpendCents: row.computedSpendCents,
                   computedConversions: row.computedResults,
                   computedRevenueCents: row.computedRevenueCents,

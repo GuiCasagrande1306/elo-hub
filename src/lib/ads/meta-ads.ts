@@ -9,7 +9,6 @@ import {
 import { objetivoDoCriativo } from "./creative-goal";
 import {
   decimalToCents,
-  isSupportedCurrency,
   toDecimal,
   toInt,
 } from "./normalize";
@@ -126,14 +125,6 @@ export const metaAdsProvider: AdsProvider = {
         ok: false,
         code: "auth_expired",
         message: "Sem access token salvo para esta conta do Meta Ads.",
-      };
-    }
-
-    if (!isSupportedCurrency(request.currency)) {
-      return {
-        ok: false,
-        code: "unsupported_currency",
-        message: `Conta em ${request.currency}. Somar com contas em BRL produziria um total sem significado.`,
       };
     }
 

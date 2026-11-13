@@ -106,6 +106,7 @@ export async function createClientAction(
       owner_id: "u-admin",
       report_metrics: null,
       onboarding_checklist: null,
+      ad_currency: "BRL",
       created_at: new Date().toISOString(),
     });
 
@@ -316,16 +317,29 @@ export async function setAdAccountId(input: {
      desfaz nada — e o `catch` existe porque uma exceção da Meta não
      pode derrubar um vínculo que já foi persistido. */
   let syncAviso: string | undefined;
+
+  /* Moeda da conta (US$ para conta cadastrada nos EUA), perguntada à
+     plataforma. ANTES do sync: a coleta compara a moeda de cada conta
+     com a do cliente. Falhar aqui não desfaz o vínculo — o cliente
+     segue em BRL e o aviso diz por quê. */
+  try {
+    const { detectarMoedaDoCliente } = await import("@/lib/ads/moeda-da-conta");
+    const moeda = await detectarMoedaDoCliente(input.clientId);
+    if (!moeda.ok) syncAviso = `Moeda da conta: ${moeda.motivo}`;
+  } catch {
+    syncAviso = "Não consegui confirmar a moeda da conta.";
+  }
+
   try {
     const { syncAllClients } = await import("@/lib/ads/sync");
     const r = await syncAllClients({ mode: "month", clientId: input.clientId });
     if (r.failed > 0) {
-      syncAviso =
+      syncAviso ??=
         r.results.find((x) => !x.ok)?.message ??
         "Conta vinculada, mas a primeira sincronização falhou.";
     }
   } catch {
-    syncAviso = "Conta vinculada, mas não consegui buscar os números agora.";
+    syncAviso ??= "Conta vinculada, mas não consegui buscar os números agora.";
   }
   /* A rodada acima cobre só o mês corrente + 7 dias. Na Padá (conta
      escolhida em 02/11/2026) outubro ficou com 7 dias de Google: R$ 0,07

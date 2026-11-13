@@ -30,6 +30,7 @@ import {
   setClientLogo,
 } from "@/app/(app)/clientes/actions";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import { simboloDaMoeda } from "@/lib/format";
 import {
   defaultGoalMetricFor,
   goalInputValue,
@@ -250,7 +251,7 @@ export function ClientSettingsCard({
 
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <div>
-            <Label htmlFor="orcamento">Orçamento previsto (R$)</Label>
+            <Label htmlFor="orcamento">Orçamento previsto ({simboloDaMoeda(client.ad_currency)})</Label>
             <Input
               id="orcamento"
               inputMode="decimal"
@@ -263,7 +264,7 @@ export function ClientSettingsCard({
           <div>
             <Label htmlFor="meta-resultados">
               {metrica.inputLabel}
-              {metrica.isCurrency && " (R$)"}
+              {metrica.isCurrency && ` (${simboloDaMoeda(client.ad_currency)})`}
             </Label>
             <Input
               id="meta-resultados"

@@ -286,20 +286,22 @@ function budgetProgress(
   executedCents: number,
   elapsed: number | null,
   isOverride: boolean,
+  moeda: string,
 ): GoalProgress {
+  const dinheiro = (v: number) => formatCurrency(v, moeda);
   const ratio = safeRatio(executedCents, plannedCents);
   const pacing = buildPacing(
     plannedCents,
     executedCents,
     elapsed,
-    formatCurrency,
+    dinheiro,
   );
   const projection = buildProjection(
     "budget",
     plannedCents,
     executedCents,
     elapsed,
-    formatCurrency,
+    dinheiro,
   );
 
   let status: GoalStatus = "no-ritmo";
@@ -315,7 +317,7 @@ function budgetProgress(
        inteiro, e nenhuma leitura de pacing muda isso. */
     status = "estourou";
     tone = "negative";
-    message = `Estourou o orçamento em ${formatCurrency(executedCents - plannedCents)}.`;
+    message = `Estourou o orçamento em ${dinheiro(executedCents - plannedCents)}.`;
   } else if (pacing) {
     if (pacing.ratio > 1 + PACE_TOLERANCE) {
       status = "acelerado";
@@ -325,7 +327,7 @@ function budgetProgress(
       // Subinvestir também é desvio: verba parada não vira resultado.
       status = "atrasado";
       tone = "warning";
-      message = `Sobra ${formatCurrency(plannedCents - executedCents)} para o período restante.`;
+      message = `Sobra ${dinheiro(plannedCents - executedCents)} para o período restante.`;
     } else {
       status = "no-ritmo";
       tone = "positive";
@@ -347,8 +349,8 @@ function budgetProgress(
     statusLabel: BUDGET_STATUS_LABELS[status],
     tone,
     message,
-    plannedLabel: formatCurrency(plannedCents),
-    executedLabel: formatCurrency(executedCents),
+    plannedLabel: dinheiro(plannedCents),
+    executedLabel: dinheiro(executedCents),
     isOverride,
   };
 }
@@ -363,17 +365,18 @@ function resultsProgress(
   elapsed: number | null,
   isOverride: boolean,
   metric: GoalMetric,
+  moeda: string,
 ): GoalProgress {
   const ratio = safeRatio(executedResults, plannedResults);
   const pacing = buildPacing(plannedResults, executedResults, elapsed, (v) =>
-    formatGoalValue(metric, v),
+    formatGoalValue(metric, v, moeda),
   );
   const projection = buildProjection(
     "results",
     plannedResults,
     executedResults,
     elapsed,
-    (v) => formatGoalValue(metric, v),
+    (v) => formatGoalValue(metric, v, moeda),
   );
 
   let status: GoalStatus = "no-ritmo";
@@ -408,7 +411,7 @@ function resultsProgress(
       status = "atrasado";
       tone = "negative";
       const faltam = plannedResults - executedResults;
-      message = `Faltam ${formatGoalValue(metric, faltam)} para a meta.`;
+      message = `Faltam ${formatGoalValue(metric, faltam, moeda)} para a meta.`;
     }
   }
 
@@ -426,8 +429,8 @@ function resultsProgress(
     statusLabel: RESULTS_STATUS_LABELS[status],
     tone,
     message,
-    plannedLabel: formatGoalValue(metric, plannedResults),
-    executedLabel: formatGoalValue(metric, executedResults),
+    plannedLabel: formatGoalValue(metric, plannedResults, moeda),
+    executedLabel: formatGoalValue(metric, executedResults, moeda),
     isOverride,
   };
 }
@@ -453,6 +456,8 @@ export interface GoalInput {
   computedRevenueCents: number;
   /** O indicador desta conta — ver `lib/metrics/goal-metric.ts`. */
   metric: GoalMetric;
+  /** Moeda das contas do cliente (`clients.ad_currency`). */
+  moeda?: string;
   now?: Date;
 }
 
@@ -474,6 +479,7 @@ export function buildGoalProgress({
   computedConversions,
   computedRevenueCents,
   metric,
+  moeda = "BRL",
   now,
 }: GoalInput): GoalProgressPair | null {
   if (!goal) return null;
@@ -511,6 +517,7 @@ export function buildGoalProgress({
       executedBudget,
       elapsed,
       goal.executed_budget_cents_override !== null,
+      moeda,
     ),
     results: resultsProgress(
       goal.planned_results,
@@ -518,6 +525,7 @@ export function buildGoalProgress({
       elapsed,
       goal.executed_results_override !== null,
       metric,
+      moeda,
     ),
     cycle: { elapsed, daysLeft, periodEnd: goal.period_end },
   };

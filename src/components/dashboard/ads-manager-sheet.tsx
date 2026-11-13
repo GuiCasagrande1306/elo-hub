@@ -23,6 +23,7 @@ import {
   type Periodo,
 } from "@/components/dashboard/period-picker";
 import { formatCurrency, formatNumber } from "@/lib/format";
+import { MoedaProvider } from "@/lib/moeda";
 
 /* =====================================================================
    Gerenciador unificado, em diálogo CENTRAL
@@ -60,12 +61,15 @@ export function AdsManagerSheet({
   clientSlug,
   resultLabel,
   costLabel,
+  moeda = "BRL",
 }: {
   clientId: string;
   clientName: string;
   clientSlug: string;
   resultLabel: string;
   costLabel: string;
+  /** Moeda das contas do cliente (`clients.ad_currency`). */
+  moeda?: string;
 }) {
   const [aberto, setAberto] = useState(false);
   const [periodo, setPeriodo] = useState<Periodo>(() => janelaDeDias(30));
@@ -170,7 +174,7 @@ export function AdsManagerSheet({
               <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs tabular-nums">
                 <span>
                   <span className="text-muted-foreground">Investido: </span>
-                  <strong>{formatCurrency(totais.gasto)}</strong>
+                  <strong>{formatCurrency(totais.gasto, moeda)}</strong>
                 </span>
                 <span>
                   <span className="text-muted-foreground">{resultLabel}: </span>
@@ -182,6 +186,7 @@ export function AdsManagerSheet({
                     {totais.resultados > 0
                       ? formatCurrency(
                           Math.round(totais.gasto / totais.resultados),
+                          moeda,
                         )
                       : "—"}
                   </strong>
@@ -219,11 +224,13 @@ export function AdsManagerSheet({
             )}
 
             {dados && dados.campanhas.length > 0 && !carregando && (
-              <AdsManagerTable
-                dados={dados.campanhas}
-                resultLabel={resultLabel}
-                costLabel={costLabel}
-              />
+              <MoedaProvider value={moeda}>
+                <AdsManagerTable
+                  dados={dados.campanhas}
+                  resultLabel={resultLabel}
+                  costLabel={costLabel}
+                />
+              </MoedaProvider>
             )}
           </div>
         </DialogContent>

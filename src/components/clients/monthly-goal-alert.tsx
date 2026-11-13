@@ -17,6 +17,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { setClientGoal } from "@/app/(app)/clientes/actions";
 import { nomeDoMes } from "@/lib/date-br";
+import { simboloDaMoeda } from "@/lib/format";
+import { useMoeda } from "@/lib/moeda";
 import { defaultGoalMetricFor } from "@/lib/metrics/goal-metric";
 import { cn } from "@/lib/utils";
 import type { ClientSegment } from "@/types/database";
@@ -47,6 +49,7 @@ export function MonthlyGoalAlert({
   plannedBudget?: string;
   plannedResults?: string;
 }) {
+  const simbolo = simboloDaMoeda(useMoeda());
   const [aberto, setAberto] = useState(false);
   const [orcamento, setOrcamento] = useState(plannedBudget ?? "");
   const [resultados, setResultados] = useState(plannedResults ?? "");
@@ -108,7 +111,7 @@ export function MonthlyGoalAlert({
 
           <div className="flex flex-col gap-4 py-1">
             <div>
-              <Label htmlFor="meta-orcamento">Orçamento planejado</Label>
+              <Label htmlFor="meta-orcamento">Orçamento planejado ({simbolo})</Label>
               <Input
                 id="meta-orcamento"
                 inputMode="decimal"
@@ -127,7 +130,7 @@ export function MonthlyGoalAlert({
               <div className="relative mt-1.5">
                 {metrica.isCurrency && (
                   <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                    R$
+                    {simbolo}
                   </span>
                 )}
                 <Input

@@ -45,8 +45,11 @@ export function PrintWeeklyChart({
   color,
   series,
   largura,
+  moeda = "BRL",
 }: {
   data: TrendPoint[];
+  /** Moeda das contas do cliente (`clients.ad_currency`). */
+  moeda?: string;
   color: string;
   series: SerieDoGrafico[];
   /**
@@ -95,7 +98,7 @@ export function PrintWeeklyChart({
   const rotulo = (v: number) =>
     unidade === "contagem"
       ? formatNumber(v)
-      : formatCurrencyCompact(Math.round(v * 100));
+      : formatCurrencyCompact(Math.round(v * 100), moeda);
 
   return (
     <div className="flex flex-col items-center">

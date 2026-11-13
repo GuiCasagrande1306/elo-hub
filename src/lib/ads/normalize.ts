@@ -56,22 +56,9 @@ export function toDecimal(value: string | number | null | undefined): number {
   return Math.round(parsed * 100) / 100;
 }
 
-/**
- * Moeda da conta.
- *
- * ⚠️ Somar uma conta em USD com outra em BRL produz um total que não
- * significa nada — e o erro é silencioso, porque a soma "funciona".
- * Preferimos recusar a conta e registrar o motivo a entregar um número
- * errado com aparência de certo.
- *
- * Suporte multi-moeda exige taxa de câmbio POR DIA (a do dia do gasto,
- * não a de hoje), o que é um recurso à parte.
- */
-export const BASE_CURRENCY = "BRL";
-
-export function isSupportedCurrency(currency: string | null | undefined): boolean {
-  return (currency ?? BASE_CURRENCY).toUpperCase() === BASE_CURRENCY;
-}
+/* Moeda: as contas são gravadas na própria moeda, sem conversão, e a
+   coleta recusa conta em moeda diferente da do cliente — ver a guarda
+   em `sync.ts` e `moeda-da-conta.ts`. */
 
 /** "123-456-7890" → "1234567890". A API do Google recusa os hífens. */
 export function normalizeCustomerId(raw: string): string {

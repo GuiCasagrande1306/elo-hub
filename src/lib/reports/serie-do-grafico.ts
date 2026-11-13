@@ -134,10 +134,10 @@ export function unidadeDaSerie(s: SerieDoGrafico): "dinheiro" | "contagem" {
 }
 
 /** O valor por extenso, na unidade da série. */
-export function formatarSerie(valor: number, s: SerieDoGrafico): string {
+export function formatarSerie(valor: number, s: SerieDoGrafico, moeda = "BRL"): string {
   return s === "results"
     ? formatNumber(Math.round(valor))
-    : formatCurrency(Math.round(valor * 100));
+    : formatCurrency(Math.round(valor * 100), moeda);
 }
 
 /**

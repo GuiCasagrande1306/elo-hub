@@ -23,6 +23,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/format";
+import { useMoeda } from "@/lib/moeda";
 import { cn } from "@/lib/utils";
 
 /* =====================================================================
@@ -96,6 +97,8 @@ export function AdsManagerTable({
     cpc: false,
   });
 
+  const moeda = useMoeda();
+
   const columns = useMemo(
     () =>
       [
@@ -109,7 +112,7 @@ export function AdsManagerTable({
           id: "spend",
           header: "Gasto",
           enableHiding: false,
-          cell: (i) => formatCurrency(i.getValue()),
+          cell: (i) => formatCurrency(i.getValue(), moeda),
         }),
         coluna.accessor("results", {
           id: "results",
@@ -121,7 +124,7 @@ export function AdsManagerTable({
           header: costLabel,
           cell: ({ row }) => {
             const v = razao(row.original.spendCents, row.original.results);
-            return v === null ? "—" : formatCurrency(Math.round(v));
+            return v === null ? "—" : formatCurrency(Math.round(v), moeda);
           },
         }),
         coluna.display({
@@ -144,7 +147,7 @@ export function AdsManagerTable({
           header: "CPM",
           cell: ({ row }) => {
             const v = razao(row.original.spendCents, row.original.impressions);
-            return v === null ? "—" : formatCurrency(Math.round(v * 1000));
+            return v === null ? "—" : formatCurrency(Math.round(v * 1000), moeda);
           },
         }),
         coluna.display({
@@ -160,11 +163,11 @@ export function AdsManagerTable({
           header: "CPC",
           cell: ({ row }) => {
             const v = razao(row.original.spendCents, row.original.clicks);
-            return v === null ? "—" : formatCurrency(Math.round(v));
+            return v === null ? "—" : formatCurrency(Math.round(v), moeda);
           },
         }),
       ] as ColumnDef<NoDaArvore, unknown>[],
-    [resultLabel, costLabel],
+    [resultLabel, costLabel, moeda],
   );
 
   /* O React Compiler avisa que `useReactTable` devolve funções que ele
@@ -289,7 +292,7 @@ export function AdsManagerTable({
             <tr className="border-t border-hairline bg-surface-2/40">
               <td className="px-3 py-2.5 text-sm font-medium">Total</td>
               <td className="px-3 py-2.5 text-right text-sm font-semibold tabular-nums">
-                {formatCurrency(totais.spend)}
+                {formatCurrency(totais.spend, moeda)}
               </td>
               <td
                 colSpan={table.getVisibleFlatColumns().length - 2}

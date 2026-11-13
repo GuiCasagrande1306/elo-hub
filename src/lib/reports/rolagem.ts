@@ -95,6 +95,8 @@ export interface EtapaDoFunil {
  */
 export function etapasDoFunil(input: {
   spendCents: number;
+  /** Moeda das contas do cliente (`clients.ad_currency`). */
+  moeda?: string;
   resultados: number;
   impressoes: number;
   cliques: number;
@@ -113,7 +115,7 @@ export function etapasDoFunil(input: {
   const etapas: EtapaDoFunil[] = [
     {
       rotulo: "Investimento",
-      valor: formatCurrency(spendCents),
+      valor: formatCurrency(spendCents, input.moeda),
       taxa: null,
     },
     {

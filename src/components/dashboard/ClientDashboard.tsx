@@ -15,6 +15,7 @@ import { AdStructure } from "@/components/dashboard/ad-structure";
 import { Button } from "@/components/ui/button";
 import { useRealtimeRefresh, useRefreshAoVoltar } from "@/hooks/use-realtime";
 import { cn } from "@/lib/utils";
+import { MoedaProvider } from "@/lib/moeda";
 import { DateRangePicker } from "./date-range-picker";
 import { formatPeriod } from "@/lib/format";
 import type { KpiResult, PlatformSplit, TrendPoint } from "@/lib/metrics/kpi";
@@ -122,6 +123,9 @@ export function ClientDashboard({
     client.segment === "ecommerce" ? "revenue" : "results";
 
   return (
+    /* Toda formatação de dinheiro abaixo usa a moeda da conta de anúncio
+       (US$ para conta cadastrada nos EUA). Ver `lib/moeda.tsx`. */
+    <MoedaProvider value={client.ad_currency}>
     <div className="flex flex-col">
       {/* ================= HERO ================= */}
       <section className="glow-signal relative overflow-hidden border-b border-hairline">
@@ -294,7 +298,7 @@ export function ClientDashboard({
             title="Canais"
             description="Onde o orçamento foi alocado."
           >
-            <PlatformSplitList data={platforms} />
+            <PlatformSplitList data={platforms} moeda={client.ad_currency} />
           </Panel>
         </div>
 
@@ -313,7 +317,7 @@ export function ClientDashboard({
             </span>
           </div>
 
-          <AdGallery creatives={creatives} />
+          <AdGallery creatives={creatives} moeda={client.ad_currency} />
         </section>
 
         <AdStructure
@@ -336,6 +340,7 @@ export function ClientDashboard({
         <ClientSettingsCard client={client} goal={goal} />
       </div>
     </div>
+    </MoedaProvider>
   );
 }
 
