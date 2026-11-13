@@ -157,6 +157,7 @@ export const demoClients: Client[] = [
     optimization_day: 1,
     owner_id: "u-admin",
     report_metrics: null,
+    onboarding_checklist: null,
     created_at: daysAgo(300),
   },
   {
@@ -192,6 +193,7 @@ export const demoClients: Client[] = [
     optimization_day: 3,
     owner_id: "u-marina",
     report_metrics: null,
+    onboarding_checklist: null,
     created_at: daysAgo(210),
   },
   {
@@ -227,6 +229,7 @@ export const demoClients: Client[] = [
     optimization_day: 3,
     owner_id: "u-admin",
     report_metrics: null,
+    onboarding_checklist: null,
     created_at: daysAgo(120),
   },
   {
@@ -258,6 +261,7 @@ export const demoClients: Client[] = [
     optimization_day: 5,
     owner_id: "u-marina",
     report_metrics: null,
+    onboarding_checklist: null,
     created_at: daysAgo(25),
   },
 ];

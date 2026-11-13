@@ -271,7 +271,7 @@ function NoGoalState({
 
 /* ------------------------------------------------------------------ */
 
-function ClientMark({ client }: { client: Client }) {
+export function ClientMark({ client }: { client: Client }) {
   const letters = client.name
     .split(/\s+/)
     .slice(0, 2)

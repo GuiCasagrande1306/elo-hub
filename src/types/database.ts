@@ -1,4 +1,5 @@
 import type { MetricasDoRelatorio } from "@/lib/reports/metricas-do-relatorio";
+import type { ItemDoOnboarding } from "@/lib/onboarding/checklist";
 /**
  * Tipos de domínio do Elo Hub.
  *
@@ -215,6 +216,8 @@ export interface Client {
   owner_id: string | null;
   /** Cartões do relatório por plataforma; `null` = automático (migration 101). */
   report_metrics: MetricasDoRelatorio | null;
+  /** Checklist de onboarding. Null = lista padrão, nada marcado (migration 103). */
+  onboarding_checklist: ItemDoOnboarding[] | null;
   /** Dia do mês (1-28) do envio automático; null quando não agendado. */
   report_day: number | null;
   /**

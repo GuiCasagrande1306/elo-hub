@@ -102,6 +102,7 @@ export async function createClientAction(
         : null,
       owner_id: "u-admin",
       report_metrics: null,
+      onboarding_checklist: null,
       created_at: new Date().toISOString(),
     });
 

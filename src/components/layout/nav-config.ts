@@ -6,6 +6,7 @@ import {
   Inbox,
   Landmark,
   LayoutGrid,
+  ListChecks,
   Repeat,
   Settings,
   Smile,
@@ -78,6 +79,7 @@ export const navGroups: NavGroup[] = [
     label: "Operação",
     items: [
       { href: "/clientes", label: "Clientes", icon: Users, matchPrefix: true },
+      { href: "/onboarding", label: "Onboarding", icon: ListChecks },
       /* Leads só aparece para usuário de cliente: é a página inicial dele
          (`/` redireciona para cá). A equipe não usa mais pelo menu. */
       {

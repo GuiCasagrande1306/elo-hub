@@ -51,10 +51,12 @@ export default async function ClientsPage({
     ? agency
     : undefined;
 
-  const rows = await getClientsWithGoals(
-    mes === mesAtual ? undefined : mes,
-    agenciaValida,
-  );
+  /* Cliente em onboarding mora em /onboarding até o checklist chegar a
+     100% e alguém mandá-lo para cá (vira `active`). Filtrar ANTES dos
+     totais, para o resumo somar a mesma lista que a grade mostra. */
+  const rows = (
+    await getClientsWithGoals(mes === mesAtual ? undefined : mes, agenciaValida)
+  ).filter((r) => r.client.status !== "onboarding");
 
   // Totais da carteira: o número que o dono da agência olha primeiro.
   const totals = rows.reduce(
