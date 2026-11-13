@@ -11,6 +11,7 @@ import {
   atividadesDaConta,
   type DiaDeAtividade,
 } from "@/lib/ads/meta-activities";
+import type { SaudeDaConta } from "@/types/database";
 
 const schema = z.object({
   clientId: z.string().min(1),
@@ -24,6 +25,7 @@ const schema = z.object({
      87.5, e deixar o número entrar direto obrigaria o formulário a
      lidar com a vírgula do teclado brasileiro. */
   goalProjection: z.string().trim(),
+  accountHealth: z.enum(["green", "yellow", "red"]).nullable(),
   /* O DIA A QUE A OBSERVAÇÃO PERTENCE. Opcional: quando não vem, o
      banco carimba hoje no fuso de São Paulo (migration 66). Vem
      preenchido quando a pessoa escreve, hoje, a observação de ontem —
@@ -52,6 +54,7 @@ export async function registerOptimization(input: {
   notes: string;
   reportSent: boolean;
   goalProjection: string;
+  accountHealth: SaudeDaConta | null;
   dia?: string;
 }): Promise<RegisterResult> {
   const parsed = schema.safeParse(input);
@@ -88,6 +91,7 @@ export async function registerOptimization(input: {
       notes: parsed.data.notes,
       report_sent: parsed.data.reportSent,
       goal_projection: projecao,
+      account_health: parsed.data.accountHealth,
       created_at: new Date().toISOString(),
       dia: parsed.data.dia ?? dataNoBrasil(),
       collaborator: { id: user.id, full_name: user.full_name },
@@ -104,6 +108,7 @@ export async function registerOptimization(input: {
     notes: parsed.data.notes,
     report_sent: parsed.data.reportSent,
     goal_projection: projecao,
+    account_health: parsed.data.accountHealth,
     /* Ausente = o default do banco (hoje, em São Paulo). Mandar
        `undefined` explicitamente é o mesmo que não mandar. */
     ...(parsed.data.dia ? { dia: parsed.data.dia } : {}),
@@ -152,6 +157,7 @@ export async function atualizarOtimizacao(input: {
   notes: string;
   reportSent: boolean;
   goalProjection: string;
+  accountHealth: SaudeDaConta | null;
 }): Promise<RegisterResult> {
   const parsed = schemaEdicao.safeParse(input);
   if (!parsed.success) {
@@ -192,6 +198,7 @@ export async function atualizarOtimizacao(input: {
     alvo.notes = parsed.data.notes;
     alvo.report_sent = parsed.data.reportSent;
     alvo.goal_projection = projecao;
+    alvo.account_health = parsed.data.accountHealth;
     alvo.edited_at = new Date().toISOString();
     alvo.edited_by = user.id;
     revalidatePath("/esteira");
@@ -209,6 +216,7 @@ export async function atualizarOtimizacao(input: {
       notes: parsed.data.notes,
       report_sent: parsed.data.reportSent,
       goal_projection: projecao,
+      account_health: parsed.data.accountHealth,
     })
     .eq("id", parsed.data.entryId)
     .select("id");

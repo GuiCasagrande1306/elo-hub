@@ -31,7 +31,12 @@ import {
 } from "@/app/(app)/esteira/actions";
 import { dataNoBrasil } from "@/lib/date-br";
 import type { DiaDeAtividade } from "@/lib/ads/meta-activities";
-import type { Client, OptimizationEntry, Profile } from "@/types/database";
+import type {
+  Client,
+  OptimizationEntry,
+  Profile,
+  SaudeDaConta,
+} from "@/types/database";
 
 /* =====================================================================
    O que aconteceu na conta, dia a dia
@@ -404,6 +409,16 @@ function Observacao({
           {entrada.goal_projection !== null &&
             ` · projeção ${String(entrada.goal_projection).replace(".", ",")}%`}
           {entrada.report_sent && " · relatório enviado"}
+          {entrada.account_health && (
+            <>
+              {" · "}
+              <span
+                aria-hidden
+                className={`inline-block size-1.5 rounded-full align-middle ${SAUDE[entrada.account_health].cor}`}
+              />{" "}
+              conta {SAUDE[entrada.account_health].rotulo.toLowerCase()}
+            </>
+          )}
           {entrada.edited_at &&
             ` · editado${nomeDoEditor ? ` por ${nomeDoEditor}` : ""}`}
         </p>
@@ -450,6 +465,9 @@ function Editor({
       ? ""
       : String(entrada.goal_projection).replace(".", ","),
   );
+  const [saude, setSaude] = useState<SaudeDaConta | null>(
+    entrada?.account_health ?? null,
+  );
   const [salvando, iniciar] = useTransition();
 
   function salvar() {
@@ -460,12 +478,14 @@ function Editor({
             notes,
             reportSent,
             goalProjection: projection,
+            accountHealth: saude,
           })
         : await registerOptimization({
             clientId,
             notes,
             reportSent,
             goalProjection: projection,
+            accountHealth: saude,
             dia,
           });
 
@@ -514,6 +534,30 @@ function Editor({
           Relatório enviado
         </label>
 
+        {/* Clicar de novo na cor marcada desmarca: rodada sem leitura
+            de saúde é legítima e não pode virar "verde" por padrão. */}
+        <div role="group" aria-label="Saúde do resultado" className="pb-0.5">
+          <p className="text-2xs">Saúde do resultado</p>
+          <div className="mt-1 flex gap-1">
+            {(Object.keys(SAUDE) as SaudeDaConta[]).map((chave) => (
+              <button
+                key={chave}
+                type="button"
+                aria-pressed={saude === chave}
+                onClick={() => setSaude(saude === chave ? null : chave)}
+                className={`flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-2xs transition-colors ${
+                  saude === chave
+                    ? "border-foreground/40 bg-surface-2 text-foreground"
+                    : "border-border text-muted-foreground hover:bg-surface-2"
+                }`}
+              >
+                <span aria-hidden className={`size-2 rounded-full ${SAUDE[chave].cor}`} />
+                {SAUDE[chave].rotulo}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="ml-auto flex items-center gap-2 pb-1">
           <Button size="sm" variant="ghost" onClick={onFechar} disabled={salvando}>
             <X className="size-3.5" />
@@ -538,6 +582,12 @@ function Editor({
 }
 
 /* ------------------------------------------------------------------ */
+
+const SAUDE: Record<SaudeDaConta, { rotulo: string; cor: string }> = {
+  green: { rotulo: "Verde", cor: "bg-emerald-500" },
+  yellow: { rotulo: "Amarelo", cor: "bg-amber-400" },
+  red: { rotulo: "Vermelho", cor: "bg-red-500" },
+};
 
 const DIA_LONGO = new Intl.DateTimeFormat("pt-BR", {
   weekday: "long",

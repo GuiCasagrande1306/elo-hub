@@ -261,6 +261,9 @@ export interface ClientFinancials {
   billing_day: number | null;
 }
 
+/** Semáforo do resultado da conta, marcado a cada rodada da esteira. */
+export type SaudeDaConta = "green" | "yellow" | "red";
+
 /** Uma rodada da esteira de otimização. */
 export interface OptimizationEntry {
   id: string;
@@ -271,6 +274,8 @@ export interface OptimizationEntry {
   notes: string;
   report_sent: boolean;
   goal_projection: number | null;
+  /** Saúde do resultado nesta rodada. `null` = não marcada. */
+  account_health: SaudeDaConta | null;
   created_at: string;
   /** Quando foi editado pela última vez. `null` = nunca. */
   edited_at?: string | null;
