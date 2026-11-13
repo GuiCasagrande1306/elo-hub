@@ -1,19 +1,27 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ServiceWorkerRegistrar } from "@/components/pwa/service-worker-registrar";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
-const geistSans = Geist({
+/* Fontes NO REPOSITÓRIO (src/fonts), não `next/font/google`: o google
+   baixa os arquivos a cada build, e o build da Vercel caiu duas vezes
+   seguidas em 12–13/11/2026 com "Module not found: Can't resolve
+   '@vercel/turbopack-next/internal/font/google/font'" quando o download
+   falhou. Arquivo local não depende de rede. Subconjunto latin, o mesmo
+   que o google carregava; variável, então cobre todos os pesos. */
+const geistSans = localFont({
+  src: "../fonts/Geist-normal-100-900.woff2",
   variable: "--font-geist-sans",
-  subsets: ["latin"],
+  weight: "100 900",
   display: "swap",
 });
 
-const geistMono = Geist_Mono({
+const geistMono = localFont({
+  src: "../fonts/GeistMono-normal-100-900.woff2",
   variable: "--font-geist-mono",
-  subsets: ["latin"],
+  weight: "100 900",
   display: "swap",
 });
 

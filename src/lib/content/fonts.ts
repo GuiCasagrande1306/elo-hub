@@ -1,4 +1,4 @@
-import { Archivo, IBM_Plex_Mono, Source_Serif_4 } from "next/font/google";
+import localFont from "next/font/local";
 
 /* =====================================================================
    Tipografia do brief
@@ -15,7 +15,10 @@ import { Archivo, IBM_Plex_Mono, Source_Serif_4 } from "next/font/google";
      IBM Plex Mono   rótulos, tabelas e números. Tabular por padrão, que
                      é o que alinha coluna de views.
 
-   Carregadas pelo `next/font`, não por `<link>` para o Google:
+   Carregadas pelo `next/font`, não por `<link>` para o Google — e de
+   ARQUIVO LOCAL (src/fonts), não `next/font/google`, porque o download
+   a cada build derrubou o deploy da Vercel em 12–13/11/2026 (ver
+   `src/app/layout.tsx`):
 
      1. O PUPPETEER GERA O PDF. Fonte remota chega no meio do
         `networkidle` e às vezes não chega — o PDF sai em Times, e o
@@ -24,25 +27,29 @@ import { Archivo, IBM_Plex_Mono, Source_Serif_4 } from "next/font/google";
      3. Sem salto de layout: o Next injeta a métrica de fallback.
    ===================================================================== */
 
-const serif = Source_Serif_4({
+const serif = localFont({
+  src: [
+    { path: "../../fonts/SourceSerif4-normal-200-900.woff2", weight: "200 900", style: "normal" },
+    { path: "../../fonts/SourceSerif4-italic-200-900.woff2", weight: "200 900", style: "italic" },
+  ],
   variable: "--font-brief-serif",
-  subsets: ["latin"],
-  weight: ["400", "600"],
-  style: ["normal", "italic"],
   display: "swap",
 });
 
-const sans = Archivo({
+const sans = localFont({
+  src: "../../fonts/Archivo-normal-100-900.woff2",
   variable: "--font-brief-sans",
-  subsets: ["latin"],
-  weight: ["500", "600", "800"],
+  weight: "100 900",
   display: "swap",
 });
 
-const mono = IBM_Plex_Mono({
+const mono = localFont({
+  src: [
+    { path: "../../fonts/IBMPlexMono-normal-400.woff2", weight: "400", style: "normal" },
+    { path: "../../fonts/IBMPlexMono-normal-500.woff2", weight: "500", style: "normal" },
+    { path: "../../fonts/IBMPlexMono-normal-600.woff2", weight: "600", style: "normal" },
+  ],
   variable: "--font-brief-mono",
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
   display: "swap",
 });
 
