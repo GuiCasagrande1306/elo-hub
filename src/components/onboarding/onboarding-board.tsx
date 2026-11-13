@@ -58,8 +58,8 @@ export function OnboardingBoard({ clients }: { clients: Client[] }) {
   if (clients.length === 0) {
     return (
       <p className="rounded-xl bg-surface-2/50 p-6 text-center text-sm text-muted-foreground ring-1 ring-hairline">
-        Nenhum cliente em onboarding agora. Cliente novo nasce aqui quando é
-        cadastrado com status Onboarding ou convertido no Comercial.
+        Nenhum cliente em onboarding agora. Use &ldquo;Novo cliente&rdquo; para
+        cadastrar quem está entrando.
       </p>
     );
   }

@@ -5,7 +5,6 @@ import { Archive } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageContainer, PageHeader } from "@/components/layout/page-header";
 import { ClientsDirectory } from "@/components/clients/clients-directory";
-import { NewClientSheet } from "@/components/clients/new-client-sheet";
 import { getClientsWithGoals } from "@/lib/data";
 import { mesCorrenteBR, nomeDoMes } from "@/lib/date-br";
 import { getAgencies } from "@/lib/data";
@@ -97,7 +96,8 @@ export default async function ClientsPage({
               <Archive className="size-3.5" />
               Encerrados
             </Button>
-            <NewClientSheet agencias={nomesDeAgencia} />
+            {/* Cadastro de cliente novo fica em /onboarding: todo cliente
+                entra por lá e só chega aqui pelo botão do checklist. */}
           </div>
         }
       />

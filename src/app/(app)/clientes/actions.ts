@@ -179,6 +179,7 @@ export async function createClientAction(
   // publicação), mas revalidar garante o dado novo mesmo se o socket
   // tiver caído — o cliente precisa aparecer, não "geralmente aparecer".
   revalidatePath("/clientes");
+  revalidatePath("/onboarding");
   revalidatePath("/");
 
   return {
