@@ -12,9 +12,7 @@ import { defaultGoalMetricFor } from "@/lib/metrics/goal-metric";
 import { cn } from "@/lib/utils";
 import {
   CLIENT_SEGMENTS,
-  CREATABLE_STATUSES,
   SEGMENT_LABELS,
-  STATUS_LABELS,
   newClientDefaults,
   newClientSchema,
   type NewClientValues,
@@ -245,8 +243,8 @@ export function NewClientSheet({ agencias }: { agencias: string[] }) {
             Novo cliente
           </SheetTitle>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            Só o nome, o nicho e o status são obrigatórios. O resto pode ser
-            preenchido depois.
+            Só o nome e o nicho são obrigatórios. O resto pode ser preenchido
+            depois.
           </p>
         </header>
 
@@ -406,44 +404,6 @@ export function NewClientSheet({ agencias }: { agencias: string[] }) {
                         <FormDescription>
                           Dia da semana em que esta conta entra na esteira.
                         </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="status"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Status *</FormLabel>
-                        <Select
-                          value={field.value}
-                          onValueChange={(value) =>
-                            field.onChange(value ?? "onboarding")
-                          }
-                        >
-                          <FormControl
-                            render={
-                              <SelectTrigger className="w-full">
-                                <SelectValue>
-                                  {(value: string) =>
-                                    STATUS_LABELS[
-                                      value as (typeof CREATABLE_STATUSES)[number]
-                                    ] ?? "Selecione"
-                                  }
-                                </SelectValue>
-                              </SelectTrigger>
-                            }
-                          />
-                          <SelectContent>
-                            {CREATABLE_STATUSES.map((status) => (
-                              <SelectItem key={status} value={status}>
-                                {STATUS_LABELS[status]}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
                         <FormMessage />
                       </FormItem>
                     )}

@@ -60,7 +60,10 @@ export async function createClientAction(
     };
   }
 
-  const values = parsed.data;
+  /* Todo cliente novo entra em onboarding: o cadastro mora em
+     /onboarding e o formulário não tem mais o campo status. Forçar AQUI,
+     e não confiar no formulário, impede chegar a Clientes sem checklist. */
+  const values = { ...parsed.data, status: "onboarding" as const };
 
   if (isDemoMode) {
     const { demoClients, demoGoals } = await import("@/lib/mock/data");
