@@ -1315,6 +1315,17 @@ function naData(diasAtras: number, hora = "09:52"): string {
   return `${d.toISOString().slice(0, 10)}T${hora}:00.000Z`;
 }
 
+/** Painel do CS — marcações da semana e rotina, em memória no demo. */
+export const demoCsSemana: {
+  client_id: string;
+  semana: string;
+  relatorio_seg: boolean;
+  mensagem_qua: boolean;
+  mensagem_sex: boolean;
+  reuniao_preparada: boolean;
+}[] = [];
+export const demoCsRotina: { profile_id: string; semana: string; item: string }[] = [];
+
 /** Linha do tempo do cliente — começa vazia no demo. */
 export const demoLinhaDoTempo: EntradaDaLinhaDoTempo[] = [];
 

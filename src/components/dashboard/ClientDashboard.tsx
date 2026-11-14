@@ -440,6 +440,14 @@ export function ClientDashboard({
           <TabsContent value="preferencias" className="mt-6 flex flex-col gap-6">
             <CamposEditaveis
               clientId={client.id}
+              secao="cs"
+              titulo="Acompanhamento do CS"
+              descricao="Aparece no Painel do CS: próxima reunião e, se a conta pede atenção, o motivo e o próximo passo."
+              definicao={SECOES_DE_CAMPOS.cs}
+              valores={ficha.cs}
+            />
+            <CamposEditaveis
+              clientId={client.id}
               secao="atendimento"
               titulo="Como atender"
               definicao={SECOES_DE_CAMPOS.atendimento}
@@ -466,6 +474,16 @@ export function ClientDashboard({
                 vazio="Nenhuma data registrada."
               />
             </div>
+            <ListaEditavel
+              clientId={client.id}
+              secao="oportunidades"
+              titulo="Oportunidades e marcos"
+              descricao="Upsell, pedido de depoimento, marco de parceria, reajuste."
+              definicao={SECOES_DE_LISTA.oportunidades}
+              itens={ficha.oportunidades}
+              rotuloDoNovo="Nova oportunidade"
+              vazio="Nenhuma oportunidade registrada."
+            />
           </TabsContent>
 
           {/* ---------------- LINHA DO TEMPO ---------------- */}

@@ -7,6 +7,7 @@ import { isDemoMode } from "@/lib/env";
 import { createSupabaseServerClient, getCurrentUser } from "@/lib/supabase/server";
 import { dataNoBrasil } from "@/lib/date-br";
 import {
+  CARIMBOS,
   LIMITE_DA_LISTA,
   SECOES_DE_CAMPOS,
   SECOES_DE_LISTA,
@@ -35,6 +36,7 @@ export type Resultado = { ok: true } | { ok: false; error: string };
    ===================================================================== */
 
 const PAGINA = "/clientes/[slug]";
+const PAINEL_DO_CS = "/cs";
 
 async function alterarFicha(
   clientId: string,
@@ -53,6 +55,8 @@ async function alterarFicha(
     if (typeof nova === "string") return { ok: false, error: nova };
     c.ficha = nova;
     revalidatePath(PAGINA, "page");
+  revalidatePath(PAINEL_DO_CS);
+    revalidatePath(PAINEL_DO_CS);
     return { ok: true };
   }
 
@@ -78,6 +82,7 @@ async function alterarFicha(
   if (!data?.length) return { ok: false, error: "Sem permissão para editar este cliente." };
 
   revalidatePath(PAGINA, "page");
+  revalidatePath(PAINEL_DO_CS);
   return { ok: true };
 }
 
@@ -122,9 +127,7 @@ export async function salvarItem(input: {
       return {
         ...ficha,
         [secao]: lista.map((i) =>
-          i.id === itemId
-            ? { ...limpo, id: i.id, criado_por: i.criado_por ?? autor, criado_em: i.criado_em ?? "" }
-            : i,
+          i.id === itemId ? { ...limpo, ...carimbosDe(i), id: i.id } : i,
         ),
       };
     }
@@ -136,6 +139,30 @@ export async function salvarItem(input: {
       criado_em: dataNoBrasil(new Date()),
     };
     return { ...ficha, [secao]: [...lista, novo] };
+  });
+}
+
+/** Os carimbos do servidor de um item, para sobreviverem à edição. */
+function carimbosDe(i: ItemDaFicha): Partial<ItemDaFicha> {
+  return Object.fromEntries(CARIMBOS.filter((k) => i[k]).map((k) => [k, i[k] as string]));
+}
+
+/** "Cobrar" no Painel do CS: carimba o follow-up de hoje na pendência. */
+export async function cobrarPendencia(input: {
+  clientId: string;
+  itemId: string;
+}): Promise<Resultado> {
+  const p = z.object({ clientId: id, itemId: id }).safeParse(input);
+  if (!p.success) return { ok: false, error: "Dados inválidos." };
+  const hoje = dataNoBrasil(new Date());
+
+  return alterarFicha(p.data.clientId, (ficha) => {
+    const lista = ficha.pendencias ?? [];
+    if (!lista.some((i) => i.id === p.data.itemId)) return "Pendência não encontrada. Recarregue a página.";
+    return {
+      ...ficha,
+      pendencias: lista.map((i) => (i.id === p.data.itemId ? { ...i, ultimo_followup: hoje } : i)),
+    };
   });
 }
 
@@ -194,6 +221,8 @@ export async function registrarNaLinhaDoTempo(
       autor: { id: user.id, full_name: user.full_name },
     });
     revalidatePath(PAGINA, "page");
+  revalidatePath(PAINEL_DO_CS);
+    revalidatePath(PAINEL_DO_CS);
     return { ok: true };
   }
 
@@ -204,6 +233,7 @@ export async function registrarNaLinhaDoTempo(
   if (error) return { ok: false, error: error.message };
 
   revalidatePath(PAGINA, "page");
+  revalidatePath(PAINEL_DO_CS);
   return { ok: true };
 }
 
@@ -220,6 +250,8 @@ export async function apagarDaLinhaDoTempo(input: { id: string }): Promise<Resul
     const i = demoLinhaDoTempo.findIndex((e) => e.id === p.data.id);
     if (i >= 0) demoLinhaDoTempo.splice(i, 1);
     revalidatePath(PAGINA, "page");
+  revalidatePath(PAINEL_DO_CS);
+    revalidatePath(PAINEL_DO_CS);
     return { ok: true };
   }
 
@@ -233,5 +265,6 @@ export async function apagarDaLinhaDoTempo(input: { id: string }): Promise<Resul
   if (!data?.length) return { ok: false, error: "Sem permissão para apagar." };
 
   revalidatePath(PAGINA, "page");
+  revalidatePath(PAINEL_DO_CS);
   return { ok: true };
 }

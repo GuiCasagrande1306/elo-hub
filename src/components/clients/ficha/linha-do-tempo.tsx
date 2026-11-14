@@ -34,6 +34,95 @@ function hojeBR(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
 }
 
+/** O formulário de registro, sem diálogo. Usado aqui e no Painel do CS. */
+export function FormularioDaLinhaDoTempo({
+  clientId,
+  tipoInicial = "reuniao",
+  onPronto,
+}: {
+  clientId: string;
+  tipoInicial?: Tipo;
+  onPronto: () => void;
+}) {
+  const [tipo, setTipo] = useState<Tipo>(tipoInicial);
+  const [dia, setDia] = useState(hojeBR);
+  const [titulo, setTitulo] = useState("");
+  const [texto, setTexto] = useState("");
+  const [salvando, iniciar] = useTransition();
+
+  return (
+    <form
+      className="flex flex-col gap-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        iniciar(async () => {
+          const r = await registrarNaLinhaDoTempo({
+            clientId,
+            occurredOn: dia,
+            kind: tipo,
+            title: titulo,
+            body: texto,
+          });
+          if (!r.ok) {
+            toast.error(r.error);
+            return;
+          }
+          toast.success("Registrado na linha do tempo.");
+          onPronto();
+        });
+      }}
+    >
+      <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Tipo">
+        {TIPOS.map((t) => (
+          <button
+            key={t.valor}
+            type="button"
+            role="radio"
+            aria-checked={tipo === t.valor}
+            onClick={() => setTipo(t.valor)}
+            className={cn(
+              "rounded-md px-2.5 py-1 text-xs font-medium ring-1 ring-hairline transition-colors",
+              tipo === t.valor ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {t.rotulo}
+          </button>
+        ))}
+      </div>
+      <div className="grid gap-4 sm:grid-cols-[10rem_1fr]">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="lt-dia">Dia</Label>
+          <Input id="lt-dia" type="date" value={dia} onChange={(e) => setDia(e.target.value)} required />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="lt-titulo">Título</Label>
+          <Input
+            id="lt-titulo"
+            value={titulo}
+            onChange={(e) => setTitulo(e.target.value)}
+            placeholder="Reunião de resultados de outubro"
+            maxLength={200}
+            required
+          />
+        </div>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="lt-texto">O que foi falado / decidido</Label>
+        <Textarea id="lt-texto" value={texto} onChange={(e) => setTexto(e.target.value)} rows={5} maxLength={5000} />
+      </div>
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="ghost" size="sm" onClick={onPronto} disabled={salvando}>
+          Cancelar
+        </Button>
+        <Button type="submit" size="sm" disabled={salvando || titulo.trim().length < 2}>
+          {salvando && <Loader2 className="size-3.5 animate-spin" />}
+          Registrar
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 /** Botão + diálogo de registro. `tipoInicial` = "reuniao" no "Registrar reunião" do topo. */
 export function RegistrarNaLinhaDoTempo({
   clientId,
@@ -45,103 +134,22 @@ export function RegistrarNaLinhaDoTempo({
   children: (abrir: () => void) => React.ReactNode;
 }) {
   const [aberto, setAberto] = useState(false);
-  const [tipo, setTipo] = useState<Tipo>(tipoInicial);
-  const [dia, setDia] = useState(hojeBR);
-  const [titulo, setTitulo] = useState("");
-  const [texto, setTexto] = useState("");
-  const [salvando, iniciar] = useTransition();
-
-  function abrir() {
-    setTipo(tipoInicial);
-    setDia(hojeBR());
-    setTitulo("");
-    setTexto("");
-    setAberto(true);
-  }
-
   return (
     <>
-      {children(abrir)}
+      {children(() => setAberto(true))}
       <Dialog open={aberto} onOpenChange={setAberto}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Registrar na linha do tempo</DialogTitle>
           </DialogHeader>
-          <form
-            className="flex flex-col gap-4"
-            onSubmit={(e) => {
-              e.preventDefault();
-              iniciar(async () => {
-                const r = await registrarNaLinhaDoTempo({
-                  clientId,
-                  occurredOn: dia,
-                  kind: tipo,
-                  title: titulo,
-                  body: texto,
-                });
-                if (!r.ok) {
-                  toast.error(r.error);
-                  return;
-                }
-                toast.success("Registrado na linha do tempo.");
-                setAberto(false);
-              });
-            }}
-          >
-            <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Tipo">
-              {TIPOS.map((t) => (
-                <button
-                  key={t.valor}
-                  type="button"
-                  role="radio"
-                  aria-checked={tipo === t.valor}
-                  onClick={() => setTipo(t.valor)}
-                  className={cn(
-                    "rounded-md px-2.5 py-1 text-xs font-medium ring-1 ring-hairline transition-colors",
-                    tipo === t.valor ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {t.rotulo}
-                </button>
-              ))}
-            </div>
-            <div className="grid gap-4 sm:grid-cols-[10rem_1fr]">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="lt-dia">Dia</Label>
-                <Input id="lt-dia" type="date" value={dia} onChange={(e) => setDia(e.target.value)} required />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="lt-titulo">Título</Label>
-                <Input
-                  id="lt-titulo"
-                  value={titulo}
-                  onChange={(e) => setTitulo(e.target.value)}
-                  placeholder="Reunião de resultados de outubro"
-                  maxLength={200}
-                  required
-                />
-              </div>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="lt-texto">O que foi falado / decidido</Label>
-              <Textarea
-                id="lt-texto"
-                value={texto}
-                onChange={(e) => setTexto(e.target.value)}
-                rows={5}
-                maxLength={5000}
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="ghost" size="sm" onClick={() => setAberto(false)} disabled={salvando}>
-                Cancelar
-              </Button>
-              <Button type="submit" size="sm" disabled={salvando || titulo.trim().length < 2}>
-                {salvando && <Loader2 className="size-3.5 animate-spin" />}
-                Registrar
-              </Button>
-            </div>
-          </form>
+          {/* Montado só aberto: cada abertura começa com o formulário limpo. */}
+          {aberto && (
+            <FormularioDaLinhaDoTempo
+              clientId={clientId}
+              tipoInicial={tipoInicial}
+              onPronto={() => setAberto(false)}
+            />
+          )}
         </DialogContent>
       </Dialog>
     </>

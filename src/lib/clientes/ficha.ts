@@ -58,6 +58,11 @@ export const SECOES_DE_CAMPOS = {
     { chave: "estilo", rotulo: "Estilo", tipo: "longo", placeholder: "Prefere áudio curto, direto ao ponto" },
     { chave: "reunioes", rotulo: "Reuniões", tipo: "longo", placeholder: "Mensal online; planejamento trimestral presencial" },
   ],
+  cs: [
+    { chave: "proxima_reuniao", rotulo: "Próxima reunião", tipo: "data" },
+    { chave: "motivo", rotulo: "Por que pede atenção", tipo: "longo", placeholder: "Custo por lead 58% acima da meta há 3 semanas" },
+    { chave: "proximo_passo", rotulo: "Próximo passo", tipo: "longo", placeholder: "Reunião de recuperação na terça, 17/11" },
+  ],
   ativos: [
     { chave: "pixel", rotulo: "Pixel da Meta" },
     { chave: "evento", rotulo: "Evento de conversão" },
@@ -93,6 +98,20 @@ export const SECOES_DE_LISTA = {
     { chave: "data", rotulo: "Data", placeholder: "12/03" },
     { chave: "descricao", rotulo: "O que é", placeholder: "Aniversário do João — enviar brinde" },
   ],
+  oportunidades: [
+    { chave: "texto", rotulo: "Oportunidade", placeholder: "Incluir Google Ads" },
+    {
+      chave: "tipo",
+      rotulo: "Tipo",
+      opcoes: [
+        { valor: "upsell", rotulo: "Upsell" },
+        { valor: "depoimento", rotulo: "Depoimento" },
+        { valor: "marco", rotulo: "Marco" },
+        { valor: "reajuste", rotulo: "Reajuste" },
+      ],
+    },
+    { chave: "detalhe", rotulo: "Detalhe", tipo: "longo", placeholder: "Verde há 4 meses; clientes procuram no Google" },
+  ],
   acessos: [
     { chave: "plataforma", rotulo: "Plataforma", placeholder: "Gerenciador de Negócios (Meta)" },
     { chave: "conta", rotulo: "Conta", placeholder: "Casa Vale - Principal" },
@@ -113,8 +132,19 @@ export type SecaoDeLista = keyof typeof SECOES_DE_LISTA;
 
 export type Campos = Record<string, string>;
 
-/** Item de lista. `criado_por`/`criado_em` são carimbados pelo servidor. */
-export type ItemDaFicha = { id: string; criado_por?: string; criado_em?: string } & Record<string, string>;
+/**
+ * Item de lista. `criado_por`/`criado_em` (e `ultimo_followup` das
+ * pendências) são carimbados pelo servidor e sobrevivem à edição.
+ */
+export type ItemDaFicha = {
+  id: string;
+  criado_por?: string;
+  criado_em?: string;
+  ultimo_followup?: string;
+} & Record<string, string>;
+
+/** Chaves que só o servidor grava — editar o item não as apaga. */
+export const CARIMBOS = ["criado_por", "criado_em", "ultimo_followup"] as const;
 
 export type FichaDoCliente = Partial<Record<SecaoDeCampos, Campos>> &
   Partial<Record<SecaoDeLista, ItemDaFicha[]>>;
