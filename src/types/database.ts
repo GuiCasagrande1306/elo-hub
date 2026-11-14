@@ -1,5 +1,6 @@
 import type { MetricasDoRelatorio } from "@/lib/reports/metricas-do-relatorio";
 import type { ItemDoOnboarding } from "@/lib/onboarding/checklist";
+import type { FichaDoCliente } from "@/lib/clientes/ficha";
 /**
  * Tipos de domínio do Elo Hub.
  *
@@ -220,6 +221,8 @@ export interface Client {
   onboarding_checklist: ItemDoOnboarding[] | null;
   /** Moeda das contas de anúncio (ISO 4217), detectada no vínculo (migration 104). */
   ad_currency: string;
+  /** Ficha da página do cliente (migration 105). Formato em `lib/clientes/ficha.ts`. */
+  ficha: FichaDoCliente;
   /** Dia do mês (1-28) do envio automático; null quando não agendado. */
   report_day: number | null;
   /**
@@ -288,6 +291,21 @@ export interface OptimizationEntry {
   edited_by?: string | null;
   /** Resolvido na leitura, para a lista mostrar quem fez. */
   collaborator?: Pick<Profile, "id" | "full_name"> | null;
+}
+
+/** Entrada da linha do tempo do cliente (migration 105). */
+export interface EntradaDaLinhaDoTempo {
+  id: string;
+  client_id: string;
+  /** Dia em que aconteceu (YYYY-MM-DD). */
+  occurred_on: string;
+  kind: "reuniao" | "mensagem" | "decisao";
+  title: string;
+  body: string | null;
+  created_by: string | null;
+  created_at: string;
+  /** Resolvido na leitura. */
+  autor?: Pick<Profile, "id" | "full_name"> | null;
 }
 
 /** Briefing estratégico. Alimenta o contexto dos insights do relatório. */

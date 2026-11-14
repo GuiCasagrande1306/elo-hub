@@ -26,6 +26,7 @@ import type {
   Project,
   ReportHistory,
   OptimizationEntry,
+  EntradaDaLinhaDoTempo,
   ReportTemplate,
   TaskWithRelations,
 } from "@/types/database";
@@ -159,6 +160,7 @@ export const demoClients: Client[] = [
     report_metrics: null,
     onboarding_checklist: null,
     ad_currency: "BRL",
+    ficha: {},
     created_at: daysAgo(300),
   },
   {
@@ -196,6 +198,7 @@ export const demoClients: Client[] = [
     report_metrics: null,
     onboarding_checklist: null,
     ad_currency: "BRL",
+    ficha: {},
     created_at: daysAgo(210),
   },
   {
@@ -233,6 +236,7 @@ export const demoClients: Client[] = [
     report_metrics: null,
     onboarding_checklist: null,
     ad_currency: "BRL",
+    ficha: {},
     created_at: daysAgo(120),
   },
   {
@@ -266,6 +270,7 @@ export const demoClients: Client[] = [
     report_metrics: null,
     onboarding_checklist: null,
     ad_currency: "BRL",
+    ficha: {},
     created_at: daysAgo(25),
   },
 ];
@@ -1309,6 +1314,9 @@ function naData(diasAtras: number, hora = "09:52"): string {
   d.setDate(d.getDate() - diasAtras);
   return `${d.toISOString().slice(0, 10)}T${hora}:00.000Z`;
 }
+
+/** Linha do tempo do cliente — começa vazia no demo. */
+export const demoLinhaDoTempo: EntradaDaLinhaDoTempo[] = [];
 
 export const demoOptimizations: OptimizationEntry[] = [
   {

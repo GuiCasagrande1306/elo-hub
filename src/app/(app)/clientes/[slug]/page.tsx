@@ -14,13 +14,10 @@ import {
   getMetricsWithComparison,
   lastNDays,
   getAgencies,
+  getTasks,
 } from "@/lib/data";
-import {
-  buildTrend,
-  computeKpi,
-  previousPeriod,
-  splitByPlatform,
-} from "@/lib/metrics/kpi";
+import { computeKpi, previousPeriod } from "@/lib/metrics/kpi";
+import { getLinhaDoTempo, getResponsaveis, getSaudeAtual } from "@/lib/clientes/dados";
 import {
   defaultGoalMetricFor,
 } from "@/lib/metrics/goal-metric";
@@ -106,6 +103,10 @@ export default async function ClientPage({
     goalHistory,
     goalProgress,
     agencias,
+    linhaDoTempo,
+    saude,
+    responsaveis,
+    tarefas,
   ] = await Promise.all([
     getMetricsWithComparison(client.id, start, end),
     getCreatives(client.id, 6),
@@ -119,6 +120,10 @@ export default async function ClientPage({
        responder onde o MÊS fecha. */
     getClientGoalProgress(client),
     getAgencies(),
+    getLinhaDoTempo(client.id),
+    getSaudeAtual(client.id),
+    getResponsaveis(client),
+    getTasks({ clientId: client.id }),
   ]);
 
   const nomesDeAgencia = agencias.map((a) => a.agency);
@@ -221,29 +226,16 @@ export default async function ClientPage({
           : { ...recalculado, label: "Faturamento da loja" };
       });
 
-  const trend = buildTrend(metrics.current);
-
-  // Uma série por KPI, na mesma unidade do card.
-  const sparklines: Record<string, number[]> = {
-    spend: trend.map((p) => p.spend),
-    results: trend.map((p) => p.results),
-    cpa: trend.map((p) => p.cpa),
-    revenue: trend.map((p) => p.revenue),
-    /* ROAS do dia. Dia sem gasto vira 0 e não Infinity — a sparkline
-       normaliza pelo maior valor da série, e um Infinity achataria a
-       curva inteira contra o eixo. */
-    roas: trend.map((p) => (p.spend === 0 ? 0 : p.revenue / p.spend)),
-  };
-
   return (
     <ClientDashboard
       client={client}
       agencias={nomesDeAgencia}
       kpis={kpisFinais}
-      sparklines={sparklines}
-      trend={trend}
-      platforms={splitByPlatform(metrics.current)}
       creatives={creatives}
+      linhaDoTempo={linhaDoTempo}
+      saude={saude}
+      responsaveis={responsaveis}
+      tarefas={tarefas}
       period={{
         start,
         end,

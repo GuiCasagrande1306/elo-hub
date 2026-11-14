@@ -1,232 +1,96 @@
 "use client";
 
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Legend,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-
-import { useMemo } from "react";
-
-import { mesCurto, nomeDoMes } from "@/lib/date-br";
+import { mesCorrenteBR, nomeDoMes } from "@/lib/date-br";
+import { formatCurrency, formatNumber } from "@/lib/format";
 import { useMoeda } from "@/lib/moeda";
+import { cn } from "@/lib/utils";
 import type { GoalHistoryEntry } from "@/lib/data";
 
 /* =====================================================================
-   Histórico de metas
+   Histórico de metas — mês a mês, em tabela
    ---------------------------------------------------------------------
-   Meta contra realizado, mês a mês. O que a tela responde é "a conta
-   costuma bater?", pergunta que nenhum card do mês corrente responde —
-   um mês bom esconde três ruins.
+   Meta contra realizado, investimento e a situação de cada mês. Era um
+   gráfico de barras; a equipe pediu a tabela (13/11/2026), que responde
+   "bateu ou não?" sem precisar ler escala.
 
    O realizado vem SOMADO de `daily_metrics` no servidor, não de coluna
    gravada: a Meta reatribui conversão retroativamente, e um número
    congelado passaria a contradizer o painel sem avisar.
    ===================================================================== */
 
-/* Sem centavos: no histórico o que importa é a ordem de grandeza.
-   Na moeda da conta de anúncio — US$ para conta cadastrada nos EUA. */
-function dinheiroDoHistorico(moeda: string) {
-  return {
-    BRL: new Intl.NumberFormat("pt-BR", {
-      style: "currency",
-      currency: moeda,
-      maximumFractionDigits: 0,
-    }),
-    BRL_COMPACT: new Intl.NumberFormat("pt-BR", {
-      style: "currency",
-      currency: moeda,
-      notation: "compact",
-      maximumFractionDigits: 1,
-    }),
-  };
+/**
+ * Formata pela unidade DAQUELE mês. Uma conta que mudou de contagem
+ * para faturamento tem linhas nas duas unidades; formatar tudo pela
+ * regra de hoje imprimiria "R$ 1,20" onde foram 120 leads.
+ */
+function valorDoMes(entry: GoalHistoryEntry, valor: number, moeda: string): string {
+  return entry.metricKey === "revenue"
+    ? formatCurrency(valor, moeda)
+    : formatNumber(Math.round(valor));
 }
 
-const INT = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 });
+type Situacao = { rotulo: string; classe: string };
 
-/**
- * Formata pela unidade DAQUELE mês.
- *
- * Uma conta que mudou de contagem para faturamento tem linhas nas duas
- * unidades. Formatar o histórico inteiro pela regra de hoje imprimiria
- * "R$ 1,20" onde foram 120 leads.
- */
-function valorDoMes(entry: GoalHistoryEntry, valor: number, BRL: Intl.NumberFormat): string {
-  return entry.metricKey === "revenue"
-    ? BRL.format(valor / 100)
-    : INT.format(valor);
+function situacao(e: GoalHistoryEntry, mesAtual: string): Situacao {
+  if (e.plannedResults <= 0) return { rotulo: "Sem meta", classe: "text-muted-foreground" };
+  if (e.executedResults >= e.plannedResults) return { rotulo: "Batida", classe: "text-positive" };
+  if (e.month === mesAtual) return { rotulo: "Em andamento", classe: "text-warning" };
+  return { rotulo: "Não batida", classe: "text-negative" };
 }
 
 export function GoalHistory({ entries }: { entries: GoalHistoryEntry[] }) {
   const moeda = useMoeda();
-  const { BRL, BRL_COMPACT } = useMemo(() => dinheiroDoHistorico(moeda), [moeda]);
-  /* O gráfico tem um eixo Y só. Meses em centavos e meses em contagem
-     na mesma escala fariam a barra de R$ 40.000 esmagar a de 120 leads
-     até virar um traço. Quando as unidades divergem, o gráfico sai e
-     fica a tabela, que formata linha a linha. */
-  const unidades = new Set(entries.map((e) => e.metricKey));
-  const misturado = unidades.size > 1;
-  const emDinheiro = entries[0]?.metricKey === "revenue";
-  /* Mais antigo à esquerda: gráfico de tempo lido da direita para a
-     esquerda inverte a leitura de tendência. */
-  const dados = [...entries]
-    .sort((a, b) => a.month.localeCompare(b.month))
-    .map((e) => ({
-      mes: mesCurto(e.month),
-      Meta: e.plannedResults,
-      Realizado: e.executedResults,
-      orcamento: e.plannedBudgetCents,
-      gasto: e.executedSpendCents,
-    }));
-
-  const comMeta = dados.filter((d) => d.Meta > 0);
+  const mesAtual = mesCorrenteBR().referencia;
+  const linhas = [...entries].sort((a, b) => b.month.localeCompare(a.month));
 
   return (
     <section className="surface-card p-5">
-      <h2 className="text-sm font-semibold">Histórico de metas</h2>
+      <h2 className="text-sm font-semibold">Mês a mês</h2>
       <p className="mt-0.5 text-xs text-muted-foreground">
-        Planejado contra realizado, mês a mês.
+        Meta, realizado, investimento e se a meta foi batida.
       </p>
 
-      {comMeta.length === 0 ? (
+      {linhas.length === 0 ? (
         <p className="mt-5 rounded-xl border border-dashed border-hairline px-4 py-8 text-center text-xs text-muted-foreground">
-          Nenhum mês com meta definida ainda. Assim que houver dois, o
-          gráfico mostra a evolução.
+          Nenhum mês com meta registrada ainda.
         </p>
       ) : (
-        <>
-          {misturado ? (
-            <p className="mt-5 rounded-lg border border-hairline px-3 py-2 text-2xs text-muted-foreground">
-              O indicador desta conta mudou ao longo do período, então os
-              meses não são comparáveis num gráfico só. A tabela abaixo
-              mostra cada mês na unidade em que a meta foi definida.
-            </p>
-          ) : (
-          <div className="mt-5 h-56">
-            <ResponsiveContainer width="100%" height="100%">
-              {/* `isAnimationActive={false}`: a animação do Recharts é
-                  movida a requestAnimationFrame, que o navegador congela
-                  em aba de segundo plano — o gráfico ficava parado no
-                  meio da transição ao voltar. */}
-              <BarChart data={dados} barGap={4}>
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke="var(--hairline)"
-                  vertical={false}
-                />
-                <XAxis
-                  dataKey="mes"
-                  tick={{ fontSize: 11 }}
-                  stroke="var(--muted-foreground)"
-                  tickLine={false}
-                  axisLine={false}
-                />
-                <YAxis
-                  tick={{ fontSize: 11 }}
-                  stroke="var(--muted-foreground)"
-                  tickLine={false}
-                  axisLine={false}
-                  /* Meta em dinheiro trafega em CENTAVOS: sem o divisor
-                     o eixo marcaria "5.000.000" para R$ 50 mil. E o
-                     rótulo formatado é mais largo que uma contagem. */
-                  width={emDinheiro ? 60 : 34}
-                  tickFormatter={(v: number) =>
-                    emDinheiro ? BRL_COMPACT.format(v / 100) : INT.format(v)
-                  }
-                />
-                <Tooltip
-                  cursor={{ fill: "var(--surface-2)" }}
-                  contentStyle={{
-                    background: "var(--surface-1)",
-                    border: "1px solid var(--hairline)",
-                    borderRadius: 10,
-                    fontSize: 12,
-                  }}
-                  formatter={(v) =>
-                    emDinheiro
-                      ? BRL.format(Number(v) / 100)
-                      : INT.format(Number(v))
-                  }
-                />
-                <Legend
-                  wrapperStyle={{ fontSize: 11 }}
-                  iconType="circle"
-                  iconSize={8}
-                />
-                <Bar
-                  dataKey="Meta"
-                  fill="var(--muted-foreground)"
-                  fillOpacity={0.35}
-                  radius={[4, 4, 0, 0]}
-                  isAnimationActive={false}
-                />
-                <Bar
-                  dataKey="Realizado"
-                  fill="var(--signal)"
-                  radius={[4, 4, 0, 0]}
-                  isAnimationActive={false}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          )}
-
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full min-w-[26rem] text-xs">
-              <thead>
-                <tr className="border-b border-hairline text-left text-2xs uppercase tracking-wide text-muted-foreground">
-                  <th className="pb-2 font-medium">Mês</th>
-                  <th className="pb-2 text-right font-medium">Meta</th>
-                  <th className="pb-2 text-right font-medium">Realizado</th>
-                  <th className="pb-2 text-right font-medium">Verba</th>
-                  <th className="pb-2 text-right font-medium">Gasto</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-hairline">
-                {[...entries]
-                  .sort((a, b) => b.month.localeCompare(a.month))
-                  .map((e) => {
-                    const atingiu =
-                      e.plannedResults > 0 &&
-                      e.executedResults >= e.plannedResults;
-
-                    return (
-                      <tr key={e.month}>
-                        <td className="py-2">{nomeDoMes(e.month)}</td>
-                        <td className="py-2 text-right tabular-nums">
-                          {e.plannedResults
-                            ? valorDoMes(e, e.plannedResults, BRL)
-                            : "—"}
-                        </td>
-                        <td
-                          className={
-                            atingiu
-                              ? "py-2 text-right font-medium tabular-nums text-positive"
-                              : "py-2 text-right tabular-nums"
-                          }
-                        >
-                          {valorDoMes(e, e.executedResults, BRL)}
-                        </td>
-                        <td className="py-2 text-right tabular-nums text-muted-foreground">
-                          {e.plannedBudgetCents
-                            ? BRL.format(e.plannedBudgetCents / 100)
-                            : "—"}
-                        </td>
-                        <td className="py-2 text-right tabular-nums text-muted-foreground">
-                          {BRL.format(e.executedSpendCents / 100)}
-                        </td>
-                      </tr>
-                    );
-                  })}
-              </tbody>
-            </table>
-          </div>
-        </>
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full min-w-[30rem] text-xs">
+            <thead>
+              <tr className="border-b border-hairline text-left text-2xs uppercase tracking-wide text-muted-foreground">
+                <th className="pb-2 font-medium">Mês</th>
+                <th className="pb-2 text-right font-medium">Meta</th>
+                <th className="pb-2 text-right font-medium">Realizado</th>
+                <th className="pb-2 text-right font-medium">Investimento</th>
+                <th className="pb-2 text-right font-medium">Situação</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-hairline">
+              {linhas.map((e) => {
+                const s = situacao(e, mesAtual);
+                return (
+                  <tr key={e.month}>
+                    <td className="py-2">{nomeDoMes(e.month)}</td>
+                    <td className="py-2 text-right tabular-nums">
+                      {e.plannedResults ? valorDoMes(e, e.plannedResults, moeda) : "—"}
+                    </td>
+                    <td className="py-2 text-right tabular-nums">
+                      {valorDoMes(e, e.executedResults, moeda)}
+                    </td>
+                    <td className="py-2 text-right tabular-nums text-muted-foreground">
+                      {formatCurrency(e.executedSpendCents, moeda)}
+                      {e.plannedBudgetCents > 0 && (
+                        <span className="text-2xs"> de {formatCurrency(e.plannedBudgetCents, moeda)}</span>
+                      )}
+                    </td>
+                    <td className={cn("py-2 text-right font-medium", s.classe)}>{s.rotulo}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </section>
   );

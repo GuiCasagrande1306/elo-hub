@@ -2,53 +2,54 @@
 
 import Link from "next/link";
 import { motion } from "motion/react";
-import { FileDown, Globe, Radio } from "lucide-react";
+import { CalendarClock, FileDown, Globe, ListPlus, ShieldAlert, SquarePen } from "lucide-react";
 
 import { KpiCard } from "./kpi-card";
-import { TrendChart } from "./trend-chart";
-import { PlatformSplitList } from "./platform-split";
 import { AdGallery } from "./ad-gallery";
 import { ClientSettingsCard } from "@/components/clients/client-settings-card";
 import { LinkDoRelatorio } from "@/components/clients/link-do-relatorio";
 import { ClientSettingsDialog } from "@/components/clients/client-settings-dialog";
 import { AdStructure } from "@/components/dashboard/ad-structure";
+import { CamposEditaveis } from "@/components/clients/ficha/campos-editaveis";
+import { ListaEditavel, NovoItemDialog } from "@/components/clients/ficha/lista-editavel";
+import { LinhaDoTempo, RegistrarNaLinhaDoTempo } from "@/components/clients/ficha/linha-do-tempo";
+import { NovaTarefa, TarefasAbertas } from "@/components/clients/ficha/tarefas-do-cliente";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useRealtimeRefresh, useRefreshAoVoltar } from "@/hooks/use-realtime";
 import { cn } from "@/lib/utils";
 import { MoedaProvider } from "@/lib/moeda";
 import { DateRangePicker } from "./date-range-picker";
-import { formatPeriod } from "@/lib/format";
-import type { KpiResult, PlatformSplit, TrendPoint } from "@/lib/metrics/kpi";
+import { formatDate, formatPeriod } from "@/lib/format";
+import type { KpiResult } from "@/lib/metrics/kpi";
 import type { GoalProgressPair } from "@/lib/metrics/goals";
-import { formatPeriod as periodoLegivel } from "@/lib/format";
-import type {
-  GoalHistoryEntry,
-  IntegrationStatus,
-  MonthlyGoalStatus,
-} from "@/lib/data";
+import type { GoalHistoryEntry, IntegrationStatus, MonthlyGoalStatus } from "@/lib/data";
+import type { SaudeAtual } from "@/lib/clientes/dados";
+import { SECOES_DE_CAMPOS, SECOES_DE_LISTA } from "@/lib/clientes/ficha";
 import { GoalBar } from "@/components/clients/goal-bar";
 import { GoalHistory } from "@/components/clients/goal-history";
 import { MonthlyGoalAlert } from "@/components/clients/monthly-goal-alert";
-import type { AdCreative, Client } from "@/types/database";
+import type {
+  AdCreative,
+  Client,
+  EntradaDaLinhaDoTempo,
+  Profile,
+  TaskWithRelations,
+} from "@/types/database";
 
 /* =====================================================================
-   ClientDashboard
+   ClientDashboard — página do cliente em abas
    ---------------------------------------------------------------------
-   Painel principal da conta. Unifica Google Ads e Meta Ads numa única
-   leitura de performance.
+   Reorganizada em 14/11/2026 a pedido da equipe: saíram os gráficos que
+   ninguém consultava (evolução diária, canais, sparklines) e entrou a
+   FICHA do cliente — o que é preciso saber para atender a conta.
 
-   Este componente é DE APRESENTAÇÃO: recebe tudo já calculado. Nenhuma
-   agregação, nenhum acesso a banco, nenhuma regra de negócio aqui. Quem
-   soma métricas é `src/lib/metrics/kpi.ts`; quem lê o banco é
-   `src/lib/data.ts` (sempre sob RLS). Essa separação é o que permite ao
-   renderizador de PDF reaproveitar exatamente os mesmos números — o
-   relatório enviado ao cliente não pode divergir da tela.
+     Topo: identidade, squad, briefing, cliente desde, saúde da conta.
+     Abas: Resumo · Mapa do Negócio · Metas e resultados · Regras da
+           conta · Preferências · Linha do tempo · Acessos e ativos.
 
-   Hierarquia visual, do topo:
-     1. Hero — identidade do cliente + os 3 KPIs que definem a conta.
-     2. Evolução — a curva, para responder "está melhorando?".
-     3. Canais — de onde veio o resultado.
-     4. Criativos — o que exatamente está no ar.
+   Componente DE APRESENTAÇÃO: recebe tudo calculado. Números vêm de
+   `lib/metrics`, a ficha de `clients.ficha` (`lib/clientes/ficha.ts`).
    ===================================================================== */
 
 export interface ClientDashboardProps {
@@ -57,10 +58,6 @@ export interface ClientDashboardProps {
   agencias: string[];
   /** Investimento, Resultados e Custo por Resultado — nesta ordem. */
   kpis: KpiResult[];
-  /** Séries de sparkline por chave de métrica. */
-  sparklines: Record<string, number[]>;
-  trend: TrendPoint[];
-  platforms: PlatformSplit[];
   creatives: AdCreative[];
   period: {
     start: string;
@@ -86,20 +83,29 @@ export interface ClientDashboardProps {
     period: { start: string; end: string } | null;
   } | null;
   /* Rótulos do que a conta mede — "Visitas ao perfil"/"Custo por
-     visita". Vêm prontos do servidor, da mesma função que nomeia os
-     KPIs do topo: derivá-los de novo aqui abriria a chance de o card de
-     estrutura chamar de um jeito o que o hero chama de outro. */
+     visita". Vêm prontos do servidor, da mesma função que nomeia os KPIs. */
   resultLabel: string;
   costLabel: string;
+  linhaDoTempo: EntradaDaLinhaDoTempo[];
+  saude: SaudeAtual | null;
+  responsaveis: Pick<Profile, "id" | "full_name" | "role">[];
+  tarefas: TaskWithRelations[];
 }
+
+const ABAS = [
+  { valor: "resumo", rotulo: "Resumo" },
+  { valor: "mapa", rotulo: "Mapa do Negócio" },
+  { valor: "metas", rotulo: "Metas e resultados" },
+  { valor: "regras", rotulo: "Regras da conta" },
+  { valor: "preferencias", rotulo: "Preferências" },
+  { valor: "linha", rotulo: "Linha do tempo" },
+  { valor: "acessos", rotulo: "Acessos e ativos" },
+];
 
 export function ClientDashboard({
   agencias,
   client,
   kpis,
-  sparklines,
-  trend,
-  platforms,
   creatives,
   period,
   presets = [7, 30, 90],
@@ -110,29 +116,33 @@ export function ClientDashboard({
   goalProgress,
   resultLabel,
   costLabel,
+  linhaDoTempo,
+  saude,
+  responsaveis,
+  tarefas,
 }: ClientDashboardProps) {
-  // Qualquer sync de métricas ou anúncio revalida esta página para todos
-  // os usuários conectados que têm acesso a esta conta.
+  // Qualquer sync de métricas revalida esta página para quem está nela.
   /* Rede de segurança independente do socket: evento perdido enquanto
-     a aba esteve escondida não chega por Realtime nenhum. Uma tela
-     aberta desde quinta já mostrou três dias de dado velho. */
+     a aba esteve escondida não chega por Realtime nenhum. */
   useRefreshAoVoltar();
   useRealtimeRefresh("daily_metrics", { filter: `client_id=eq.${client.id}` });
 
-  const secondarySeries =
-    client.segment === "ecommerce" ? "revenue" : "results";
+  const ficha = client.ficha ?? {};
+  const perfil = ficha.perfil ?? {};
+  const regrasCriticas = (ficha.regras ?? []).filter(
+    (r) => r.categoria === "nao_pode" || r.categoria === "obrigatorio",
+  );
 
   return (
     /* Toda formatação de dinheiro abaixo usa a moeda da conta de anúncio
        (US$ para conta cadastrada nos EUA). Ver `lib/moeda.tsx`. */
     <MoedaProvider value={client.ad_currency}>
     <div className="flex flex-col">
-      {/* ================= HERO ================= */}
+      {/* ================= TOPO ================= */}
       <section className="glow-signal relative overflow-hidden border-b border-hairline">
         <div className="grid-hairline pointer-events-none absolute inset-0 opacity-[0.35]" />
 
-        <div className="relative z-10 mx-auto w-full max-w-[1400px] px-4 pb-8 pt-8 sm:px-6 lg:px-8">
-          {/* Identidade + ações ------------------------------------- */}
+        <div className="relative z-10 mx-auto w-full max-w-[1400px] px-4 pb-6 pt-8 sm:px-6 lg:px-8">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
             <div className="flex items-start gap-4">
               <ClientMark client={client} />
@@ -143,21 +153,20 @@ export function ClientDashboard({
                     {client.name}
                   </h1>
                   <StatusPill status={client.status} />
+                  {perfil.squad && (
+                    <span className="rounded-full bg-surface-2 px-2 py-0.5 text-2xs font-medium ring-1 ring-hairline">
+                      {perfil.squad}
+                    </span>
+                  )}
                 </div>
 
-                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
-                  <span>{SEGMENT_LABELS[client.segment]}</span>
-                  <span aria-hidden className="text-hairline">
-                    •
-                  </span>
-                  <span className="tabular-nums">
-                    {formatPeriod(period.start, period.end)}
-                  </span>
+                <p className="mt-1.5 text-sm text-muted-foreground">
+                  {[perfil.briefing || SEGMENT_LABELS[client.segment], perfil.cidade]
+                    .filter(Boolean)
+                    .join(" · ")}
                   {client.website && (
                     <>
-                      <span aria-hidden className="text-hairline">
-                        •
-                      </span>
+                      {" · "}
                       <a
                         href={client.website}
                         target="_blank"
@@ -169,6 +178,15 @@ export function ClientDashboard({
                       </a>
                     </>
                   )}
+                </p>
+
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-2xs">
+                  {client.contract_start && (
+                    <span className="text-muted-foreground">
+                      Cliente desde {formatDate(`${client.contract_start}T12:00:00`)}
+                    </span>
+                  )}
+                  <SeloDaSaude saude={saude} />
                 </div>
               </div>
             </div>
@@ -182,9 +200,6 @@ export function ClientDashboard({
                 custom={Boolean(period.custom)}
                 current={period.days}
               />
-              {/* `nativeButton={false}` é obrigatório ao renderizar como
-                  <a>: sem ele, o Base UI assume semântica de <button> e
-                  aplica ARIA que não corresponde ao elemento real. */}
               <ClientSettingsDialog
                 agencias={agencias}
                 client={client}
@@ -192,19 +207,15 @@ export function ClientDashboard({
                 segment={client.segment}
               />
               {/* Ao lado de "Gerar relatório" de propósito: são as duas
-                  formas de entregar o MESMO documento — um arquivo
-                  fechado num período, ou um endereço onde o cliente
-                  escolhe as datas. Separá-las em lugares diferentes
-                  faria uma delas nunca ser encontrada. */}
+                  formas de entregar o MESMO documento. */}
               <LinkDoRelatorio clientId={client.id} />
+              {/* `nativeButton={false}` é obrigatório ao renderizar como <a>. */}
               <Button
                 size="sm"
                 className="h-9"
                 nativeButton={false}
-                /* LEVA A CONTA JUNTO. Sem o slug, o botão de um
-                   cliente abria a estação na PRIMEIRA da carteira, e
-                   quem não reparasse no seletor geraria o relatório de
-                   outra pessoa. */
+                /* LEVA A CONTA JUNTO: sem o slug a estação abria na
+                   primeira conta da carteira. */
                 render={<Link href={`/relatorios?cliente=${client.slug}`} />}
               >
                 <FileDown className="size-4" />
@@ -213,134 +224,332 @@ export function ClientDashboard({
             </div>
           </div>
 
-          {/* Pendência ANTES dos KPIs: os números abaixo são lidos
-              contra a meta, e ver "0% da meta" sem saber que o campo
-              está vazio faz o mês parecer ruim em vez de não medido. */}
-          {goalStatus.needsGoal && (
-            <MonthlyGoalAlert
+          {/* Ações do dia a dia ---------------------------------------- */}
+          <div className="mt-5 flex flex-wrap gap-2">
+            <RegistrarNaLinhaDoTempo clientId={client.id}>
+              {(abrir) => (
+                <Button size="sm" variant="outline" onClick={abrir}>
+                  <CalendarClock className="size-3.5" />
+                  Registrar reunião
+                </Button>
+              )}
+            </RegistrarNaLinhaDoTempo>
+            <NovoItemDialog
               clientId={client.id}
-              segment={client.segment}
-              referenceMonth={goalStatus.referenceMonth}
-            />
-          )}
-
-          {/* ---------------- CARDS DE KPI ----------------
-              Grid de 3 no desktop; no mobile viram uma coluna, com o
-              Investimento em destaque. Ordem fixa: Investimento →
-              Resultados → Custo por Resultado, que é a sequência da
-              leitura de mídia paga (quanto entrou, o que gerou, a que
-              preço). */}
-          <div className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 lg:gap-4">
-            {kpis.map((kpi, index) => (
-              <KpiCard
-                key={kpi.key}
-                kpi={kpi}
-                index={index}
-                trend={sparklines[kpi.key]}
-                emphasis={index === 0}
-              />
-            ))}
+              secao="regras"
+              definicao={SECOES_DE_LISTA.regras}
+              titulo="Nova regra da conta"
+            >
+              {(abrir) => (
+                <Button size="sm" variant="outline" onClick={abrir}>
+                  <ShieldAlert className="size-3.5" />
+                  Nova regra
+                </Button>
+              )}
+            </NovoItemDialog>
+            <NovaTarefa clientId={client.id}>
+              {(abrir) => (
+                <Button size="sm" onClick={abrir}>
+                  <ListPlus className="size-3.5" />
+                  Nova tarefa
+                </Button>
+              )}
+            </NovaTarefa>
           </div>
-
-          <p className="mt-3 flex items-center gap-1.5 text-2xs text-muted-foreground">
-            <Radio className="size-3 text-signal" />
-            Google Ads + Meta Ads unificados · comparação com os{" "}
-            {period.days} dias anteriores
-          </p>
-
-          {/* ---------------- META DO MÊS ----------------
-              DEPOIS dos KPIs e visualmente separado, porque responde
-              outra pergunta e usa OUTRA JANELA. Os cards acima seguem o
-              seletor de período; estas barras são sempre o mês da meta,
-              e é por isso que o intervalo aparece escrito — sem ele,
-              quem trocar o seletor para 90 dias vai ler a projeção como
-              se fosse dos 90 dias. */}
-          {goalProgress?.progress && (
-            <section className="surface-card mt-4 p-5">
-              <div className="mb-4 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                <h2 className="text-sm font-semibold tracking-[-0.01em]">
-                  Meta do mês
-                </h2>
-                {goalProgress.period && (
-                  <span className="text-2xs tabular-nums text-muted-foreground">
-                    {periodoLegivel(
-                      goalProgress.period.start,
-                      goalProgress.period.end,
-                    )}
-                    {goalProgress.progress.cycle.daysLeft > 0 && (
-                      <> · faltam {goalProgress.progress.cycle.daysLeft} dias</>
-                    )}
-                  </span>
-                )}
-              </div>
-
-              <div className="grid gap-5 sm:grid-cols-2">
-                <GoalBar progress={goalProgress.progress.budget} />
-                <GoalBar progress={goalProgress.progress.results} />
-              </div>
-            </section>
-          )}
         </div>
       </section>
 
-      {/* ================= CORPO ================= */}
-      <div className="mx-auto w-full max-w-[1400px] px-4 py-8 sm:px-6 lg:px-8">
-        <div className="grid gap-6 lg:grid-cols-3">
-          <Panel
-            className="lg:col-span-2"
-            title="Evolução no período"
-            description="Investimento diário contra o retorno gerado."
-          >
-            <TrendChart data={trend} secondary={secondarySeries} />
-          </Panel>
-
-          <Panel
-            title="Canais"
-            description="Onde o orçamento foi alocado."
-          >
-            <PlatformSplitList data={platforms} moeda={client.ad_currency} />
-          </Panel>
-        </div>
-
-        <section className="mt-8">
-          <div className="mb-4 flex items-end justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-semibold tracking-[-0.015em]">
-                Anúncios ativos
-              </h2>
-              <p className="mt-0.5 text-sm text-muted-foreground">
-                Criativos no ar agora, com o desempenho individual de cada um.
-              </p>
-            </div>
-            <span className="shrink-0 text-2xs text-muted-foreground">
-              {creatives.length} criativos
-            </span>
+      {/* ================= ABAS ================= */}
+      <div className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6 lg:px-8">
+        <Tabs defaultValue="resumo">
+          {/* Rola na horizontal no celular: 7 abas não cabem em 375px. */}
+          <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+            <TabsList variant="line" className="w-max">
+              {ABAS.map((a) => (
+                <TabsTrigger key={a.valor} value={a.valor} className="flex-none px-3">
+                  {a.rotulo}
+                </TabsTrigger>
+              ))}
+            </TabsList>
           </div>
 
-          <AdGallery creatives={creatives} moeda={client.ad_currency} />
-        </section>
+          {/* ---------------- RESUMO ---------------- */}
+          <TabsContent value="resumo" className="mt-6 flex flex-col gap-6">
+            {goalStatus.needsGoal && (
+              <MonthlyGoalAlert
+                clientId={client.id}
+                segment={client.segment}
+                referenceMonth={goalStatus.referenceMonth}
+              />
+            )}
 
-        <AdStructure
-          clientId={client.id}
-          since={period.start}
-          until={period.end}
-          resultLabel={resultLabel}
-          costLabel={costLabel}
-        />
+            <div>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 lg:gap-4">
+                {kpis.map((kpi, index) => (
+                  <KpiCard key={kpi.key} kpi={kpi} index={index} emphasis={index === 0} />
+                ))}
+              </div>
+              <p className="mt-2 text-2xs text-muted-foreground">
+                {formatPeriod(period.start, period.end)} · comparação com os {period.days} dias anteriores
+              </p>
+            </div>
 
-        {/* Configuração por último: é ajuste, não leitura do período.
-            Integrações antes dos ajustes porque sem conta de mídia
-            vinculada não há número nenhum para relatar. */}
-        <GoalHistory entries={goalHistory} />
+            <MetaDoMes goalProgress={goalProgress} />
 
-        {/* Cadastro e contas de mídia saíram daqui para um diálogo — ver
-            `ClientSettingsDialog`. Ficam no botão "Configurar" do topo.
-            O que sobrou é o que se consulta junto com o desempenho. */}
-        <div id="ajustes" className="scroll-mt-20" />
-        <ClientSettingsCard client={client} goal={goal} />
+            <div className="grid gap-6 lg:grid-cols-2">
+              <section className="surface-card p-5">
+                <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold">
+                  <ShieldAlert className="size-4 text-warning" />
+                  Antes de mexer na conta
+                </h2>
+                {regrasCriticas.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    Nenhuma regra de &ldquo;não pode&rdquo; ou &ldquo;obrigatório&rdquo; registrada.
+                  </p>
+                ) : (
+                  <ul className="flex flex-col gap-2">
+                    {regrasCriticas.map((r) => (
+                      <li key={r.id} className="flex items-start gap-2 text-sm">
+                        <span
+                          className={cn(
+                            "mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-2xs font-medium",
+                            r.categoria === "nao_pode"
+                              ? "bg-negative-muted text-negative"
+                              : "bg-warning-muted text-warning",
+                          )}
+                        >
+                          {r.categoria === "nao_pode" ? "Não pode" : "Obrigatório"}
+                        </span>
+                        <span className="min-w-0 break-words">{r.texto}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+
+              <ListaEditavel
+                clientId={client.id}
+                secao="pendencias"
+                titulo="Pendências do cliente"
+                descricao="O que o cliente ficou de enviar ou liberar."
+                definicao={SECOES_DE_LISTA.pendencias}
+                itens={ficha.pendencias}
+                vazio="Nenhuma pendência."
+              />
+
+              <TarefasAbertas tarefas={tarefas} />
+
+              <section className="surface-card p-5">
+                <h2 className="mb-3 text-sm font-semibold">Responsáveis</h2>
+                {responsaveis.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">Ninguém vinculado a esta conta.</p>
+                ) : (
+                  <ul className="flex flex-col gap-2">
+                    {responsaveis.map((r) => (
+                      <li key={r.id} className="flex items-center justify-between gap-3 text-sm">
+                        <span>{r.full_name}</span>
+                        {r.id === client.owner_id && (
+                          <span className="text-2xs text-muted-foreground">Dono da conta</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            </div>
+
+            <LinhaDoTempo clientId={client.id} entradas={linhaDoTempo.slice(0, 3)} compacta />
+
+            <section>
+              <div className="mb-4 flex items-end justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-semibold tracking-[-0.015em]">Anúncios ativos</h2>
+                  <p className="mt-0.5 text-sm text-muted-foreground">
+                    Criativos no ar agora, com o desempenho individual de cada um.
+                  </p>
+                </div>
+                <span className="shrink-0 text-2xs text-muted-foreground">
+                  {creatives.length} criativos
+                </span>
+              </div>
+              <AdGallery creatives={creatives} moeda={client.ad_currency} />
+            </section>
+
+            <AdStructure
+              clientId={client.id}
+              since={period.start}
+              until={period.end}
+              resultLabel={resultLabel}
+              costLabel={costLabel}
+            />
+          </TabsContent>
+
+          {/* ---------------- MAPA DO NEGÓCIO ---------------- */}
+          <TabsContent value="mapa" className="mt-6 flex flex-col gap-6">
+            <CamposEditaveis
+              clientId={client.id}
+              secao="perfil"
+              titulo="Perfil"
+              descricao="Aparece no topo da página."
+              definicao={SECOES_DE_CAMPOS.perfil}
+              valores={ficha.perfil}
+            />
+            <CamposEditaveis
+              clientId={client.id}
+              secao="mapa"
+              titulo="Mapa do Negócio"
+              descricao="Levantado na reunião de onboarding."
+              definicao={SECOES_DE_CAMPOS.mapa}
+              valores={ficha.mapa}
+            />
+          </TabsContent>
+
+          {/* ---------------- METAS E RESULTADOS ---------------- */}
+          <TabsContent value="metas" className="mt-6 flex flex-col gap-6">
+            <CamposEditaveis
+              clientId={client.id}
+              secao="metas"
+              titulo="Metas combinadas"
+              descricao="KPI principal, metas de 30, 60 e 90 dias e a verba acertada com o cliente."
+              definicao={SECOES_DE_CAMPOS.metas}
+              valores={ficha.metas}
+            />
+            <MetaDoMes goalProgress={goalProgress} />
+            <GoalHistory entries={goalHistory} />
+            {/* Meta do mês (orçamento e resultados) e a zona de risco. */}
+            <div id="ajustes" className="scroll-mt-20" />
+            <ClientSettingsCard client={client} goal={goal} />
+          </TabsContent>
+
+          {/* ---------------- REGRAS DA CONTA ---------------- */}
+          <TabsContent value="regras" className="mt-6">
+            <ListaEditavel
+              clientId={client.id}
+              secao="regras"
+              titulo="Regras da conta"
+              descricao="O que não pode, o que é obrigatório e o que o cliente prefere."
+              definicao={SECOES_DE_LISTA.regras}
+              itens={ficha.regras}
+              rotuloDoNovo="Nova regra"
+              filtrarPor="categoria"
+              vazio="Nenhuma regra registrada."
+            />
+          </TabsContent>
+
+          {/* ---------------- PREFERÊNCIAS ---------------- */}
+          <TabsContent value="preferencias" className="mt-6 flex flex-col gap-6">
+            <CamposEditaveis
+              clientId={client.id}
+              secao="atendimento"
+              titulo="Como atender"
+              definicao={SECOES_DE_CAMPOS.atendimento}
+              valores={ficha.atendimento}
+              colunas={2}
+            />
+            <div className="grid gap-6 lg:grid-cols-2">
+              <ListaEditavel
+                clientId={client.id}
+                secao="contatos"
+                titulo="Contatos no cliente"
+                definicao={SECOES_DE_LISTA.contatos}
+                itens={ficha.contatos}
+                rotuloDoNovo="Novo contato"
+                vazio="Nenhum contato registrado."
+              />
+              <ListaEditavel
+                clientId={client.id}
+                secao="datas"
+                titulo="Datas para lembrar"
+                definicao={SECOES_DE_LISTA.datas}
+                itens={ficha.datas}
+                rotuloDoNovo="Nova data"
+                vazio="Nenhuma data registrada."
+              />
+            </div>
+          </TabsContent>
+
+          {/* ---------------- LINHA DO TEMPO ---------------- */}
+          <TabsContent value="linha" className="mt-6">
+            <LinhaDoTempo clientId={client.id} entradas={linhaDoTempo} />
+          </TabsContent>
+
+          {/* ---------------- ACESSOS E ATIVOS ---------------- */}
+          <TabsContent value="acessos" className="mt-6 flex flex-col gap-6">
+            <ListaEditavel
+              clientId={client.id}
+              secao="acessos"
+              titulo="Acessos"
+              descricao="Onde cada acesso está guardado. Senha NUNCA vai aqui — só o lugar onde ela está."
+              definicao={SECOES_DE_LISTA.acessos}
+              itens={ficha.acessos}
+              rotuloDoNovo="Novo acesso"
+              vazio="Nenhum acesso registrado."
+            />
+            <CamposEditaveis
+              clientId={client.id}
+              secao="ativos"
+              titulo="Ativos"
+              definicao={SECOES_DE_CAMPOS.ativos}
+              valores={ficha.ativos}
+              colunas={2}
+            />
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
     </MoedaProvider>
+  );
+}
+
+/* Saúde da última otimização da esteira, e há quanto tempo está nessa cor. */
+const SAUDE: Record<SaudeAtual["cor"], { rotulo: string; ponto: string }> = {
+  green: { rotulo: "Conta verde", ponto: "bg-emerald-500" },
+  yellow: { rotulo: "Conta amarela", ponto: "bg-amber-400" },
+  red: { rotulo: "Conta vermelha", ponto: "bg-red-500" },
+};
+
+function SeloDaSaude({ saude }: { saude: SaudeAtual | null }) {
+  if (!saude) {
+    return <span className="text-muted-foreground">Saúde não marcada na esteira</span>;
+  }
+  const s = SAUDE[saude.cor];
+  const { dias } = saude;
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-2 py-0.5 font-medium ring-1 ring-hairline">
+      <span className={cn("size-2 rounded-full", s.ponto)} aria-hidden />
+      {s.rotulo}
+      <span className="font-normal text-muted-foreground">
+        {dias === 0 ? "desde hoje" : `há ${dias} ${dias === 1 ? "dia" : "dias"}`}
+      </span>
+    </span>
+  );
+}
+
+/* Meta do mês: SEMPRE o mês da meta, não o período do seletor — por
+   isso o intervalo aparece escrito. */
+function MetaDoMes({ goalProgress }: { goalProgress: ClientDashboardProps["goalProgress"] }) {
+  if (!goalProgress?.progress) return null;
+  return (
+    <section className="surface-card p-5">
+      <div className="mb-4 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h2 className="flex items-center gap-2 text-sm font-semibold tracking-[-0.01em]">
+          <SquarePen className="size-4 text-muted-foreground" />
+          Meta do mês
+        </h2>
+        {goalProgress.period && (
+          <span className="text-2xs tabular-nums text-muted-foreground">
+            {formatPeriod(goalProgress.period.start, goalProgress.period.end)}
+            {goalProgress.progress.cycle.daysLeft > 0 && (
+              <> · faltam {goalProgress.progress.cycle.daysLeft} dias</>
+            )}
+          </span>
+        )}
+      </div>
+      <div className="grid gap-5 sm:grid-cols-2">
+        <GoalBar progress={goalProgress.progress.budget} />
+        <GoalBar progress={goalProgress.progress.results} />
+      </div>
+    </section>
   );
 }
 
@@ -482,29 +691,5 @@ function PeriodSelector({
 
     <DateRangePicker slug={slug} start={start} end={end} active={custom} />
     </div>
-  );
-}
-
-function Panel({
-  title,
-  description,
-  children,
-  className,
-}: {
-  title: string;
-  description?: string;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <section className={cn("surface-card p-5 sm:p-6", className)}>
-      <header className="mb-5">
-        <h2 className="text-base font-semibold tracking-[-0.01em]">{title}</h2>
-        {description && (
-          <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>
-        )}
-      </header>
-      {children}
-    </section>
   );
 }

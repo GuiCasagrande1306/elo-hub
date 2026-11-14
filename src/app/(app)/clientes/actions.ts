@@ -107,6 +107,7 @@ export async function createClientAction(
       report_metrics: null,
       onboarding_checklist: null,
       ad_currency: "BRL",
+      ficha: {},
       created_at: new Date().toISOString(),
     });
 
