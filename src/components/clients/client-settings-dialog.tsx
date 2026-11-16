@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ClientForm } from "@/components/clients/client-form";
+import { LogoDoCliente } from "@/components/clients/client-settings-card";
 import { IntegrationsCard } from "@/components/clients/integrations-card";
 import { MetricasDoRelatorioEditor } from "@/components/clients/metricas-do-relatorio";
 import type { Client, ClientSegment } from "@/types/database";
@@ -28,8 +29,8 @@ import type { IntegrationStatus } from "@/lib/data";
    qualquer olhada por cima do ombro, numa tela que se mostra em reunião
    com cliente.
 
-   O que fica FORA daqui continua na página: logo, meta do mês e
-   histórico. São coisas que se consulta junto com o desempenho, e
+   O que fica FORA daqui continua na página: meta do mês e histórico.
+   A logo entrou aqui (aba Cadastro) em 16/11/2026. São coisas que se consulta junto com o desempenho, e
    escondê-las atrás de um clique só criaria atrito.
 
    Um diálogo, duas abas, e o conteúdo só monta quando abre — o
@@ -104,7 +105,8 @@ export function ClientSettingsDialog({
                 />
               </TabsContent>
 
-              <TabsContent value="cadastro" className="mt-4">
+              <TabsContent value="cadastro" className="mt-4 flex flex-col gap-6">
+                <LogoDoCliente client={client} />
                 <ClientForm client={client} semMoldura agencias={agencias} />
               </TabsContent>
 

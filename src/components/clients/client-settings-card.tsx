@@ -67,7 +67,6 @@ export function ClientSettingsCard({
     resultsMetric: "count" | "revenue" | null;
   } | null;
 }) {
-  const [pendente, startTransition] = useTransition();
 
   /* A unidade vem do SEGMENTO, porque é a unidade em que `setClientGoal`
      vai gravar — ele chama `defaultGoalMetricFor(segment)`.
@@ -97,69 +96,6 @@ export function ClientSettingsCard({
   );
   const [salvandoMeta, startMeta] = useTransition();
 
-  const [logo, setLogo] = useState(client.logo_url);
-  const [enviandoLogo, setEnviandoLogo] = useState(false);
-  const arquivoRef = useRef<HTMLInputElement>(null);
-
-  async function enviarLogo(arquivo: File) {
-    const supabase = getSupabaseBrowserClient();
-    if (!supabase) {
-      toast.error("Modo demo: upload indisponível.");
-      return;
-    }
-
-    if (arquivo.size > 5 * 1024 * 1024) {
-      toast.error("A imagem precisa ter no máximo 5MB.");
-      return;
-    }
-
-    setEnviandoLogo(true);
-    try {
-      const ext = arquivo.name.split(".").pop()?.toLowerCase() ?? "png";
-      /* Caminho começa pelo id do CLIENTE: é o que a policy do bucket
-         usa para autorizar. E leva timestamp porque não há policy de
-         UPDATE — sobrescrever seria recusado, e o nome novo também
-         escapa do cache do navegador. */
-      const caminho = `${client.id}/${Date.now()}.${ext}`;
-
-      const { error } = await supabase.storage
-        .from("brand")
-        .upload(caminho, arquivo);
-
-      if (error) {
-        toast.error(`Erro ao enviar: ${error.message}`);
-        return;
-      }
-
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from("brand").getPublicUrl(caminho);
-
-      const r = await setClientLogo({ clientId: client.id, logoUrl: publicUrl });
-      if (!r.ok) {
-        toast.error(r.error);
-        return;
-      }
-
-      setLogo(publicUrl);
-      toast.success("Logo atualizada.");
-    } finally {
-      setEnviandoLogo(false);
-    }
-  }
-
-  function removerLogo() {
-    startTransition(async () => {
-      const r = await setClientLogo({ clientId: client.id, logoUrl: null });
-      if (r.ok) {
-        setLogo(null);
-        toast.success("Logo removida.");
-      } else {
-        toast.error(r.error);
-      }
-    });
-  }
-
   function salvarMeta() {
     startMeta(async () => {
       const r = await setClientGoal({
@@ -175,70 +111,10 @@ export function ClientSettingsCard({
 
   return (
     <section className="surface-card p-5">
-      <h2 className="text-sm font-semibold">Marca e meta</h2>
+      <h2 className="text-sm font-semibold">Meta do mês</h2>
       <p className="mt-0.5 text-xs text-muted-foreground">
-        A identidade visual da conta e o alvo do mês.
+        O alvo do mês. A logo da conta fica em Configurar › Cadastro.
       </p>
-
-      {/* Logo ------------------------------------------------------
-          Aparece no card da listagem, no cabeçalho da conta e na capa
-          do PDF — que já lia `logo_url` e nunca teve como recebê-la. */}
-      <div className="mt-5 flex items-center gap-4 border-b border-hairline pb-5">
-        <span className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white ring-1 ring-inset ring-black/10">
-          {logo ? (
-            // eslint-disable-next-line @next/next/no-img-element -- URL do Storage é externa e variável.
-            <img src={logo} alt="" className="size-full object-contain" />
-          ) : (
-            <ImagePlus className="size-5 text-muted-foreground/50" />
-          )}
-        </span>
-
-        <div>
-          <input
-            ref={arquivoRef}
-            type="file"
-            accept="image/png,image/jpeg,image/webp,image/svg+xml"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) void enviarLogo(f);
-              e.target.value = "";
-            }}
-          />
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={enviandoLogo}
-              onClick={() => arquivoRef.current?.click()}
-            >
-              {enviandoLogo ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <ImagePlus className="size-3.5" />
-              )}
-              {logo ? "Trocar logo" : "Enviar logo"}
-            </Button>
-
-            {logo && (
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={removerLogo}
-                disabled={pendente}
-              >
-                <Trash2 className="size-3.5" />
-                Remover
-              </Button>
-            )}
-          </div>
-          <p className="mt-1.5 text-2xs text-muted-foreground">
-            PNG, JPG, WebP ou SVG, até 5MB. Fundo transparente fica melhor.
-          </p>
-        </div>
-      </div>
 
       {/* Meta do período ------------------------------------------
           Âncora `#metas`: o card do cliente na listagem aponta para
@@ -479,5 +355,140 @@ function ZonaDeRisco({ client }: { client: Client }) {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+/**
+ * Logo da conta. Mora em Configurar › Cadastro (16/11/2026); antes
+ * ficava no fim da aba Metas e ninguém achava.
+ */
+export function LogoDoCliente({ client }: { client: Client }) {
+  const [removendo, startRemover] = useTransition();
+  const [logo, setLogo] = useState(client.logo_url);
+  const [enviandoLogo, setEnviandoLogo] = useState(false);
+  const arquivoRef = useRef<HTMLInputElement>(null);
+
+  async function enviarLogo(arquivo: File) {
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) {
+      toast.error("Modo demo: upload indisponível.");
+      return;
+    }
+
+    if (arquivo.size > 5 * 1024 * 1024) {
+      toast.error("A imagem precisa ter no máximo 5MB.");
+      return;
+    }
+
+    setEnviandoLogo(true);
+    try {
+      const ext = arquivo.name.split(".").pop()?.toLowerCase() ?? "png";
+      /* Caminho começa pelo id do CLIENTE: é o que a policy do bucket
+         usa para autorizar. E leva timestamp porque não há policy de
+         UPDATE — sobrescrever seria recusado, e o nome novo também
+         escapa do cache do navegador. */
+      const caminho = `${client.id}/${Date.now()}.${ext}`;
+
+      const { error } = await supabase.storage
+        .from("brand")
+        .upload(caminho, arquivo);
+
+      if (error) {
+        toast.error(`Erro ao enviar: ${error.message}`);
+        return;
+      }
+
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from("brand").getPublicUrl(caminho);
+
+      const r = await setClientLogo({ clientId: client.id, logoUrl: publicUrl });
+      if (!r.ok) {
+        toast.error(r.error);
+        return;
+      }
+
+      setLogo(publicUrl);
+      toast.success("Logo atualizada.");
+    } finally {
+      setEnviandoLogo(false);
+    }
+  }
+
+  function removerLogo() {
+    startRemover(async () => {
+      const r = await setClientLogo({ clientId: client.id, logoUrl: null });
+      if (r.ok) {
+        setLogo(null);
+        toast.success("Logo removida.");
+      } else {
+        toast.error(r.error);
+      }
+    });
+  }
+
+  return (
+    <section>
+      <h3 className="mb-3 text-sm font-semibold">Logo</h3>
+      {/* Logo ------------------------------------------------------
+          Aparece no card da listagem, no cabeçalho da conta e na capa
+          do PDF — que já lia `logo_url` e nunca teve como recebê-la. */}
+      <div className="flex items-center gap-4">
+        <span className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white ring-1 ring-inset ring-black/10">
+          {logo ? (
+            // eslint-disable-next-line @next/next/no-img-element -- URL do Storage é externa e variável.
+            <img src={logo} alt="" className="size-full object-contain" />
+          ) : (
+            <ImagePlus className="size-5 text-muted-foreground/50" />
+          )}
+        </span>
+
+        <div>
+          <input
+            ref={arquivoRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/svg+xml"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void enviarLogo(f);
+              e.target.value = "";
+            }}
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={enviandoLogo}
+              onClick={() => arquivoRef.current?.click()}
+            >
+              {enviandoLogo ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <ImagePlus className="size-3.5" />
+              )}
+              {logo ? "Trocar logo" : "Enviar logo"}
+            </Button>
+
+            {logo && (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={removerLogo}
+                disabled={removendo}
+              >
+                <Trash2 className="size-3.5" />
+                Remover
+              </Button>
+            )}
+          </div>
+          <p className="mt-1.5 text-2xs text-muted-foreground">
+            PNG, JPG, WebP ou SVG, até 5MB. Fundo transparente fica melhor.
+          </p>
+        </div>
+      </div>
+    </section>
   );
 }
