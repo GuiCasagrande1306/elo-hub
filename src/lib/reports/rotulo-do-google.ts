@@ -116,10 +116,14 @@ export interface AcaoDoGoogle {
   automatica: boolean;
 }
 
+/* "Ligações" NÃO está aqui: é `daily_metrics.phone_calls` (a coluna
+   "Ligações" do Google Ads, chamadas recebidas). A ação de conversão
+   de clique/chamada é outra coisa e virou "Cliques para ligar". Vivaz,
+   09–15/11/2026: o cartão somava a ação e mostrava 0; o Google, 7. */
 const ACOES_LOCAIS: { chave: string; label: string; casa: (nome: string, cat: string | null) => boolean }[] = [
   {
-    chave: "google_ligacoes",
-    label: "Ligações",
+    chave: "google_cliques_ligar",
+    label: "Cliques para ligar",
     casa: (n, c) => c === "PHONE_CALL_LEAD" || /call|ligar|liga[cç]/i.test(n),
   },
   { chave: "google_rotas", label: "Rotas", casa: (n, c) => c === "GET_DIRECTIONS" || /direction/i.test(n) },
@@ -138,19 +142,45 @@ export async function acoesDoGoogle(
 ): Promise<AcaoDoGoogle[]> {
   if (isDemoMode) return [];
 
-  const { data, error } = await createSupabaseAdminClient()
-    .from("google_conversion_daily")
-    .select("metric_date, action_name, category, conversions, all_conversions")
-    .eq("client_id", clientId)
-    .gte("metric_date", anteriorInicio)
-    .lte("metric_date", fim);
+  const admin = createSupabaseAdminClient();
+  const [{ data, error }, ligacoes] = await Promise.all([
+    admin
+      .from("google_conversion_daily")
+      .select("metric_date, action_name, category, conversions, all_conversions")
+      .eq("client_id", clientId)
+      .gte("metric_date", anteriorInicio)
+      .lte("metric_date", fim),
+    admin
+      .from("daily_metrics")
+      .select("metric_date, phone_calls")
+      .eq("client_id", clientId)
+      .eq("platform", "google_ads")
+      .gte("metric_date", anteriorInicio)
+      .lte("metric_date", fim)
+      // Só dias com ligação: fica bem abaixo do teto de 1.000 linhas.
+      .gt("phone_calls", 0),
+  ]);
 
-  if (error) {
-    console.error("[relatorio] ações do Google:", error.message);
+  if (error || ligacoes.error) {
+    console.error("[relatorio] ações do Google:", (error ?? ligacoes.error)?.message);
     return [];
   }
 
-  return ACOES_LOCAIS.flatMap(({ chave, label, casa }): AcaoDoGoogle[] => {
+  const somaLigacoes = (de: string, ate: string) =>
+    (ligacoes.data ?? [])
+      .filter((l) => l.metric_date >= de && l.metric_date <= ate)
+      .reduce((s, l) => s + Number(l.phone_calls ?? 0), 0);
+  const ligAtual = somaLigacoes(inicio, fim);
+  const ligAnterior = somaLigacoes(anteriorInicio, diaAntes(inicio));
+  const ligacao: AcaoDoGoogle = {
+    chave: "google_ligacoes",
+    label: "Ligações",
+    atual: ligAtual,
+    anterior: ligAnterior,
+    automatica: ligAtual > 0 || ligAnterior > 0 || (segmento === "local_business" && SEMPRE_NO_NEGOCIO_LOCAL.has("google_ligacoes")),
+  };
+
+  return [ligacao, ...ACOES_LOCAIS.flatMap(({ chave, label, casa }): AcaoDoGoogle[] => {
     const linhas = (data ?? []).filter((l) => casa(l.action_name ?? "", l.category));
     const usaPrincipal = linhas.some((l) => Number(l.conversions) > 0);
     const soma = (de: string, ate: string) =>
@@ -163,7 +193,7 @@ export async function acoesDoGoogle(
     const automatica =
       atual > 0 || anterior > 0 || (segmento === "local_business" && SEMPRE_NO_NEGOCIO_LOCAL.has(chave));
     return [{ chave, label, atual, anterior, automatica }];
-  });
+  })];
 }
 
 function diaAntes(dia: string): string {

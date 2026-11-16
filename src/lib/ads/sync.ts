@@ -64,6 +64,8 @@ export interface SyncOptions {
   lookbackDays?: number;
   /** Restringe a um cliente — usado pelo botão de sincronizar avulso. */
   clientId?: string;
+  /** Restringe a uma plataforma — recoleta de uma métrica nova de um lado só. */
+  platform?: AdPlatform;
   /**
    * Período explícito, para backfill.
    *
@@ -122,6 +124,7 @@ export async function syncAllClients(
     .in("clients.status", ["active", "onboarding"]);
 
   if (options.clientId) query = query.eq("client_id", options.clientId);
+  if (options.platform) query = query.eq("platform", options.platform);
 
   const { data, error } = await query;
 
@@ -322,6 +325,7 @@ async function upsertMetrics(
     profile_visits: row.profileVisits,
     instagram_follows: row.instagramFollows,
     conversations: row.conversations,
+    phone_calls: row.phoneCalls ?? null,
     synced_at: new Date().toISOString(),
   }));
 

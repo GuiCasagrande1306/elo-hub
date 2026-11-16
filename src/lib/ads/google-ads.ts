@@ -69,7 +69,8 @@ export const DAILY_METRICS_QUERY = `
     metrics.impressions,
     metrics.clicks,
     metrics.conversions,
-    metrics.conversions_value
+    metrics.conversions_value,
+    metrics.phone_calls
   FROM campaign
   WHERE segments.date BETWEEN '{since}' AND '{until}'
     AND campaign.status != 'REMOVED'
@@ -84,6 +85,7 @@ interface GoogleAdsRow {
     clicks?: string;
     conversions?: number;
     conversionsValue?: number;
+    phoneCalls?: string;
   };
 }
 
@@ -373,5 +375,8 @@ export function toNormalizedRow(row: GoogleAdsRow): NormalizedMetricRow {
     /* O Google não tem mensageria no Insights. Nulo e não zero: a
        plataforma não mede, não é que não houve. */
     conversations: null,
+    /* A coluna "Ligações" do Google Ads: chamadas recebidas pelos
+       anúncios. NÃO é a ação de conversão "clique para ligar". */
+    phoneCalls: toInt(row.metrics?.phoneCalls),
   };
 }

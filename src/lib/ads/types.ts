@@ -54,6 +54,11 @@ export interface NormalizedMetricRow {
    * migration 91.
    */
   conversations: number | null;
+  /**
+   * Ligações recebidas pelos anúncios (`metrics.phone_calls` do Google).
+   * `null`/ausente = a plataforma não mede (Meta). Migration 107.
+   */
+  phoneCalls?: number | null;
 }
 
 export type SyncFailureCode =

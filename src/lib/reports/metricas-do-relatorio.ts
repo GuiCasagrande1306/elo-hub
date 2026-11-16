@@ -42,6 +42,7 @@ export const CATALOGO_DE_METRICAS: Record<PlataformaDoRelatorio, { key: string; 
   google_ads: [
     ...BASE,
     { key: "google_ligacoes", label: "Ligações" },
+    { key: "google_cliques_ligar", label: "Cliques para ligar" },
     { key: "google_rotas", label: "Rotas" },
     { key: "google_visitas_loja", label: "Visitas à loja" },
   ],

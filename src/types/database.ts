@@ -548,6 +548,8 @@ export interface DailyMetric {
    * conversas". A tabela de campanhas imprime "—" nesse caso.
    */
   conversations: number | null;
+  /** Ligações recebidas pelos anúncios do Google. `null` = não apurado (migration 107). */
+  phone_calls?: number | null;
 }
 
 export interface AdCreative {
