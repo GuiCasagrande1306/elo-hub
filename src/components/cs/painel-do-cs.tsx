@@ -419,7 +419,7 @@ function Carteira({ carteira }: { carteira: LinhaDaCarteira[] }) {
     <Cartao titulo="Carteira e mensagens da semana">
       <p className="-mt-2 mb-3 text-xs text-muted-foreground">
         Marque cada envio ao fazer. O relatório de segunda se marca sozinho quando sai pelo Hub. No squad
-        Escala, a mensagem de quarta não é obrigatória.
+        Escala, a mensagem de quarta é opcional: dá para marcar, mas não conta na rotina.
       </p>
       <div className="mb-3 flex flex-wrap gap-1.5" role="group" aria-label="Filtrar carteira">
         {filtros.map((f) => (
@@ -492,11 +492,9 @@ function Carteira({ carteira }: { carteira: LinhaDaCarteira[] }) {
                       <Envio linha={r} coluna="relatorio_seg" />
                     </td>
                     <td className="py-2.5 text-center">
-                      {quartaNaoSeAplica(squad) && !r.semana.mensagem_qua ? (
-                        <span className="text-2xs text-muted-foreground">não se aplica</span>
-                      ) : (
-                        <Envio linha={r} coluna="mensagem_qua" />
-                      )}
+                      {/* Liberada para todos (16/11/2026): no Escala é opcional,
+                          mas dá para marcar. Só não entra na conta da rotina. */}
+                      <Envio linha={r} coluna="mensagem_qua" />
                     </td>
                     <td className="py-2.5 text-center">
                       <Envio linha={r} coluna="mensagem_sex" />
