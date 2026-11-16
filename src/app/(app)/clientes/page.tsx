@@ -50,12 +50,11 @@ export default async function ClientsPage({
     ? agency
     : undefined;
 
-  /* Cliente em onboarding mora em /onboarding até o checklist chegar a
-     100% e alguém mandá-lo para cá (vira `active`). Filtrar ANTES dos
-     totais, para o resumo somar a mesma lista que a grade mostra. */
-  const rows = (
-    await getClientsWithGoals(mes === mesAtual ? undefined : mes, agenciaValida)
-  ).filter((r) => r.client.status !== "onboarding");
+  /* Cliente em onboarding aparece AQUI TAMBÉM (16/11/2026), com o selo
+     "Onboarding": o checklist nem sempre chega a 100% antes do primeiro
+     relatório (Aluzza, contrato e cobrança pendentes), e sem a conta na
+     lista não havia como abrir a página dela nem gerar o relatório. */
+  const rows = await getClientsWithGoals(mes === mesAtual ? undefined : mes, agenciaValida);
 
   // Totais da carteira: o número que o dono da agência olha primeiro.
   const totals = rows.reduce(
