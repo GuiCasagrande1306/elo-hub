@@ -4,6 +4,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { dataNoBrasil, mesCorrenteBR } from "@/lib/date-br";
 import { isDemoMode } from "@/lib/env";
 import { pedidosDaJanela } from "./magazord";
+import { enviarVendasAoGoogle } from "@/lib/ads/enviar-vendas-google";
 
 /* =====================================================================
    Sincronização do faturamento da loja
@@ -175,6 +176,9 @@ export async function sincronizarLojas(opcoes?: {
         continue;
       }
     }
+
+    const envio = await enviarVendasAoGoogle(admin, loja.client_id, resultado.vendasDoGoogle);
+    if (!envio.ok) console.error("[loja] vendas → Google Ads:", nome, envio.motivo);
 
     await admin
       .from("store_integrations")

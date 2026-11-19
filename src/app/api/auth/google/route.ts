@@ -21,7 +21,11 @@ import { createState, redirectUri } from "@/lib/ads/oauth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const SCOPES = ["https://www.googleapis.com/auth/adwords"];
+const SCOPES = [
+  "https://www.googleapis.com/auth/adwords",
+  // Envio de vendas pagas como conversão (lib/ads/enviar-vendas-google.ts).
+  "https://www.googleapis.com/auth/datamanager",
+];
 
 export async function GET(request: NextRequest) {
   const user = await getCurrentUser();

@@ -52,6 +52,26 @@ interface PedidoBruto {
   data?: string;
   vlr_total_pedido?: string | number | null;
   status?: { id?: number; descricao?: string; cor_html?: string } | null;
+  /** Página onde o cliente chegou, com a query string — traz o `gclid`. */
+  url_origem?: string | null;
+}
+
+/** Venda paga que chegou por clique do Google Ads — vai para
+    `enviarVendasAoGoogle`, que a importa como conversão. */
+export interface VendaDoGoogle {
+  pedidoId: string;
+  /** "2026-11-10 14:57:50", hora de Brasília, como a API devolve. */
+  dataHora: string;
+  valorCents: number;
+  /** Só um dos três vem preenchido; gbraid/wbraid são cliques do iOS. */
+  gclid?: string;
+  gbraid?: string;
+  wbraid?: string;
+}
+
+function idDoClique(url: string | null | undefined): Pick<VendaDoGoogle, "gclid" | "gbraid" | "wbraid"> | null {
+  const m = /[?&](gclid|gbraid|wbraid)=([^&#\s]+)/i.exec(url ?? "");
+  return m ? { [m[1].toLowerCase()]: decodeURIComponent(m[2]) } : null;
 }
 
 interface Envelope {
@@ -86,6 +106,7 @@ function paraCentavos(v: string | number | null | undefined): number {
 export interface ResultadoDaLoja {
   dias: DiaDaLoja[];
   totalDePedidos: number;
+  vendasDoGoogle: VendaDoGoogle[];
 }
 
 /**
@@ -105,6 +126,7 @@ export async function pedidosDaJanela(
 ): Promise<ResultadoDaLoja | null> {
   const base = baseUrl.replace(/\/+$/, "");
   const porDia = new Map<string, DiaDaLoja>();
+  const vendasDoGoogle: VendaDoGoogle[] = [];
   let total = 0;
 
   try {
@@ -156,6 +178,15 @@ export async function pedidosDaJanela(
         if (pedidoEstaPago(p.status)) {
           atual.pedidosPagos += 1;
           atual.receitaCents += paraCentavos(p.vlr_total_pedido);
+          const clique = idDoClique(p.url_origem);
+          if (clique && p.id !== undefined && p.data) {
+            vendasDoGoogle.push({
+              pedidoId: String(p.id),
+              dataHora: p.data,
+              valorCents: paraCentavos(p.vlr_total_pedido),
+              ...clique,
+            });
+          }
         } else {
           atual.pedidosDescartados += 1;
         }
@@ -175,6 +206,7 @@ export async function pedidosDaJanela(
     return {
       dias: [...porDia.values()].sort((a, b) => a.data.localeCompare(b.data)),
       totalDePedidos: total,
+      vendasDoGoogle,
     };
   } catch {
     return null;
