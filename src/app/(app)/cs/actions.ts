@@ -110,3 +110,32 @@ export async function marcarRotina(input: { item: string; feito: boolean }): Pro
   revalidatePath("/cs");
   return { ok: true };
 }
+
+/** Salva a mensagem padrão de um dia (seg/qua/sex), a mesma para a equipe toda. */
+export async function salvarMensagemPadrao(input: { dia: string; texto: string }): Promise<Resultado> {
+  const p = z
+    .object({ dia: z.enum(["seg", "qua", "sex"]), texto: z.string().max(5000, "Texto longo demais.") })
+    .safeParse(input);
+  if (!p.success) return { ok: false, error: p.error.issues[0]?.message ?? "Dados inválidos." };
+  const q = await quem();
+  if ("erro" in q) return { ok: false, error: q.erro as string };
+
+  if (isDemoMode) {
+    const { demoCsMensagens } = await import("@/lib/mock/data");
+    const i = demoCsMensagens.findIndex((m) => m.dia === p.data.dia);
+    if (i >= 0) demoCsMensagens.splice(i, 1);
+    demoCsMensagens.push({ dia: p.data.dia, texto: p.data.texto });
+    revalidatePath("/cs");
+    return { ok: true };
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.from("cs_mensagens_padrao").upsert(
+    { dia: p.data.dia, texto: p.data.texto, updated_by: q.user.id, updated_at: new Date().toISOString() },
+    { onConflict: "dia" },
+  );
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/cs");
+  return { ok: true };
+}

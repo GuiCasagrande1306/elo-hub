@@ -7,6 +7,7 @@ import { saudeDaSequencia, type SaudeAtual } from "@/lib/clientes/saude";
 import { createSupabaseServerClient, getCurrentUser } from "@/lib/supabase/server";
 import { segundaDaSemana, somarDias } from "./semana";
 import type { ColunaDaSemana } from "./rotina";
+import type { DiaDaMensagem } from "./mensagens";
 import type { SaudeDaConta } from "@/types/database";
 
 /* =====================================================================
@@ -34,6 +35,8 @@ export interface PainelDoCs {
   carteira: LinhaDaCarteira[];
   /** Itens da rotina concluídos à mão por quem está logado. */
   rotinaFeita: string[];
+  /** Mensagens padrão salvas (seg/qua/sex). Dia ausente = texto de fábrica. */
+  mensagens: Partial<Record<DiaDaMensagem, string>>;
 }
 
 const SEM_MARCA: MarcasDaSemana = {
@@ -60,9 +63,11 @@ export async function getPainelDoCs(): Promise<PainelDoCs | null> {
   let marcas: ({ client_id: string } & MarcasDaSemana)[];
   let relatorios: { client_id: string }[];
   let rotina: { item: string }[];
+  let mensagens: { dia: DiaDaMensagem; texto: string }[];
 
   if (isDemoMode) {
-    const { demoOptimizations, demoCsSemana, demoCsRotina, demoReports } = await import("@/lib/mock/data");
+    const { demoOptimizations, demoCsSemana, demoCsRotina, demoReports, demoCsMensagens } = await import("@/lib/mock/data");
+    mensagens = demoCsMensagens;
     otimizacoes = demoOptimizations;
     marcas = demoCsSemana.filter((m) => m.semana === segunda);
     relatorios = demoReports.filter(
@@ -71,7 +76,7 @@ export async function getPainelDoCs(): Promise<PainelDoCs | null> {
     rotina = demoCsRotina.filter((r) => r.profile_id === user.id && r.semana === segunda);
   } else {
     const supabase = await createSupabaseServerClient();
-    const [o, m, r, ro] = await Promise.all([
+    const [o, m, r, ro, mp] = await Promise.all([
       supabase
         .from("optimization_history")
         .select("client_id, dia, account_health")
@@ -92,9 +97,11 @@ export async function getPainelDoCs(): Promise<PainelDoCs | null> {
         .gte("delivered_at", `${segunda}T00:00:00-03:00`)
         .lt("delivered_at", `${somarDias(domingo, 1)}T00:00:00-03:00`),
       supabase.from("cs_rotina").select("item").eq("profile_id", user.id).eq("semana", segunda),
+      supabase.from("cs_mensagens_padrao").select("dia, texto"),
     ]);
     // Erro do banco não vira painel vazio calado.
-    for (const x of [o, m, r, ro]) if (x.error) throw new Error(`Painel do CS: ${x.error.message}`);
+    for (const x of [o, m, r, ro, mp]) if (x.error) throw new Error(`Painel do CS: ${x.error.message}`);
+    mensagens = (mp.data ?? []) as { dia: DiaDaMensagem; texto: string }[];
     otimizacoes = o.data ?? [];
     marcas = (m.data ?? []) as ({ client_id: string } & MarcasDaSemana)[];
     relatorios = r.data ?? [];
@@ -134,5 +141,6 @@ export async function getPainelDoCs(): Promise<PainelDoCs | null> {
       };
     }),
     rotinaFeita: rotina.map((r) => r.item),
+    mensagens: Object.fromEntries(mensagens.filter((m) => m.texto.trim()).map((m) => [m.dia, m.texto])),
   };
 }

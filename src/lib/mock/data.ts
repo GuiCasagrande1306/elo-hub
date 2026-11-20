@@ -1325,6 +1325,7 @@ export const demoCsSemana: {
   reuniao_preparada: boolean;
 }[] = [];
 export const demoCsRotina: { profile_id: string; semana: string; item: string }[] = [];
+export const demoCsMensagens: { dia: "seg" | "qua" | "sex"; texto: string }[] = [];
 
 /** Linha do tempo do cliente — começa vazia no demo. */
 export const demoLinhaDoTempo: EntradaDaLinhaDoTempo[] = [];

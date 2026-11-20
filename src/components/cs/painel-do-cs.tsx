@@ -9,6 +9,7 @@ import { marcarNaSemana, marcarRotina } from "@/app/(app)/cs/actions";
 import { cobrarPendencia } from "@/app/(app)/clientes/ficha-actions";
 import { FormularioDeItem } from "@/components/clients/ficha/lista-editavel";
 import { FormularioDaLinhaDoTempo } from "@/components/clients/ficha/linha-do-tempo";
+import { MensagensPadrao } from "@/components/cs/mensagens-padrao";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -159,6 +160,8 @@ export function PainelDoCs({ dados }: { dados: Dados }) {
           )}
         </Numero>
       </div>
+
+      <MensagensPadrao salvas={dados.mensagens} />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Rotina itens={rotina} />
