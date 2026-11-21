@@ -18,7 +18,8 @@ import {
   sumMetrics,
   type MetricTotals,
 } from "@/lib/metrics/kpi";
-import { buildGoalProgress, periodElapsed } from "@/lib/metrics/goals";
+import { buildGoalProgress } from "@/lib/metrics/goals";
+import { contaNaMeta, type ContaNaMeta } from "@/lib/metrics/visao-geral";
 import {
   goalExecutedFrom,
   goalMetricFor,
@@ -161,61 +162,6 @@ export async function getClientBySlug(slug: string): Promise<Client | null> {
 /* ------------------------------------------------------------------ */
 /* Métricas                                                            */
 /* ------------------------------------------------------------------ */
-
-/**
- * Lê TODAS as linhas de uma consulta, página por página.
- *
- * ⚠️ O POSTGREST CORTA EM 1000 LINHAS E NÃO AVISA. `max_rows` está
- * declarado em `supabase/config.toml`; ao bater no teto ele devolve mil
- * linhas com status 200, sem cabeçalho de aviso e sem erro. Quem lê o
- * resultado soma o que veio e imprime um número menor com toda a
- * confiança do mundo.
- *
- * MEDIDO em 20/08/2026, na consulta que desenha o gráfico da visão
- * geral — julho inteiro, carteira toda:
- *
- *     sem paginar   1000 linhas   R$ 19.793,58
- *     paginando     2637 linhas   R$ 58.026,98
- *
- * A tela mostrava 34% do investimento real, e a forma da curva também
- * estava errada: sem `order`, quais linhas sobrevivem ao corte muda a
- * cada carregamento.
- *
- * A ordenação por `id` não é enfeite. `metric_date` não é único — a
- * tabela é granular por campanha —, e com chave ambígua o `range` pode
- * repetir ou pular linha na virada da página, que aqui vira gasto
- * contado duas vezes ou nenhuma.
- */
-async function lerPaginado(
-  /* `unknown[]` e não um genérico: o construtor do Supabase devolve um
-     tipo derivado do texto do `select`, e amarrá-lo a `T` faz o
-     compilador recusar toda chamada. Quem chama converte no fim, que é
-     onde ele sabe o formato que pediu. */
-  montarConsulta: (de: number, ate: number) => PromiseLike<{
-    data: unknown[] | null;
-    error: { message: string } | null;
-  }>,
-): Promise<unknown[]> {
-  const PAGINA = 1000;
-  const tudo: unknown[] = [];
-
-  for (let inicio = 0; ; inicio += PAGINA) {
-    const { data, error } = await montarConsulta(inicio, inicio + PAGINA - 1);
-
-    /* Erro NÃO vira lista vazia. O Supabase devolve `{ data: null,
-       error }` sem lançar, e engolir isso num `?? []` transforma uma
-       consulta recusada em "não há dado" — exatamente o defeito que a
-       tela de alertas de saldo já pagou. */
-    if (error) {
-      throw new Error(`Leitura de métricas recusada: ${error.message}`);
-    }
-
-    const pagina = data ?? [];
-    tudo.push(...pagina);
-
-    if (pagina.length < PAGINA) return tudo;
-  }
-}
 
 export async function getMetrics(
   clientId: string,
@@ -1461,11 +1407,8 @@ export interface AgencyDashboard {
   activeClients: number;
   tasksToday: number;
   tasksWeek: number;
-  health: Record<GoalHealth, number>;
   /** Tarefas próximas do vencimento, com quem responde por elas. */
   urgent: TaskWithRelations[];
-  /** Contas abaixo de 50% da meta — o que a diretoria precisa ver. */
-  atRisk: Client[];
 }
 
 /**
@@ -1477,11 +1420,7 @@ export interface AgencyDashboard {
  * assume que quem chamou tem direito de ver.
  */
 export async function getAgencyDashboard(): Promise<AgencyDashboard> {
-  const [tasks, clients, goals] = await Promise.all([
-    getTasks(),
-    getClients(),
-    getCurrentGoals(),
-  ]);
+  const [tasks, clients] = await Promise.all([getTasks(), getClients()]);
 
   const ativos = clients.filter((c) => c.status === "active");
 
@@ -1514,18 +1453,11 @@ export async function getAgencyDashboard(): Promise<AgencyDashboard> {
     .sort((a, b) => (vence(a) ?? "").localeCompare(vence(b) ?? ""))
     .slice(0, 6);
 
-  const { health, criticos } = await computeGoalHealth(
-    ativos.map((c) => c.id),
-    goals,
-  );
-
   return {
     activeClients: ativos.length,
     tasksToday,
     tasksWeek,
-    health,
     urgent,
-    atRisk: ativos.filter((c) => criticos.includes(c.id)),
   };
 }
 
@@ -1828,117 +1760,16 @@ export async function getGoalHistory(
 /* Torre de controle — números da agência inteira                      */
 /* ------------------------------------------------------------------ */
 
-export interface AgencyOverview {
-  /** Soma do gasto de todas as contas ativas no mês corrente. */
-  spendCents: number;
-  /** Soma das conversões contadas no mês. */
-  results: number;
-  /** Receita atribuída, para o retorno global. */
-  revenueCents: number;
-  /** Contas com meta definida e o veredito de ritmo de cada uma. */
-  noRitmo: number;
-  atrasadas: number;
-  semMeta: number;
-  /** Série diária somada — investimento contra retorno. */
-  trend: { date: string; spend: number; revenue: number }[];
-}
-
 /**
- * Os números que o dono da agência olha primeiro.
- *
- * SOMADO DE `daily_metrics`, não de coluna guardada. Não existe
- * `actual_spent` nem `actual_result` em lugar nenhum deste sistema, e
- * isso é decisão: a Meta reatribui conversão retroativamente, então um
- * total congelado passa a contradizer o dashboard do cliente sem avisar.
- *
- * O ritmo usa a MESMA razão de `lib/metrics/goals.ts` — executado ÷
- * esperado para hoje, tolerância de 10%. Duplicar a regra aqui faria a
- * torre de controle e o card do cliente discordarem sobre a mesma conta.
+ * Contas da carteira (ativas e em onboarding) com meta x executado do
+ * mês, para a visão geral. A régua de ritmo é a do card do cliente —
+ * ver `lib/metrics/visao-geral.ts`.
  */
-export async function getAgencyOverview(): Promise<AgencyOverview> {
+export async function getVisaoDaCarteira(): Promise<ContaNaMeta[]> {
   const linhas = await getClientsWithGoals();
-  const { start, end } = mesCorrenteBR();
-
-  const decorrido = periodElapsed(start, end);
-
-  let spendCents = 0;
-  let results = 0;
-  let revenueCents = 0;
-  let noRitmo = 0;
-  let atrasadas = 0;
-  let semMeta = 0;
-
-  for (const linha of linhas) {
-    spendCents += linha.computedSpendCents;
-    results += linha.computedResults;
-    revenueCents += linha.computedRevenueCents;
-
-    const meta = linha.goal?.planned_results ?? 0;
-    if (meta <= 0) {
-      semMeta += 1;
-      continue;
-    }
-
-    /* Mesmo critério da barra do card: 90% do esperado para hoje. */
-    const esperado = meta * decorrido;
-    const razao = esperado > 0 ? linha.computedGoalValue / esperado : 0;
-    if (razao >= 0.9) noRitmo += 1;
-    else atrasadas += 1;
-  }
-
-  /* Série diária: UMA consulta somando tudo, não uma por cliente. Com 46
-     contas, o laço faria 46 idas ao banco só para desenhar um gráfico. */
-  const trend = await getAgencyTrend(start, end);
-
-  return { spendCents, results, revenueCents, noRitmo, atrasadas, semMeta, trend };
-}
-
-async function getAgencyTrend(
-  start: string,
-  end: string,
-): Promise<{ date: string; spend: number; revenue: number }[]> {
-  const linhas = await (async (): Promise<DailyMetric[]> => {
-    if (isDemoMode) {
-      const { demoMetrics } = await import("@/lib/mock/data");
-      return demoMetrics.filter(
-        (m) => m.metric_date >= start && m.metric_date <= end,
-      );
-    }
-
-    const supabase = await createSupabaseServerClient();
-
-    /* PAGINADA. Esta consulta não filtra por cliente — varre a carteira
-       inteira — e é a que mais sofre com o teto de mil linhas. Ver
-       `lerPaginado`. */
-    return (await lerPaginado((de, ate) =>
-      supabase
-        .from("daily_metrics")
-        .select("metric_date, spend_cents, revenue_cents")
-        .gte("metric_date", start)
-        .lte("metric_date", end)
-        .order("id")
-        .range(de, ate),
-    )) as DailyMetric[];
-  })();
-
-  const porDia = new Map<string, { spend: number; revenue: number }>();
-
-  for (const linha of linhas) {
-    const atual = porDia.get(linha.metric_date) ?? { spend: 0, revenue: 0 };
-    atual.spend += linha.spend_cents;
-    atual.revenue += linha.revenue_cents;
-    porDia.set(linha.metric_date, atual);
-  }
-
-  return [...porDia.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    /* Reais, não centavos: o gráfico é apresentação, e o eixo em
-       centavos marcaria "5.000.000" para R$ 50 mil. */
-    .map(([date, v]) => ({
-      date,
-      spend: v.spend / 100,
-      revenue: v.revenue / 100,
-    }));
+  return linhas
+    .filter((l) => l.client.status === "active" || l.client.status === "onboarding")
+    .map(contaNaMeta);
 }
 
 /* ------------------------------------------------------------------ */

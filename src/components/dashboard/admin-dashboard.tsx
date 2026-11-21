@@ -1,177 +1,117 @@
 import Link from "next/link";
-import {
-  Activity,
-  AlertTriangle,
-  CalendarClock,
-  CircleDollarSign,
-  Gauge,
-  Target,
-  TrendingUp,
-} from "lucide-react";
+import { Activity, CalendarClock, CircleDollarSign, Target, TrendingDown, TrendingUp } from "lucide-react";
 
-import { GoalHealthChart } from "./goal-health-chart";
 import { StatCard } from "./stat-card";
-import { AgencyTrendChart } from "./agency-trend-chart";
+import { MetaPorGrupo } from "./meta-por-grupo";
 import { SyncButton } from "@/components/admin/sync-button";
 import { PageContainer, PageHeader } from "@/components/layout/page-header";
-import { getAgencyDashboard, getAgencyOverview } from "@/lib/data";
-import {
-  formatCurrency,
-  formatMultiplier,
-  formatNumber,
-} from "@/lib/format";
-import { formatDueDate } from "@/lib/format";
+import { getAgencyDashboard, getVisaoDaCarteira } from "@/lib/data";
+import { formatCurrencyCompact, formatDueDate, formatPercent } from "@/lib/format";
+import { agrupar, pontas, resumir, textoDoRitmo, type ContaNaMeta } from "@/lib/metrics/visao-geral";
 import { PersonAvatar } from "@/components/team/person-avatar";
 import { cn } from "@/lib/utils";
 import type { Profile } from "@/types/database";
 
 /* =====================================================================
-   Torre de controle
+   Torre de controle — meta x executado
    ---------------------------------------------------------------------
-   O que muda em relação ao painel do colaborador não é o layout — é a
-   PERGUNTA. O colaborador pergunta "o que eu faço agora"; o admin
-   pergunta "onde está o problema e quem eu cobro".
+   Refeita em 21/11/2026: saíram os totais de investimento, faturamento e
+   retorno e o gráfico dia a dia ("não faço nada com isso"). A tela agora
+   responde onde a carteira está contra a META: quantas contas estão no
+   ritmo, quanto da verba já saiu, quais grupos e quais contas puxam
+   cada ponta. A régua é a do card do cliente — `lib/metrics/visao-geral.ts`.
 
-   Por isso cada tarefa aqui mostra o responsável, e existe um bloco só
-   de contas críticas: sem nome e sem recorte, a lista vira relatório
-   para ler depois, não algo sobre o que agir hoje.
+   O radar da equipe continua: o admin pergunta "onde está o problema e
+   quem eu cobro", e o nome de quem responde é metade da resposta.
    ===================================================================== */
 
 /** Acima disto, o card do dia vira alerta. */
 const TAREFAS_DEMAIS = 8;
 
 export async function AdminDashboard({ user }: { user: Profile }) {
-  const [painel, agencia] = await Promise.all([
-    getAgencyDashboard(),
-    getAgencyOverview(),
-  ]);
+  const [painel, contas] = await Promise.all([getAgencyDashboard(), getVisaoDaCarteira()]);
   const primeiroNome = user.full_name.split(" ")[0];
+
+  const r = resumir(contas);
+  const grupos = {
+    segmento: agrupar(contas, "segmento"),
+    squad: agrupar(contas, "squad"),
+    agencia: agrupar(contas, "agencia"),
+  };
+  const { adiantadas, atrasadas } = pontas(contas);
+  const pctVerba = r.verbaPlanejada > 0 ? r.gasto / r.verbaPlanejada : null;
+  const pctEsperado = r.verbaPlanejada > 0 ? r.verbaEsperada / r.verbaPlanejada : null;
 
   return (
     <PageContainer>
       <PageHeader
         title={`Olá, ${primeiroNome}`}
-        description="Torre de controle: a operação da agência inteira."
+        description="Torre de controle: a carteira contra a meta do mês."
         actions={<SyncButton />}
       />
 
-      {/* KPIs ---------------------------------------------------------- */}
-      {/* SEIS NÚMEROS, DUAS LINHAS, SEM ÓRFÃO.
-          -------------------------------------------------------------
-          Eram cinco em grade de quatro: o quinto caía sozinho numa
-          segunda fileira, com três vãos vazios ao lado. Seis em grade
-          de três fecha as duas fileiras — e o sexto não é enchimento, é
-          o número que faltava.
-
-          `grid-cols-2` no celular em vez de uma coluna: cinco cartões
-          empilhados davam 2,5 telas de rolagem, medido em 812px de
-          altura. Agora os seis cabem antes do gráfico. */}
-      <div className="mt-7 grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-3 lg:gap-4">
-        {/* Dinheiro primeiro: é a pergunta que o dono faz ao abrir. Os
-            dois vêm somados de `daily_metrics`, não de coluna guardada —
-            não existe `actual_spent` neste sistema, e um total congelado
-            passaria a contradizer o painel do cliente assim que a Meta
-            reatribuísse uma conversão. */}
+      {/* Quatro números de decisão ------------------------------------- */}
+      <div className="mt-7 grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4 lg:gap-4">
+        <StatCard
+          icon={Activity}
+          label="Contas no ritmo da meta"
+          value={`${r.noRitmo} de ${r.comMeta}`}
+          hint={`${r.atrasadas} ${r.atrasadas === 1 ? "atrasada" : "atrasadas"} contra o esperado para hoje`}
+          tone={r.atrasadas > r.noRitmo ? "alerta" : "neutro"}
+        />
         <StatCard
           icon={CircleDollarSign}
-          label="Investimento gerenciado"
-          value={formatCurrency(agencia.spendCents)}
-          hint="somado no mês corrente"
-        />
-        {/* FATURAMENTO E RETORNO ESTAVAM CALCULADOS E NÃO APARECIAM.
-            `getAgencySummary` já devolvia `revenueCents` — o painel
-            mostrava quanto a agência INVESTE e escondia quanto isso
-            devolve, que é a pergunta seguinte de quem olha a primeira.
-
-            ⚠️ É receita ATRIBUÍDA pelas plataformas, não faturamento
-            confirmado na loja. Medido no Atacado de Pratas em julho: as
-            plataformas reportaram R$ 220.519,86 e a loja confirmou
-            R$ 96.499,52 — 2,3x de diferença, entre atribuição dupla e
-            pedido cancelado. Por isso o rótulo diz "atribuído". */}
-        <StatCard
-          icon={TrendingUp}
-          label="Faturamento atribuído"
-          value={formatCurrency(agencia.revenueCents)}
-          hint="receita que as plataformas atribuem"
-        />
-        <StatCard
-          icon={Gauge}
-          label="Retorno"
+          label="Verba do mês"
           value={
-            agencia.spendCents > 0
-              ? formatMultiplier(agencia.revenueCents / agencia.spendCents)
-              : "—"
+            r.verbaPlanejada > 0
+              ? `${formatCurrencyCompact(r.gasto)} de ${formatCurrencyCompact(r.verbaPlanejada)}`
+              : formatCurrencyCompact(r.gasto)
           }
-          hint="faturamento atribuído ÷ investimento"
+          hint={
+            pctVerba !== null && pctEsperado !== null
+              ? `${formatPercent(pctVerba, 0)} gasto · esperado hoje ${formatPercent(pctEsperado, 0)}`
+              : "nenhuma conta com verba planejada"
+          }
         />
         <StatCard
           icon={Target}
-          label="Resultados gerados"
-          value={formatNumber(Math.round(agencia.results))}
-          hint="conversões de todas as contas"
+          label="Contas sem meta"
+          value={r.semMeta}
+          hint="sem meta não há ritmo para medir"
+          tone={r.semMeta > 0 ? "alerta" : "neutro"}
         />
-        <StatCard
-          icon={Activity}
-          label="Ritmo das metas"
-          value={`${agencia.noRitmo} no ritmo · ${agencia.atrasadas} abaixo`}
-          hint={
-            agencia.semMeta > 0
-              ? `${agencia.semMeta} ${agencia.semMeta === 1 ? "conta sem meta" : "contas sem meta"} definida`
-              : "todas as contas com meta"
-          }
-          tone={agencia.atrasadas > 0 ? "alerta" : "neutro"}
-        />
-        {/* "Clientes ativos" saiu daqui. É cadastro, não decisão: o
-            número muda uma vez por mês e já aparece na barra lateral,
-            na lista de contas. Ocupava um dos seis lugares da primeira
-            tela, que agora é do retorno. */}
         <StatCard
           icon={CalendarClock}
           label="Tarefas hoje"
           value={painel.tasksToday}
           hint="da equipe, incluindo atrasadas"
-          /* Alerta só quando o volume é grande. Um número alto de
-             pendências do dia é sinal de gargalo; marcar dois itens de
+          /* Alerta só quando o volume é grande: marcar dois itens de
              vermelho ensinaria a ignorar a cor. */
           tone={painel.tasksToday > TAREFAS_DEMAIS ? "alerta" : "neutro"}
         />
       </div>
-
-      {/* Investimento contra retorno, agência inteira ------------------
-          Dado REAL, somado por dia de `daily_metrics`. Gráfico com série
-          inventada é a armadilha que este projeto já pagou três vezes —
-          e aqui seria pior, porque é a tela que decide onde mexer. */}
-      <section className="surface-card mt-8 p-5">
-        <h2 className="text-sm font-semibold">Investimento contra retorno</h2>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          Todas as contas somadas, dia a dia no mês corrente.
+      {r.semMeta > 0 && (
+        <p className="mt-2 text-2xs text-muted-foreground">
+          Contas sem meta ficam fora do ritmo.{" "}
+          <Link href="/clientes" className="underline underline-offset-2 hover:text-foreground">
+            Definir em Clientes
+          </Link>
+          . Verba soma só contas em real.
         </p>
+      )}
 
-        {agencia.trend.length === 0 ? (
-          <p className="mt-6 rounded-xl border border-dashed border-hairline px-4 py-10 text-center text-xs text-muted-foreground">
-            Sem métrica sincronizada neste mês.
-          </p>
-        ) : (
-          <div className="mt-5">
-            <AgencyTrendChart data={agencia.trend} />
-          </div>
-        )}
-      </section>
+      <div className="mt-8">
+        <MetaPorGrupo grupos={grupos} />
+      </div>
 
-      {/* Bloco principal ----------------------------------------------- */}
-      <div className="mt-8 grid gap-6 lg:grid-cols-3">
+      {/* As duas pontas -------------------------------------------------- */}
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        <Pontas titulo="Mais adiantadas" icone={TrendingUp} contas={adiantadas} vazio="Nenhuma conta com meta e ritmo para ler." />
+        <Pontas titulo="Mais atrasadas" icone={TrendingDown} contas={atrasadas} vazio="Nenhuma conta atrasada." />
+      </div>
+
+      <div className="mt-6">
         <section className="surface-card p-5">
-          <h2 className="text-sm font-semibold">Saúde global das metas</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Todas as contas ativas, contra o previsto do período.
-          </p>
-
-          <div className="mt-5">
-            <GoalHealthChart health={painel.health} />
-          </div>
-        </section>
-
-        <section className="surface-card p-5 lg:col-span-2">
           {/* `min-w-0` no filho de flex, senão ele se recusa a encolher.
               Sem isso, no celular a frase empurrava o "ver quadro" para
               fora do cartão e o link aparecia cortado como "ver qua…" —
@@ -270,54 +210,55 @@ export async function AdminDashboard({ user }: { user: Profile }) {
           </div>
         </section>
       </div>
-
-      {/* Contas em risco ----------------------------------------------- */}
-      <section className="mt-6">
-        <div className="surface-card p-5">
-          <div className="flex items-center gap-2">
-            <AlertTriangle
-              className={cn(
-                "size-4",
-                painel.atRisk.length > 0
-                  ? "text-negative"
-                  : "text-muted-foreground/50",
-              )}
-            />
-            <h2 className="text-sm font-semibold">Contas em risco</h2>
-          </div>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Abaixo de 50% da meta de resultados do período.
-          </p>
-
-          {painel.atRisk.length === 0 ? (
-            <p className="mt-4 text-sm text-muted-foreground">
-              Nenhuma conta crítica. Tudo dentro do previsto.
-            </p>
-          ) : (
-            <ul className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {painel.atRisk.map((client) => (
-                <li key={client.id}>
-                  <Link
-                    href={`/clientes/${client.slug}`}
-                    className="flex items-center gap-2.5 rounded-lg border border-negative/25 bg-negative-muted/25 px-3 py-2.5 transition-colors hover:bg-negative-muted/40"
-                  >
-                    <span
-                      aria-hidden
-                      className="size-5 shrink-0 rounded-md ring-1 ring-inset ring-black/10 dark:ring-white/10"
-                      style={{
-                        backgroundColor: client.brand_primary ?? "#8a8a8a",
-                      }}
-                    />
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                      {client.name}
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </section>
     </PageContainer>
+  );
+}
+
+/** Uma ponta do ranking: conta, executado x meta e o ritmo. */
+function Pontas({
+  titulo,
+  icone: Icone,
+  contas,
+  vazio,
+}: {
+  titulo: string;
+  icone: typeof TrendingUp;
+  contas: ContaNaMeta[];
+  vazio: string;
+}) {
+  return (
+    <section className="surface-card p-5">
+      <h2 className="flex items-center gap-2 text-sm font-semibold">
+        <Icone className="size-4 text-muted-foreground" />
+        {titulo}
+      </h2>
+      <p className="mt-0.5 text-xs text-muted-foreground">Executado contra a meta do mês, e o ritmo contra o esperado hoje.</p>
+      {contas.length === 0 ? (
+        <p className="mt-4 text-sm text-muted-foreground">{vazio}</p>
+      ) : (
+        <ul className="mt-4 flex flex-col divide-y divide-hairline">
+          {contas.map((c) => (
+            <li key={c.id} className="flex items-center gap-3 py-2.5 first:pt-0">
+              <span
+                aria-hidden
+                className="size-5 shrink-0 rounded-md ring-1 ring-inset ring-black/10 dark:ring-white/10"
+                style={{ backgroundColor: c.cor ?? "#8a8a8a" }}
+              />
+              <div className="min-w-0 flex-1">
+                <Link href={`/clientes/${c.slug}`} className="block truncate text-sm font-medium hover:underline">
+                  {c.nome}
+                </Link>
+                <span className="text-2xs text-muted-foreground">
+                  {c.executadoLabel} de {c.metaLabel} · {c.segmento}
+                </span>
+              </div>
+              <span className={cn("shrink-0 text-sm font-semibold tabular-nums", textoDoRitmo(c.ritmo))}>
+                {c.ritmo === null ? "—" : formatPercent(c.ritmo, 0)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
