@@ -1,14 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import {
-  Bot,
   CheckCircle2,
   Loader2,
   Pencil,
   Plus,
-  TriangleAlert,
   X,
 } from "lucide-react";
 
@@ -25,12 +23,10 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  atividadesDoCliente,
   atualizarOtimizacao,
   registerOptimization,
 } from "@/app/(app)/esteira/actions";
 import { dataNoBrasil } from "@/lib/date-br";
-import type { DiaDeAtividade } from "@/lib/ads/meta-activities";
 import type {
   Client,
   OptimizationEntry,
@@ -47,18 +43,10 @@ import type {
    caracteres. Numa coluna de 480px isso vira uma pilha de texto
    truncado — que é exatamente a informação que se veio conferir.
 
-   UM BLOCO POR DIA. Tudo o que foi mexido na conta naquele dia fica
-   junto: o log da Meta (só leitura, é o que de fato aconteceu) e a
-   observação da equipe (editável, é o porquê). Antes, o registro era só
-   a observação — alguém escrevia "pausei dois criativos" e, um mês
-   depois, ninguém sabia quais. Agora a lista de criativos pausados vem
-   da API, e a memória humana só precisa carregar a intenção.
-
-   O DIA VEM DA META E DO BANCO, unidos. Um dia pode ter alteração sem
-   observação (mexeram e não anotaram), observação sem alteração
-   (mexeram no Google, ou conversaram com o cliente), ou os dois. Os
-   três casos aparecem — esconder o primeiro apagaria justamente o que a
-   tela existe para cobrar.
+   UM BLOCO POR DIA, só com o que a equipe ANOTOU. O log automático de
+   alterações da Meta foi tirado em 22/11/2026, a pedido: o histórico é
+   das observações da rodada, não de cada ajuste do Gerenciador. Os dias
+   são os que têm observação, mais HOJE para poder escrever.
    ===================================================================== */
 
 interface Props {
@@ -95,7 +83,7 @@ export function OptimizationDialog({
             <DialogTitle className="truncate">{client.name}</DialogTitle>
           </div>
           <DialogDescription>
-            Tudo que foi mexido na conta, dia a dia. A observação é sua.
+            As observações das rodadas de otimização, dia a dia.
           </DialogDescription>
         </DialogHeader>
 
@@ -134,88 +122,31 @@ function ConteudoDoDia({
   ehAdmin: boolean;
   equipe: Profile[];
 }) {
-  const [dias, setDias] = useState<DiaDeAtividade[] | null>(null);
-  const [avisoMeta, setAvisoMeta] = useState<string | null>(null);
-
-  /* A CONSULTA À META ACONTECE AO ABRIR, não no carregamento da
-     esteira. A lista tem dezenas de contas; buscar o log de todas para
-     desenhar uma tela em que se abre uma seria uma chamada à Graph API
-     por linha, e a esteira demoraria segundos para pintar. */
-  useEffect(() => {
-    let vivo = true;
-
-    atividadesDoCliente(client.id)
-      .then((r) => {
-        if (!vivo) return;
-        if (r.ok) {
-          setDias(r.dias);
-        } else {
-          setDias([]);
-          setAvisoMeta(r.error);
-        }
-      })
-      .catch(() => {
-        if (!vivo) return;
-        setDias([]);
-        setAvisoMeta("Não foi possível falar com a Meta agora.");
-      });
-
-    return () => {
-      vivo = false;
-    };
-  }, [client.id]);
-
-  /* União dos dias: os que a Meta reporta, os que têm observação, e
-     HOJE — que precisa existir mesmo em branco, senão não há onde
-     escrever a observação de uma rodada sem alteração na Meta. */
-  const blocos = useMemo(() => {
-    const mapa = new Map<string, { dia: string; atividades: DiaDeAtividade["atividades"] }>();
-
-    for (const d of dias ?? []) mapa.set(d.dia, d);
-
-    for (const h of history) {
-      if (!mapa.has(h.dia)) mapa.set(h.dia, { dia: h.dia, atividades: [] });
-    }
-
+  /* SÓ O QUE FOI ANOTADO (22/11/2026). O log automático de alterações
+     da conta na Meta saiu daqui: a equipe quer o histórico com as
+     observações da rodada, não a lista de cada ajuste do Gerenciador.
+     Os dias são os que têm observação, e HOJE — que precisa existir em
+     branco, senão não há onde escrever a observação da rodada. */
+  const dias = useMemo(() => {
     const hoje = dataNoBrasil();
-    if (!mapa.has(hoje)) mapa.set(hoje, { dia: hoje, atividades: [] });
-
-    return [...mapa.values()].sort((a, b) => b.dia.localeCompare(a.dia));
-  }, [dias, history]);
+    return [...new Set([hoje, ...history.map((h) => h.dia)])].sort((a, b) => b.localeCompare(a));
+  }, [history]);
 
   return (
     <div className="flex-1 overflow-y-auto p-4">
-          {avisoMeta && (
-            <p className="mb-4 flex items-start gap-2 rounded-lg bg-warning-muted px-3 py-2 text-2xs leading-relaxed text-warning">
-              <TriangleAlert className="mt-px size-3.5 shrink-0" />
-              <span>
-                {avisoMeta} As observações abaixo continuam funcionando — o que
-                falta é o histórico automático da plataforma.
-              </span>
-            </p>
-          )}
-
-          {dias === null ? (
-            <p className="flex items-center gap-2 py-8 text-xs text-muted-foreground">
-              <Loader2 className="size-3.5 animate-spin" />
-              Buscando o histórico da conta na Meta…
-            </p>
-          ) : (
-            <div className="flex flex-col gap-5">
-              {blocos.map((bloco) => (
-                <BlocoDoDia
-                  key={bloco.dia}
-                  dia={bloco.dia}
-                  atividades={bloco.atividades}
-                  observacoes={history.filter((h) => h.dia === bloco.dia)}
-                  clientId={client.id}
-                  usuarioId={usuarioId}
-                  ehAdmin={ehAdmin}
-                  equipe={equipe}
-                />
-              ))}
-        </div>
-      )}
+          <div className="flex flex-col gap-5">
+            {dias.map((dia) => (
+              <BlocoDoDia
+                key={dia}
+                dia={dia}
+                observacoes={history.filter((h) => h.dia === dia)}
+                clientId={client.id}
+                usuarioId={usuarioId}
+                ehAdmin={ehAdmin}
+                equipe={equipe}
+              />
+            ))}
+          </div>
     </div>
   );
 }
@@ -224,7 +155,6 @@ function ConteudoDoDia({
 
 function BlocoDoDia({
   dia,
-  atividades,
   observacoes,
   clientId,
   usuarioId,
@@ -232,7 +162,6 @@ function BlocoDoDia({
   equipe,
 }: {
   dia: string;
-  atividades: DiaDeAtividade["atividades"];
   observacoes: OptimizationEntry[];
   clientId: string;
   usuarioId: string;
@@ -253,14 +182,7 @@ function BlocoDoDia({
             </span>
           )}
         </h3>
-        <span className="text-2xs text-muted-foreground">
-          {atividades.length === 0
-            ? "nenhuma alteração registrada pela Meta"
-            : `${atividades.length} ${atividades.length === 1 ? "alteração" : "alterações"}`}
-        </span>
       </header>
-
-      {atividades.length > 0 && <TabelaDeAtividades atividades={atividades} />}
 
       {/* --- observação ------------------------------------------------ */}
       <div className="border-t border-hairline p-3">
@@ -299,80 +221,6 @@ function BlocoDoDia({
 }
 
 /* ------------------------------------------------------------------ */
-
-/**
- * A tabela do log, com as mesmas colunas do Gerenciador de Anúncios.
- *
- * Vira lista de cartões abaixo de `sm`: cinco colunas num celular dão
- * uma coluna de oito caracteres cada, e o nome do conjunto — a
- * informação que identifica O QUE mudou — seria a primeira a sumir.
- */
-function TabelaDeAtividades({
-  atividades,
-}: {
-  atividades: DiaDeAtividade["atividades"];
-}) {
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[42rem] border-collapse text-left max-sm:hidden">
-        <thead>
-          <tr className="border-b border-hairline">
-            {["Atividade", "Detalhes", "Item alterado", "Por", "Hora"].map((c) => (
-              <th key={c} className="px-3 py-1.5 eyebrow font-normal">
-                {c}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {atividades.map((a, i) => (
-            <tr
-              key={`${a.quando}-${a.objetoId}-${i}`}
-              className="border-b border-hairline/60 last:border-0 align-top"
-            >
-              <td className="px-3 py-2 text-2xs">{a.atividade}</td>
-              <td className="px-3 py-2 text-2xs text-muted-foreground">
-                {a.detalhe ?? "—"}
-              </td>
-              <td className="max-w-[16rem] px-3 py-2 text-2xs">
-                <span className="block truncate" title={a.objeto ?? undefined}>
-                  {a.objeto ?? "—"}
-                </span>
-              </td>
-              <td className="whitespace-nowrap px-3 py-2 text-2xs text-muted-foreground">
-                <span className="flex items-center gap-1">
-                  {a.automatico && <Bot className="size-3 shrink-0" />}
-                  {a.quem}
-                </span>
-              </td>
-              <td className="whitespace-nowrap px-3 py-2 text-2xs tabular-nums text-muted-foreground">
-                {hora(a.quando)}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      <ul className="divide-y divide-hairline/60 sm:hidden">
-        {atividades.map((a, i) => (
-          <li key={`${a.quando}-${a.objetoId}-${i}`} className="px-3 py-2">
-            <p className="text-2xs font-medium">{a.atividade}</p>
-            {a.detalhe && (
-              <p className="text-2xs text-muted-foreground">{a.detalhe}</p>
-            )}
-            {a.objeto && (
-              <p className="truncate text-2xs text-muted-foreground">{a.objeto}</p>
-            )}
-            <p className="mt-0.5 flex items-center gap-1 text-[10px] text-muted-foreground">
-              {a.automatico && <Bot className="size-2.5" />}
-              {a.quem} · {hora(a.quando)}
-            </p>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
 
 /* ------------------------------------------------------------------ */
 
@@ -596,12 +444,6 @@ const DIA_LONGO = new Intl.DateTimeFormat("pt-BR", {
   timeZone: "America/Sao_Paulo",
 });
 
-const HORA = new Intl.DateTimeFormat("pt-BR", {
-  hour: "2-digit",
-  minute: "2-digit",
-  timeZone: "America/Sao_Paulo",
-});
-
 /**
  * `2026-08-24` → "segunda-feira, 24 de agosto".
  *
@@ -613,6 +455,3 @@ function rotuloDoDia(dia: string): string {
   return DIA_LONGO.format(new Date(`${dia}T12:00:00-03:00`));
 }
 
-function hora(iso: string): string {
-  return HORA.format(new Date(iso));
-}

@@ -5,12 +5,7 @@ import { z } from "zod";
 
 import { dataNoBrasil } from "@/lib/date-br";
 import { isDemoMode } from "@/lib/env";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient, getCurrentUser } from "@/lib/supabase/server";
-import {
-  atividadesDaConta,
-  type DiaDeAtividade,
-} from "@/lib/ads/meta-activities";
 import type { SaudeDaConta } from "@/types/database";
 
 const schema = z.object({
@@ -246,58 +241,3 @@ export async function atualizarOtimizacao(input: {
 /* O que a Meta registrou na conta                                     */
 /* ------------------------------------------------------------------ */
 
-/**
- * O histórico de alterações da conta de anúncios, por dia.
- *
- * SERVICE_ROLE COM CHECAGEM À MÃO, e a ordem importa: primeiro a
- * consulta pela SESSÃO, que é quem decide se esta pessoa enxerga esta
- * conta; só depois o `service_role`, e só para alcançar
- * `integration_secrets`, que tem RLS ligada e zero policies de
- * propósito — nenhuma sessão chega no token.
- *
- * Conta sem Meta vinculada não é erro: é o estado de boa parte da
- * carteira. Devolve a lista vazia com o motivo, e a tela diz isso em
- * vez de mostrar uma falha.
- */
-export async function atividadesDoCliente(
-  clientId: string,
-  desdeDias = 30,
-): Promise<
-  | { ok: true; dias: DiaDeAtividade[] }
-  | { ok: false; error: string; semConta?: boolean }
-> {
-  const user = await getCurrentUser();
-  if (!user) return { ok: false, error: "Sessão expirada." };
-
-  const supabase = await createSupabaseServerClient();
-  const { data: visivel } = await supabase
-    .from("clients")
-    .select("id")
-    .eq("id", clientId)
-    .maybeSingle();
-
-  if (!visivel) return { ok: false, error: "Cliente não encontrado." };
-
-  const admin = createSupabaseAdminClient();
-  const { data: integracao } = await admin
-    .from("client_integrations")
-    .select("external_account_id, integration_secrets(access_token)")
-    .eq("client_id", clientId)
-    .eq("platform", "meta_ads")
-    .maybeSingle();
-
-  const conta = integracao?.external_account_id as string | undefined;
-  const token = (
-    integracao as { integration_secrets?: { access_token?: string } } | null
-  )?.integration_secrets?.access_token;
-
-  if (!conta || !token) {
-    return {
-      ok: false,
-      semConta: true,
-      error: "Esta conta ainda não tem Meta Ads vinculado.",
-    };
-  }
-
-  return atividadesDaConta(conta, token, desdeDias);
-}
