@@ -17,6 +17,7 @@ import {
   getTasks,
 } from "@/lib/data";
 import { computeKpi, previousPeriod } from "@/lib/metrics/kpi";
+import { rotulosDaConversao } from "@/lib/ads/conversion-action";
 import { getLinhaDoTempo, getResponsaveis, getSaudeAtual } from "@/lib/clientes/dados";
 import {
   defaultGoalMetricFor,
@@ -144,6 +145,12 @@ export default async function ClientPage({
      à meta. Aqui não há número digitado por ninguém — é o que a
      plataforma mediu —, então quem manda é o segmento. */
   const metrica = defaultGoalMetricFor(client.segment);
+  /* Conversão escolhida fora do nicho (Configurar › Contas de mídia):
+     o nome segue o que é contado, não o segmento. Ex.: negócio local
+     que mede visita ao site. Ver `rotulosDaConversao`. */
+  const daConversao = rotulosDaConversao(metrics.tiposDeConversao);
+  const rotuloResultado = daConversao.results ?? metrica.label;
+  const rotuloCusto = daConversao.cpa ?? metrica.costLabel;
 
   /* Faturamento da LOJA no mesmo intervalo dos cards.
      ⚠️ `null` para quem não tem loja cadastrada — hoje, todo mundo
@@ -168,11 +175,13 @@ export default async function ClientPage({
        o card diz "Visitas ao perfil" e "Custo por visita" em vez de
        obrigar quem lê a lembrar de cabeça. */
     .map((kpi) =>
-      kpi.key === "results" || kpi.key === "revenue"
-        ? { ...kpi, label: metrica.label }
-        : kpi.key === "cpa" && metrica.costLabel
-          ? { ...kpi, label: metrica.costLabel }
-          : kpi,
+      kpi.key === "results"
+        ? { ...kpi, label: rotuloResultado }
+        : kpi.key === "revenue"
+          ? { ...kpi, label: metrica.label }
+          : kpi.key === "cpa" && rotuloCusto
+            ? { ...kpi, label: rotuloCusto }
+            : kpi,
     );
 
   /* ⚠️ COM LOJA INTEGRADA, O FATURAMENTO É O DA LOJA — e o retorno
@@ -249,8 +258,8 @@ export default async function ClientPage({
       goalStatus={goalStatus}
       goalHistory={goalHistory}
       goalProgress={goalProgress}
-      resultLabel={metrica.label}
-      costLabel={metrica.costLabel ?? "Custo por resultado"}
+      resultLabel={rotuloResultado}
+      costLabel={rotuloCusto ?? "Custo por resultado"}
       goal={
         metaAtual
           ? {

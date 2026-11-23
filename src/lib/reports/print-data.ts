@@ -1,6 +1,7 @@
 import "server-only";
 
 import { tiposDeConversaoDoCliente } from "@/lib/ads/conversao-do-cliente";
+import { rotulosDaConversao } from "@/lib/ads/conversion-action";
 import { isDemoMode } from "@/lib/env";
 import {
   metricasDeCriativosNoPeriodo,
@@ -444,6 +445,9 @@ function assemble(
     ? comLoja(anteriorDoPixel, lojaAnterior?.receitaCents ?? 0)
     : anteriorDoPixel;
 
+  // Conversão escolhida fora do nicho (ex.: visita ao site) renomeia o cartão.
+  const rotulosDaConta = { ...rotulos, ...rotulosDaConversao(tiposDeConversao) };
+
   return {
     client,
     // Mesmas funções do dashboard: é o que garante que o PDF entregue ao
@@ -462,7 +466,7 @@ function assemble(
         return { ...kpi, label: "Faturamento da loja" };
       }
 
-      const rotulo = rotulos[key];
+      const rotulo = rotulosDaConta[key];
       return rotulo ? { ...kpi, label: rotulo } : kpi;
     }),
     /* Os mesmos tipos que somaram os KPIs acima. A folha A4 é a que a
@@ -472,7 +476,7 @@ function assemble(
     platformDetail: buildPlatformDetail(
       current,
       previous,
-      rotulos,
+      rotulosDaConta,
       tiposDeConversao,
       rotulosPorPlataforma,
       acoesGoogle,

@@ -200,6 +200,8 @@ export function buildPlatformDetail(
           if (key === "meta_custo_mensagem") return [kpiDeCustoPorMensagem(atuais, anteriores, moeda)];
           if (key === "meta_seguidores")
             return [kpiDeContagem(key, "Seguidores no Instagram", somaSeguidores(atuais), somaSeguidores(anteriores))];
+          if (key === "meta_visitas_perfil")
+            return [kpiDeContagem(key, "Visitas ao perfil", somaVisitasAoPerfil(atuais), somaVisitasAoPerfil(anteriores))];
           if (key.startsWith("google_")) return acoesGoogle.filter((a) => a.chave === key).map(doGoogle);
           return [daBase(key as MetricKey)];
         })
@@ -303,6 +305,12 @@ function kpiDeCustoPorMensagem(
     hint: label,
   };
 }
+
+/* Visitas ao perfil como cartão À PARTE, para quem mede outra coisa como
+   resultado (Ni Hao, 23/11/2026: resultado = visita ao site, e a campanha
+   de engajamento continua visível por aqui). */
+const somaVisitasAoPerfil = (linhas: DailyMetric[]) =>
+  linhas.reduce((s, l) => s + (l.platform === "meta_ads" ? (l.profile_visits ?? 0) : 0), 0);
 
 const somaSeguidores = (linhas: DailyMetric[]) =>
   linhas.reduce((s, l) => s + (l.platform === "meta_ads" ? (l.instagram_follows ?? 0) : 0), 0);

@@ -1,4 +1,4 @@
-import type { ClientSegment } from "@/types/database";
+import type { ClientSegment, MetricKey } from "@/types/database";
 
 /* =====================================================================
    Conversão por segmento
@@ -125,6 +125,28 @@ export function conversionActionFor(
   if (escolhido) return [escolhido];
 
   return [...(segment ? POR_SEGMENTO[segment] : POR_SEGMENTO.leads)];
+}
+
+/**
+ * Nome dos cartões quando a conversão ESCOLHIDA não é a do nicho.
+ *
+ * Fiorellato e Ni Hao (23/11/2026): cadastradas como negócio local, mas
+ * a campanha que roda é "TRÁFEGO IFOOD", que otimiza visita ao site. Com
+ * a conversão trocada para `landing_page_view`, o cartão dizia "Visitas
+ * ao perfil" sobre o número de visitas ao site. Vale para o relatório e
+ * para a página do cliente.
+ */
+const ROTULOS_POR_CONVERSAO: Record<string, Partial<Record<MetricKey, string>>> = {
+  landing_page_view: {
+    results: "Visitas ao site",
+    leads: "Visitas ao site",
+    cpa: "Custo por visita ao site",
+    cpl: "Custo por visita ao site",
+  },
+};
+
+export function rotulosDaConversao(tipos: string[]): Partial<Record<MetricKey, string>> {
+  return tipos.length === 1 ? (ROTULOS_POR_CONVERSAO[tipos[0]] ?? {}) : {};
 }
 
 /** Opções para o seletor da tela, na ordem em que fazem sentido ler. */

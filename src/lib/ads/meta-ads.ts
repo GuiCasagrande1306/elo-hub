@@ -313,8 +313,12 @@ function tiposDaLinha(
   if (objetivoDoCriativo(meta, row.objective ?? null) !== "Cadastros")
     return tipos;
 
-  const otimizaConversa = row.results?.some((r) =>
-    r.indicator?.includes(CONVERSA_INICIADA),
+  /* "mixed" = conjuntos com metas diferentes na mesma campanha (parte
+     WhatsApp, parte formulário). A Meta não diz qual, então a conversa
+     CONTA: Life Mind, "06 | LEADS WHATSAPP", 24/10–22/11/2026 — 131
+     conversas e 33 formulários, e o relatório mostrava só os 33. */
+  const otimizaConversa = row.results?.some(
+    (r) => r.indicator === "mixed" || r.indicator?.includes(CONVERSA_INICIADA),
   );
   return otimizaConversa ? tipos : tipos.filter((t) => t !== CONVERSA_INICIADA);
 }

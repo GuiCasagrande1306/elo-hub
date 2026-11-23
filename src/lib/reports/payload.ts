@@ -1,4 +1,5 @@
 import "server-only";
+import { rotulosDaConversao } from "@/lib/ads/conversion-action";
 
 import {
   PLATFORM_LABELS,
@@ -309,7 +310,11 @@ export async function buildReportPayload(options: {
      CHAMAM. O rótulo é do template, não da métrica: o mesmo
      `conversions` é "Vendas", "Pedidos", "Leads" ou "Contatos"
      dependendo do negócio do cliente. */
-  const rotulos = template.metric_labels ?? {};
+  const rotulos = {
+    ...(template.metric_labels ?? {}),
+    // Conversão escolhida fora do nicho (ex.: visita ao site) renomeia o cartão.
+    ...rotulosDaConversao(metrics.tiposDeConversao),
+  };
 
   /* COM LOJA INTEGRADA, FATURAMENTO E RETORNO SAEM DA LOJA.
      -------------------------------------------------------------------

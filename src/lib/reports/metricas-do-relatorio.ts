@@ -38,6 +38,7 @@ export const CATALOGO_DE_METRICAS: Record<PlataformaDoRelatorio, { key: string; 
     { key: "meta_mensagens", label: "Mensagens" },
     { key: "meta_custo_mensagem", label: "Custo por mensagem" },
     { key: "meta_seguidores", label: "Seguidores no Instagram" },
+    { key: "meta_visitas_perfil", label: "Visitas ao perfil" },
   ],
   google_ads: [
     ...BASE,
