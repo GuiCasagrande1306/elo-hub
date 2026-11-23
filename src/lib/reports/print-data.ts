@@ -25,6 +25,7 @@ import {
 } from "./serie-do-grafico";
 import {
   buildPlatformDetail,
+  rotulosDoResumo,
   type PlatformDetail,
 } from "./platform-detail";
 import { totaisDoPeriodo, type TotaisDoPeriodo } from "./totais-do-periodo";
@@ -466,7 +467,7 @@ function assemble(
         return { ...kpi, label: "Faturamento da loja" };
       }
 
-      const rotulo = rotulosDaConta[key];
+      const rotulo = rotulosDoResumo(rotulosDaConta, current, rotulosPorPlataforma)[key];
       return rotulo ? { ...kpi, label: rotulo } : kpi;
     }),
     /* Os mesmos tipos que somaram os KPIs acima. A folha A4 é a que a

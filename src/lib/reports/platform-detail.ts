@@ -155,6 +155,25 @@ function metricasComNumero(
  * `splitByPlatform`. O padrão existe só para o chamador que legitimamente
  * não sabe (a página A4 antes de resolver a conta).
  */
+/**
+ * Rótulos do RESUMO DO PERÍODO (os cartões do topo).
+ *
+ * O topo soma as plataformas e usa o nome do NICHO. Quando só UMA
+ * plataforma gastou no período, o número é dela e o nome também tem de
+ * ser: Belz, 23/11/2026 — 100% do investimento no Google, 5 ligações, e
+ * o resumo dizia "Visitas ao perfil" e "Custo por visita".
+ */
+export function rotulosDoResumo(
+  base: Partial<Record<MetricKey, string>>,
+  linhas: DailyMetric[],
+  porPlataforma: Partial<Record<string, Partial<Record<MetricKey, string>>>>,
+): Partial<Record<MetricKey, string>> {
+  const comGasto = new Set(linhas.filter((l) => l.spend_cents > 0).map((l) => l.platform));
+  if (comGasto.size !== 1) return base;
+  const [plataforma] = comGasto;
+  return { ...base, ...porPlataforma[plataforma] };
+}
+
 export function buildPlatformDetail(
   atuais: DailyMetric[],
   anteriores: DailyMetric[],

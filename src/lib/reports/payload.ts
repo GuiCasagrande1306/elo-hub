@@ -30,6 +30,7 @@ import { linhasDaLegenda, mensagemDoCliente } from "./mensagem-do-cliente";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   buildPlatformDetail,
+  rotulosDoResumo,
   type PlatformDetail,
 } from "./platform-detail";
 import type {
@@ -347,7 +348,7 @@ export async function buildReportPayload(options: {
 
   const kpis: KpiResult[] = kpisDoTemplate(
     template.metrics as MetricKey[],
-    rotulos,
+    rotulosDoResumo(rotulos, metrics.current, { google_ads: rotulosGoogle ?? {} }),
     totaisAgora,
     totaisAntes,
     client.ad_currency,
